@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require "fileutils"
+require "tmpdir"
 require_relative "../errors"
 require_relative "../exec"
 
@@ -17,7 +19,7 @@ module Harness
         [%w[status], ->(rest) { rest.all? { |a| a.start_with?("-") } }],
         [%w[diff], ->(_rest) { true }],
         [%w[add -A], ->(rest) { rest.empty? }],
-        [%w[commit], ->(rest) { rest.size == 2 && rest[0] == "-m" }],
+        [%w[commit --no-verify], ->(rest) { rest.size == 2 && rest[0] == "-m" }],
         [%w[checkout -- .], ->(rest) { rest.empty? }],
         [%w[clean -fd], ->(rest) { rest.empty? }],
         [%w[rev-parse], ->(_rest) { true }],
@@ -28,9 +30,11 @@ module Harness
 
       # @param env [Hash{String=>String}] child environment (scrubbed, see Gates::Env)
       # @param timeout [Numeric] seconds per git command
-      def initialize(env:, timeout: 120)
+      # @param cache_dir [String, nil] .cache/, which holds the empty hooks directory; nil uses the system temp dir
+      def initialize(env:, timeout: 120, cache_dir: nil)
         @env = env
         @timeout = timeout
+        @hooks_dir = File.join(cache_dir || File.join(Dir.tmpdir, "vb-harness"), "no-hooks")
       end
 
       # @param args [Array<String>] git arguments, without "git"
@@ -40,7 +44,7 @@ module Harness
       # @raise [GitError] when the command is not allowed or fails
       def run(args, chdir:, ok_codes: [0])
         check!(args)
-        r = Exec.run(["git", *args], chdir: chdir, env: @env, timeout: @timeout, max_output: 16 * 1024 * 1024)
+        r = Exec.run(["git", "-c", "core.hooksPath=#{empty_hooks_dir}", *args], chdir: chdir, env: @env, timeout: @timeout, max_output: 16 * 1024 * 1024)
         return r.stdout if ok_codes.include?(r.exit_code) && !r.timed_out
 
         raise GitError, "git #{args.first(2).join(' ')} failed (#{r.timed_out ? 'timeout' : "exit #{r.exit_code}"}): " \
@@ -59,6 +63,17 @@ module Harness
       end
 
       private
+
+      # Every git command runs with hooks pointed at an empty directory: a repository's hooks (or ones a model
+      # wrote, such as .husky/pre-commit) never run (I3). Commits also pass --no-verify.
+      # @return [String]
+      # @raise [GitError] when the directory is not empty
+      def empty_hooks_dir
+        FileUtils.mkdir_p(@hooks_dir)
+        raise GitError, "#{@hooks_dir} must be empty: it disables git hooks" unless Dir.empty?(@hooks_dir)
+
+        @hooks_dir
+      end
 
       # @raise [GitError]
       def check!(args)

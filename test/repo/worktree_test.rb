@@ -13,7 +13,7 @@ class WorktreeTest < Minitest::Test
     @tmp = Dir.mktmpdir("harness-wt-")
     @repo, @env = TestSupport.repo(@tmp, { "README.md" => "# fixture\n", "src/a.ts" => "export const a = 1;\n",
                                            ".gitignore" => "dist/\n" })
-    @git = Git.new(env: @env)
+    @git = Git.new(env: @env, cache_dir: File.join(@tmp, "cache"))
   end
 
   def teardown
@@ -99,13 +99,39 @@ class WorktreeTest < Minitest::Test
     assert_includes TestSupport.git!(@repo, @env, "branch", "--list", "harness/r1"), "harness/r1"
   end
 
+  # Hooks are code from the repository (or from a model's edit) that git would run outside the gate allowlist (I3).
+  def test_commits_and_checkouts_run_no_hooks
+    marker = File.join(@tmp, "hook-ran")
+    hook = "#!/bin/sh\necho ran > '#{marker.tr('\\', '/')}'\n"
+    { ".husky/pre-commit" => hook, ".husky/post-checkout" => hook, ".husky/commit-msg" => hook }.each do |rel, text|
+      FileUtils.mkdir_p(File.join(@repo, File.dirname(rel)))
+      File.write(File.join(@repo, rel), text)
+      File.chmod(0o755, File.join(@repo, rel))
+    end
+    TestSupport.git!(@repo, @env, "add", "-A")
+    TestSupport.git!(@repo, @env, "commit", "-q", "--no-verify", "-m", "husky")
+    TestSupport.git!(@repo, @env, "config", "core.hooksPath", ".husky")
+    git_hooks = File.join(@repo, ".git", "hooks")
+    %w[pre-commit post-checkout commit-msg].each do |name|
+      File.write(File.join(git_hooks, name), hook)
+      File.chmod(0o755, File.join(git_hooks, name))
+    end
+    wt = create
+    File.write(File.join(wt.root, "src/b.ts"), "export const b = 2;\n")
+    wt.commit("T1: add b")
+    File.write(File.join(wt.root, "src/a.ts"), "changed")
+    wt.revert!
+    refute File.exist?(marker), "a git hook ran"
+    assert Dir.empty?(File.join(@tmp, "cache", "no-hooks")), "hooks point at an empty directory under .cache"
+  end
+
   def test_git_allowlist
-    allowed = [%w[status --porcelain], %w[diff HEAD], %w[add -A], ["commit", "-m", "msg"], %w[checkout -- .],
+    allowed = [%w[status --porcelain], %w[diff HEAD], %w[add -A], ["commit", "--no-verify", "-m", "msg"], %w[checkout -- .],
                %w[clean -fd], %w[rev-parse HEAD], %w[log --oneline], %w[worktree add -b harness/r1 /path/to/wt HEAD],
                %w[worktree remove --force /path/to/wt]]
     refused = [%w[push origin main], %w[fetch], %w[pull], %w[reset --hard], %w[checkout main], %w[clean -fdx],
                %w[config user.name x], %w[-c core.pager=x log], %w[remote add x y], %w[merge x],
-               %w[worktree add /path/to/wt], %w[diff --output=/tmp/x], ["commit", "-m", "m", "--amend"],
+               %w[worktree add /path/to/wt], %w[diff --output=/tmp/x], ["commit", "-m", "m", "--amend"], ["commit", "-m", "m"],
                %w[log --exec=x], %w[status ignored-path]]
     allowed.each { |a| assert Git.allowed?(a), a.inspect }
     refused.each { |a| refute Git.allowed?(a), a.inspect }

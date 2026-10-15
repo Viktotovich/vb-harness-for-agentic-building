@@ -95,7 +95,7 @@ module Harness
       # @raise [GitError] also when there is nothing to commit
       def commit(message)
         @git.run(%w[add -A], chdir: @root)
-        @git.run(["commit", "-m", message], chdir: @root)
+        @git.run(["commit", "--no-verify", "-m", message], chdir: @root)
         head
       end
 
@@ -114,16 +114,25 @@ module Harness
       end
 
       # Uncommitted changes as a patch: tracked changes plus untracked files as new-file diffs.
+      # @param context [Integer] lines of context around each change
       # @return [String]
       # @raise [GitError]
-      def patch
-        tracked = @git.run(%w[diff HEAD], chdir: @root)
+      def patch(context: 3)
+        tracked = @git.run(["diff", "-U#{context.to_i}", "HEAD"], chdir: @root)
         untracked = @git.run(%w[status --porcelain -z --untracked-files=all], chdir: @root)
                         .split("\0").select { |e| e.start_with?("?? ") }.map { |e| e[3..] }
         added = untracked.map do |rel|
-          @git.run(["diff", "--no-index", "--", "/dev/null", rel], chdir: @root, ok_codes: [0, 1])
+          @git.run(["diff", "--no-index", "-U#{context.to_i}", "--", "/dev/null", rel], chdir: @root, ok_codes: [0, 1])
         end
         ([tracked] + added).reject(&:empty?).join
+      end
+
+      # Everything the run committed, from the base commit to HEAD.
+      # @param context [Integer]
+      # @return [String]
+      # @raise [GitError]
+      def range_patch(context: 3)
+        @git.run(["diff", "-U#{context.to_i}", "#{@base_sha}..HEAD"], chdir: @root)
       end
 
       # Remove the worktree directory (the branch and its commits stay).
