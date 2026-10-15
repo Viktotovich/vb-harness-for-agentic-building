@@ -35,7 +35,7 @@ module TestSupport
     def self.config(base_url)
       ruby = RbConfig.ruby
       Harness::Config.parse({
-                              "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000 } },
+                              "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
                               "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
                               "stacks" => { "astro" => {
                                 "detect" => ["astro.config.mjs"],
@@ -69,31 +69,64 @@ module TestSupport
     # @return [Result]
     def self.run(tmp, plan, replies, files: FILES)
       repo, env = TestSupport.repo(tmp, files)
+      server = server(replies)
+      config = config(server.base_url)
+      store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "r1")
+      setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+      outcome = Harness::Run.new(config: config, client: client(config, store), setup: setup)
+                            .execute(Harness::Plan::PlanParser.parse(plan))
+      Result.new(outcome: outcome, repo: repo, env: env, store: store, server: server)
+    end
+
+    # A fake model that routes by step: "plan" (planner calls), "<task> implement", "<task> fix" and
+    # "<task> retry". A value is one reply or an Array consumed in order (the last repeats).
+    # @return [FakeLlmServer]
+    def self.server(replies)
       counts = Hash.new(0)
-      server = FakeLlmServer.new do |body, _n|
+      FakeLlmServer.new do |body, _n|
         system = body["messages"].first["content"]
         user = body["messages"].last["content"]
-        id = user[/^(T\d+): /, 1]
-        step = if user.include?("could not be applied") then "retry"
-               elsif system.start_with?("You fix") then "fix"
-               else "implement"
-               end
-        key = "#{id} #{step}"
+        key = if system.start_with?("You plan") then "plan"
+              else
+                step = if user.include?("could not be applied") then "retry"
+                       elsif system.start_with?("You fix") then "fix"
+                       else "implement"
+                       end
+                "#{user[/^(T\d+): /, 1]} #{step}"
+              end
         value = replies.fetch(key) { raise "fake model: no reply for #{key}" }
         list = value.first.is_a?(Integer) ? [value] : value
         reply = list[[counts[key], list.size - 1].min]
         counts[key] += 1
         reply
       end
-      config = config(server.base_url)
-      store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "r1")
-      client = Harness::Model::Client.new(
+    end
+
+    # @return [Harness::Model::Client] fixed capabilities, records in the run's folder
+    def self.client(config, store)
+      Harness::Model::Client.new(
         config: config, probe: ->(_) { Harness::Model::Probe::Result.new(**CAPS) }, http: Harness::Model::Http.new,
         records: Harness::State::Records.new(store.records_dir), env: {}, sleeper: ->(_) {}
       )
-      setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
-      outcome = Harness::Run.new(config: config, client: client, setup: setup).execute(Harness::Plan::PlanParser.parse(plan))
-      Result.new(outcome: outcome, repo: repo, env: env, store: store, server: server)
+    end
+
+    Setup = Data.define(:pipeline, :repo, :env, :server, :runs_dir)
+
+    # A Pipeline over a fresh fixture repo and a fake model.
+    # @return [Setup]
+    def self.pipeline(tmp, replies, files: FILES)
+      repo, env = TestSupport.repo(tmp, files)
+      server = server(replies)
+      config = config(server.base_url)
+      home = File.join(tmp, "home")
+      pipeline = Harness::Pipeline.new(config: config, home: home, env: ENV.to_h.merge(env),
+                                       client_factory: ->(store) { client(config, store) })
+      Setup.new(pipeline: pipeline, repo: repo, env: env, server: server, runs_dir: File.join(home, "runs"))
+    end
+
+    # @return [Array(Integer, Hash)] a fake planner reply
+    def self.plan_reply(tasks, questions: [])
+      FakeLlmServer.ok(JSON.generate({ "tasks" => tasks, "questions" => questions }))
     end
   end
 end

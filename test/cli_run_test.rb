@@ -16,9 +16,15 @@ class CliRunTest < Minitest::Test
   def setup
     @tmp = Dir.mktmpdir("harness-cli-run-")
     @repo, @git_env = TestSupport.repo(@tmp, F::FILES)
+    plans = 0
+    task = F.task("T1", "Double the price", modify: ["src/lib/price.ts"])
     @server = Fake.new do |body, _n|
       user = body["messages"].last["content"]
-      if user.include?("T1: Double the price")
+      if body["messages"].first["content"].start_with?("You plan")
+        plans += 1
+        questions = plans == 1 ? [{ "text" => "Which currency?", "blocking" => true }] : []
+        Fake.ok(JSON.generate({ "tasks" => [task], "questions" => questions }))
+      elsif user.include?("T1: Double the price")
         Fake.ok(JSON.generate({ "edits" => [{ "op" => "replace", "path" => "src/lib/price.ts", "search" => "  return n;",
                                               "replace" => "  return n * 2;" }] }))
       else
@@ -66,9 +72,10 @@ class CliRunTest < Minitest::Test
 
   def test_errors_exit_with_code_2
     assert_equal 2, cli("run", "--from-plan", @plan_path, "--config", @config_path)[0], "missing --repo"
-    code, _out, err = cli("run", "--repo", @repo, "--request", @plan_path, "--config", @config_path)
+    code, _out, err = cli("run", "--repo", @repo, "--request", @plan_path, "--from-plan", @plan_path, "--config", @config_path)
     assert_equal 2, code
-    assert_match(/--from-plan/, err)
+    assert_match(/exactly one of --request and --from-plan/, err)
+    assert_equal 2, cli("resume", "--config", @config_path)[0], "resume needs a RUN_ID"
     code, _out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", File.join(@home, "missing.json"))
     assert_equal 2, code
     assert_match(/not found/, err)
@@ -76,5 +83,36 @@ class CliRunTest < Minitest::Test
     code, _out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path)
     assert_equal 2, code
     assert_match(/uncommitted changes/, err)
+  end
+
+  def test_request_question_answer_build_through_the_cli
+    request = File.join(@home, "request.md")
+    File.write(request, "Make prices double.")
+    code, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    assert_equal 3, code, "waiting on the user's answers"
+    waiting = JSON.parse(out)
+    assert_equal ["Which currency?"], waiting["questions"]
+
+    answers = File.join(@home, "answers.json")
+    File.write(answers, JSON.generate(["USD"]))
+    code, out, err = cli("answer", waiting["run"], "--answers", answers, "--config", @config_path)
+    assert_equal 0, code, err
+    assert_match(/T1\s+done\s+commit \h{7}/, out)
+
+    code, out, = cli("resume", waiting["run"], "--config", @config_path, "--json")
+    assert_equal [0, "done"], [code, JSON.parse(out)["tasks"].first["status"]], "resuming a finished run changes nothing"
+  end
+
+  def test_answers_can_be_typed_on_stdin
+    request = File.join(@home, "request.md")
+    File.write(request, "Make prices double.")
+    _, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    run_id = JSON.parse(out)["run"]
+    input = Struct.new(:lines) { def gets = lines.shift }.new(["USD\n"])
+    err = TestSupport::Sink.new
+    code = Harness::CLI.run(["answer", run_id, "--config", @config_path], out: TestSupport::Sink.new, err: err,
+                                                                          env: ENV.to_h.merge(@git_env), input: input)
+    assert_equal 0, code, err.string
+    assert_includes err.string, "Q: Which currency?"
   end
 end

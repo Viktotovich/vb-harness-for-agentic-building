@@ -34,6 +34,11 @@ require_relative "harness/state/run_store"
 require_relative "harness/task/gather"
 require_relative "harness/task/loop"
 require_relative "harness/run"
+require_relative "harness/state/lock"
+require_relative "harness/plan/checks"
+require_relative "harness/plan/overview"
+require_relative "harness/plan/planner"
+require_relative "harness/pipeline"
 require_relative "harness/cli"
 
 # Local-first harness that gets real coding work out of local models. See README.md.

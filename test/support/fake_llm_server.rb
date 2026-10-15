@@ -14,6 +14,11 @@ module TestSupport
 
     attr_reader :requests
 
+    # @return [Array<String>] messages of handler exceptions (answered with HTTP 500)
+    def errors
+      @mutex.synchronize { @errors.dup }
+    end
+
     # @param models [Array<Hash>] entries of GET /models "data"
     # @param replies [Array<Array(Integer, Object)>] [status, body] answers for chat completions
     # @yieldparam body [Hash] the chat request body
@@ -24,6 +29,7 @@ module TestSupport
       @replies = replies
       @handler = handler
       @requests = []
+      @errors = []
       @mutex = Mutex.new
       @server = TCPServer.new("127.0.0.1", 0)
       @thread = Thread.new { serve }
@@ -85,7 +91,14 @@ module TestSupport
         @requests << req
         @requests.count { |r| r.path.end_with?("/chat/completions") } - 1
       end
-      status, payload = route(req, n)
+      status, payload = begin
+        route(req, n)
+      rescue StandardError => e
+        # A broken test handler must fail the request fast, not kill the server thread and leave the
+        # client waiting for its timeout.
+        @mutex.synchronize { @errors << e.message }
+        [500, { "error" => { "message" => "fake server handler failed: #{e.message}" } }]
+      end
       respond(client, status, payload)
     end
 

@@ -3,7 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "optparse"
-require_relative "cli/run_command"
+require_relative "cli/commands"
 
 module Harness
   # Command-line entry point. Subcommands arrive milestone by milestone (DESIGN.md section 11.1).
@@ -17,8 +17,9 @@ module Harness
     # @param out [IO] stream for results
     # @param err [IO] stream for progress and errors
     # @param env [Hash{String=>String}] the process environment
+    # @param input [IO] standard input, for interactive answers
     # @return [Integer] process exit code
-    def self.run(argv, out: $stdout, err: $stderr, env: ENV)
+    def self.run(argv, out: $stdout, err: $stderr, env: ENV, input: $stdin)
       args = argv.dup
       parser = global_parser(out)
       parser.order!(args)
@@ -31,7 +32,7 @@ module Harness
         return EXIT_CONFIG
       end
       case name
-      when "run" then RunCommand.call(args, out: out, err: err, env: env)
+      when "run", "answer", "resume" then Commands.call(name, args, out: out, err: err, env: env, input: input)
       else
         err.puts "harness: #{name} is not implemented yet"
         EXIT_CONFIG
