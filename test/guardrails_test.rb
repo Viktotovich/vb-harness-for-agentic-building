@@ -7,6 +7,8 @@
 
 require_relative "test_helper"
 require_relative "support/guard_scan"
+require_relative "support/fake_llm_server"
+require "tmpdir"
 
 class GuardrailsTest < Minitest::Test
   Scan = TestSupport::GuardScan
@@ -77,6 +79,46 @@ class GuardrailsTest < Minitest::Test
     samples.each { |s| refute_empty Scan.shell_hits("#{s}\n", "lib/x.rb"), "missed: #{s}" }
     clean = "msgs = Messages.new(system: \"You review code.\", user: u)\nrole = \"system\"\nExec.run(argv)\n"
     assert_empty Scan.shell_hits(clean, "lib/x.rb"), "false positive on role names"
+  end
+
+  # --- I12: keys only from apiKeyEnv; never in records, logs, caches or error messages ---
+
+  def test_i12_key_is_sent_but_never_recorded_logged_or_cached
+    key = "harness-i12-#{'k' * 24}"
+    env = { "TEST_HARNESS_KEY" => key }
+    incomplete = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
+    srv = TestSupport::FakeLlmServer.new(replies: [incomplete, TestSupport::FakeLlmServer.ok("{}"),
+                                                   TestSupport::FakeLlmServer.error(500, "engine crashed")])
+    Dir.mktmpdir("harness-i12-") do |dir|
+      client = TestSupport.client(srv.base_url, dir, profile: { "apiKeyEnv" => "TEST_HARNESS_KEY" }, env: env)
+      msgs = Harness::Model::Messages.new(system: "s", user: "u")
+      client.complete(:planner, msgs, label: "plan", parser: ->(v) { v })
+      err = assert_raises(Harness::ModelUnavailableError) { client.complete(:planner, msgs, label: "plan2") }
+      refute_includes err.message, key
+
+      config = TestSupport.config(srv.base_url, apiKeyEnv: "TEST_HARNESS_KEY")
+      Harness::Model::Probe.new(http: Harness::Model::Http.new, cache_dir: File.join(dir, "cache"), env: env, timeout: 10)
+                           .call(config.profiles["default"])
+
+      assert(srv.requests.all? { |r| r.headers["authorization"] == "Bearer #{key}" }, "every request carries the key")
+      files = Dir.glob(File.join(dir, "**", "*")).select { |f| File.file?(f) }
+      assert_operator files.size, :>=, 4, "records, a log and a probe cache were written"
+      leaks = files.select { |f| File.read(f, mode: "rb").include?(key) }
+      assert_empty leaks, "I12: the key leaked into #{leaks.join(', ')}"
+    end
+  ensure
+    srv&.stop
+  end
+
+  def test_i12_without_api_key_env_no_authorization_header_is_sent
+    srv = TestSupport::FakeLlmServer.new(replies: [TestSupport::FakeLlmServer.ok("hi")])
+    Dir.mktmpdir("harness-i12-") do |dir|
+      TestSupport.client(srv.base_url, dir, env: { "OPENAI_API_KEY" => "should-not-be-used" })
+                 .complete(:planner, Harness::Model::Messages.new(system: "s", user: "u"), label: "chat")
+    end
+    assert_nil srv.requests.last.headers["authorization"], "keys come only from the variable apiKeyEnv names"
+  ensure
+    srv&.stop
   end
 
   # --- I13: nothing personal or secret in committed files ---
