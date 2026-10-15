@@ -62,3 +62,35 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   `HARNESS_<PROFILE>_BASE_URL` and `HARNESS_<PROFILE>_MODEL`, with the profile name upper-cased and other
   characters turned into `_`.
 - **Token estimate:** 3 bytes per token plus 4 per message, deliberately pessimistic.
+
+## M2: worktree, paths, edits, gates, baseline
+
+- **`.git` is always protected,** whatever `protectedPaths` says. Glob matching adds `File::FNM_SYSCASE`, so on
+  Windows `.GIT/config` and `.Env` are caught too, and a pattern ending in `/**` covers every depth below it.
+  Path segments containing `:` are refused (drive letters, NTFS alternate data streams).
+- **The I2 check runs twice per write:** when an edit is staged and again right before the file is written.
+- **Edits apply all or nothing.** If any edit is rejected, nothing is written and every rejection is returned,
+  so the caller can give the model one retry for the rejected edits. If a write fails midway, files already
+  written are restored. A whole-file rewrite needs the file to be under `wholeFileRewriteMaxBytes` and listed
+  in `files.modify`. Replace edits keep the file's own line endings.
+- **Reverting a task** runs `git checkout -- .` and `git clean -fd`, then deletes the files the task created by
+  name, because `git clean -fd` leaves ignored files alone.
+- **`blocked.patch` without staging:** `git diff HEAD` for tracked files plus `git diff --no-index -- /dev/null
+  <file>` for each untracked file. The harness never stages until it commits, so a revert stays a plain
+  checkout and clean.
+- **Git allowlist** (`Repo::Git::ALLOWED`) matches whole command shapes, e.g. `checkout -- .` only and
+  `worktree add -b <branch> <dir> HEAD` only, and refuses `--exec`, `--output`, `--upload-pack`,
+  `--receive-pack`, `--ext-diff` and `--textconv` anywhere.
+- **Gate env adds `COMSPEC`** to the base list (Windows needs it to run `.cmd` files) and sets
+  `npm_config_yes=false`. With `CI=1` and no TTY, npx would otherwise install a missing package without asking,
+  which I10 forbids. Output saying the tool is missing (`could not determine executable to run`,
+  `is not recognized as an internal or external command`, ...) makes the gate `skipped` with that reason.
+- **Placeholders:** an empty `{files}` skips the gate ("no files to check"). An empty `{tests}` is dropped so the
+  whole suite runs (baseline and integration). A path starting with `-` is passed as `./-name`.
+- **The baseline runs every gate that does not need touched files** (scope `project` and `tests`, both phases),
+  not only project gates and unit tests, so integration gates have something to be compared with in M3.
+- **Baseline comparison:** diagnostics are matched as a multiset by (file, code, message), ignoring line
+  numbers. Unparsed output compares by its last 60 lines. Timeouts compare by status. A skipped gate is never
+  `ok?` (I6).
+- **Parsers in M2:** `tsc` and `astro_check` (both tsc formats), eslint "stylish", and minimal `vitest` and
+  `playwright` failure lines. Anything else falls back to the last 60 lines.
