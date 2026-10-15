@@ -38,4 +38,20 @@ module Harness
 
   # A task's required context (intent, acceptance, files) does not fit; the planner must split it.
   class TaskTooLargeError < Error; end
+
+  # A path was refused before any read or write (I2): outside the worktree, absolute, or protected.
+  class PathError < Error
+    # @return [String] a reason code, "edit.outside_worktree" or "edit.protected_path"
+    attr_reader :reason
+
+    # @param message [String]
+    # @param reason [String]
+    def initialize(message, reason:)
+      super(message)
+      @reason = reason
+    end
+  end
+
+  # A git command failed, or was not on the allowlist (DESIGN.md 9.2).
+  class GitError < Error; end
 end

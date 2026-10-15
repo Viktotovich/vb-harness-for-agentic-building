@@ -4,6 +4,7 @@
 
 require "minitest/autorun"
 require_relative "../lib/harness"
+require "fileutils"
 
 module TestSupport
   ROOT = File.expand_path("..", __dir__)
@@ -48,6 +49,44 @@ module TestSupport
       records: Harness::State::Records.new(File.join(dir, "records")), log: Harness::Log.new(dir: File.join(dir, "logs")),
       env: env, sleeper: ->(_seconds) {}
     )
+  end
+
+  # Environment for git in tests: the gate env, with the user's global and system git config ignored.
+  # @param dir [String] where an empty global config file is written
+  # @return [Hash{String=>String}]
+  def self.git_env(dir)
+    empty = File.join(dir, "empty.gitconfig")
+    File.write(empty, "") unless File.exist?(empty)
+    Harness::Gates::Env.build(ENV).merge("GIT_CONFIG_GLOBAL" => empty, "GIT_CONFIG_NOSYSTEM" => "1")
+  end
+
+  # @return [String] stdout
+  def self.git!(dir, env, *args)
+    r = Harness::Exec.run(["git", *args], chdir: dir, env: env, timeout: 60)
+    raise "git #{args.join(' ')} failed: #{r.stderr}" unless r.success?
+
+    r.stdout
+  end
+
+  # A committed fixture repository at <parent>/repo.
+  # @param parent [String]
+  # @param files [Hash{String=>String}] relative path => content
+  # @return [Array(String, Hash)] repo dir and the git env to use with it
+  def self.repo(parent, files = { "README.md" => "# fixture\n" })
+    dir = File.join(parent, "repo")
+    FileUtils.mkdir_p(dir)
+    env = git_env(parent)
+    git!(dir, env, "init", "-q", "-b", "main")
+    { "user.name" => "Harness Test", "user.email" => "test@example.invalid", "core.autocrlf" => "false",
+      "commit.gpgsign" => "false" }.each { |k, v| git!(dir, env, "config", k, v) }
+    files.each do |path, content|
+      full = File.join(dir, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.binwrite(full, content)
+    end
+    git!(dir, env, "add", "-A")
+    git!(dir, env, "commit", "-q", "-m", "init")
+    [dir, env]
   end
 
   # @return [Hash{String=>String}] a minimal environment for test subprocesses
