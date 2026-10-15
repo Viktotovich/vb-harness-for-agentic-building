@@ -7,7 +7,7 @@ hallucinated APIs, wrong changes, broken JSON and small context windows.
 
 AstroJS is the first supported stack. Any OpenAI-compatible model works: LM Studio, Ollama or your own endpoint.
 
-**Status: early development (milestone M6: every task is reviewed; only claims confirmed by a failing test become findings, and they become fix tasks).**
+**Status: early development (milestone M7: the command line works end to end, with a report per run and an eval suite; the app comes next).**
 
 ## Key points
 
@@ -27,6 +27,21 @@ AstroJS is the first supported stack. Any OpenAI-compatible model works: LM Stud
 - git.
 - An OpenAI-compatible model endpoint, e.g. `http://127.0.0.1:8080/v1`.
 - The target project's own toolchain (for Astro: Node).
+
+## Command line
+
+```sh
+ruby exe/harness init                                   # write config.json, asking a few questions
+ruby exe/harness run --repo /path/to/repo --request request.md
+ruby exe/harness status [RUN_ID] [--watch]              # tasks, current step, what was rejected and why
+ruby exe/harness answer RUN_ID                          # answer the planner's blocking questions
+ruby exe/harness resume RUN_ID
+ruby exe/harness report RUN_ID                          # (re)write runs/<RUN_ID>/report.md
+ruby eval/run_eval.rb --profile-map eval/profile-map.example.json
+```
+
+Every command takes `--json` and `--config FILE`. Work happens on the branch `harness/<RUN_ID>` in a separate
+worktree; your checkout is never changed. See [eval/README.md](eval/README.md) for the evaluation tasks.
 
 ## Development
 

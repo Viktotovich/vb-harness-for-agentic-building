@@ -230,3 +230,35 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
 - **Gates cannot install or touch a remote:** a gate whose program is `git` or `gh`, a package manager with an
   install-like subcommand (`install`, `i`, `add`, `ci`, `update`, `upgrade`, `up`, `dlx`), or `npx`/`pnpx`/`bunx`
   with `--yes` is a config error (I4, I10).
+
+## M7: report, init, status and eval
+
+- **The report is built only from the run's files** (run.json, plan.json, task folders, review records, events,
+  model records) and rewritten at the end of every run and by `harness report RUN_ID`. Text that came from a
+  model is kept on one line, with table pipes and angle brackets escaped, so it cannot add headings, table cells
+  or HTML. Integration results are saved as `integration.json` for it.
+- **Questions in the report** are the open and answered blocking questions, the planner's non-blocking questions,
+  and every review claim that went to confirmation but was not confirmed. Findings list only confirmed claims (I8).
+- **`harness status`** prints the progress view of section 11.5 as text, from the event log only. With no RUN_ID it
+  shows the newest run; `--watch` redraws every second until the run finishes, waits for answers, or stops after
+  planning. "Final review" is a stage in the strip.
+- **`harness init`** asks for the server URL, the name of the env var with an API key (never the key, I12), the
+  model (listed from `GET /models`, or typed), the context size (`probe` or a number) and an optional docs checkout.
+  It validates the result with `Config.parse` before writing. Not ported from the REVIEWER wizard: GitHub owner
+  and repos (runs name their repository), cloning the docs (a download), the dataset, and the loopback-only URL
+  rule (any OpenAI-compatible endpoint is allowed). Provider detection arrives with onboarding in M8.
+- **`dependencyDirs`** (new stack key; `["node_modules"]` in the example astro stack): git-ignored folders that
+  are mirrored from the repository into each worktree at intake, as hard links (copies where links fail). Without
+  it no Astro gate can run in a worktree, because Node looks for packages only in parent folders. The user's
+  folder is only read, and nothing is installed (I10).
+- **Eval tasks** point at a prepared local repository through `repo.ref` (a path or `$VAR`, then a commit or
+  `HEAD`). Remote URLs are refused, since cloning is a download the harness does not do. `eval/repos/astro-mini`
+  is the template; eval/README.md shows how to prepare it with `npm install`.
+- **Scoring:** solved means the hidden tests pass with the stack's task test gate (`scope: tests`), run on just the
+  hidden files after the run. "Findings confirmed" is confirmed claims / claims sent to confirmation. Regressions
+  are integration gates whose verdict is `regressed`. A run that stops waiting for answers is scored unsolved.
+  Worktrees are removed after scoring unless `--keep`.
+- **Profile mappings** override `roles` and may add `profiles` on top of the base config; with no map, one mapping
+  named `config` uses the config as it is.
+- **Not verified yet:** the ten hidden tests have not run against a real Astro install here (no Node packages were
+  downloaded). They use the container API and may need small fixes on the first manual eval.
