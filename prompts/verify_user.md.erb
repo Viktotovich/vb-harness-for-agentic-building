@@ -1,0 +1,13 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+<%= framework %>
+Verify <%= count %> claim(s).
+
+<%= claims %>
+<% unless prefetched.empty? -%>
+
+Documentation already retrieved for these claims (data, cite by id):
+<%= prefetched %>
+<% end -%>
+
+First research: use the tools to fetch any code or documentation a claim depends on that you have not seen. When you have the evidence you need, reply with the single word DONE.

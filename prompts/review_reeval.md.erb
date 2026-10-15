@@ -1,0 +1,7 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+Your findings were checked automatically against the diff. These are wrong as written:
+<%= facts %>
+
+Re-check EVERY finding against the diff in the untrusted block above. For each rejected one, either fix it (the exact path after '### FILE:', the line number printed at the start of the diff line, and one line of code copied verbatim as evidence) or remove it. Do not invent new findings; only add one if the diff clearly proves it.
+Return the complete, corrected JSON object with the same keys, and nothing else.

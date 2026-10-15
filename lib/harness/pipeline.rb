@@ -49,7 +49,7 @@ module Harness
 
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: State::RunStore.new_run_id)
       locked(store) do
-        setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env)
+        setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = @client_factory.call(store)
         store.update_run({ "planOnly" => plan_only })
         if request
@@ -79,7 +79,7 @@ module Harness
 
         pairs = Array(run["answers"]) + questions.zip(answers)
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
-        setup = Run.reattach(config: @config, store: store, parent_env: @env)
+        setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = @client_factory.call(store)
         planned(store, setup, client, plan_with_model(setup, client, request_of(store), pairs))
       end
@@ -103,7 +103,7 @@ module Harness
         status = run["status"]
         return waiting_result(store, run) if status == "waiting"
 
-        setup = Run.reattach(config: @config, store: store, parent_env: @env)
+        setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = @client_factory.call(store)
         if status == "planning" || !File.file?(store.plan_path)
           next planned(store, setup, client, plan_with_model(setup, client, request_of(store), Array(run["answers"])))

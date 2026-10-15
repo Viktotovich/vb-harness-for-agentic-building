@@ -62,6 +62,13 @@ module TestSupport
                                        "notes" => "edit" }))
     end
 
+    # Review calls route by their system prompt: "review" (both discovery runs), "verify", "challenge",
+    # "support" and "confirm". Discovery finds nothing unless a test scripts it.
+    REVIEW_ROLES = [["You are a careful code reviewer", "review"], ["You are a second, independent code reviewer", "review"],
+                    ["You are an independent verifier", "verify"], ["You are the author of the code", "challenge"],
+                    ["You check whether a documentation passage", "support"], ["You write one automated test", "confirm"]].freeze
+    NO_FINDINGS = FakeLlmServer.ok(JSON.generate({ "summary" => "A change.", "findings" => [], "suspicious" => [] }))
+
     Result = Data.define(:outcome, :repo, :env, :store, :server)
 
     # Run a plan end to end. replies: { "T1 implement" => reply, "T1 fix" => reply, ... }, a reply may be an
@@ -88,15 +95,21 @@ module TestSupport
         user = body["messages"].last["content"]
         next replies.fetch("summary") { FakeLlmServer.ok("A source file.") } if system.start_with?("You summarize")
 
-        key = if system.start_with?("You plan") then "plan"
+        review = REVIEW_ROLES.find { |opening, _| system.start_with?(opening) }&.last
+        key = if review then review
+              elsif system.start_with?("You plan") then "plan"
               else
                 step = if user.include?("could not be applied") then "retry"
                        elsif system.start_with?("You fix") then "fix"
                        else "implement"
                        end
-                "#{user[/^(T\d+): /, 1]} #{step}"
+                "#{user[/^(T\d+(?:R\d+)?): /, 1]} #{step}"
               end
-        value = replies.fetch(key) { raise "fake model: no reply for #{key}" }
+        value = replies.fetch(key) do
+          next NO_FINDINGS if key.start_with?("review")
+
+          raise "fake model: no reply for #{key}"
+        end
         list = value.first.is_a?(Integer) ? [value] : value
         reply = list[[counts[key], list.size - 1].min]
         counts[key] += 1

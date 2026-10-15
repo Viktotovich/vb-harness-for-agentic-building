@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require "fileutils"
+require "json"
 require_relative "errors"
 require_relative "gates/baseline"
 require_relative "gates/env"
@@ -9,6 +11,8 @@ require_relative "gates/runner"
 require_relative "plan/plan"
 require_relative "repo/git"
 require_relative "repo/map"
+require_relative "repo/paths"
+require_relative "review/reviewer"
 require_relative "repo/worktree"
 require_relative "state/events"
 require_relative "state/run_store"
@@ -29,14 +33,15 @@ module Harness
     # @param repo [String]
     # @param store [State::RunStore]
     # @param parent_env [Hash{String=>String}]
+    # @param cache_dir [String, nil] .cache/, for the empty git hooks directory
     # @return [Setup]
     # @raise [GitError] on a dirty or missing repository
     # @raise [ConfigError] when no configured stack matches the repository
-    def self.intake(config:, repo:, store:, parent_env: ENV)
+    def self.intake(config:, repo:, store:, parent_env: ENV, cache_dir: nil)
       events = State::Events.new(path: store.events_path, run_id: store.run_id)
       events.emit(stage: "intake", kind: "stage_started")
       env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
-      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env))
+      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env, cache_dir: cache_dir))
       stack = detect_stack(config, worktree.root)
       runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
       baseline = Gates::Baseline.run(runner, stack.gates)
@@ -68,31 +73,37 @@ module Harness
     # @param config [Config]
     # @param client [Model::Client]
     # @param setup [Setup]
-    # @param reviewer [#call, nil]
+    # @param review [Boolean] run the review (DESIGN.md 8) on every task and on the whole run
     # @param cache_dir [String, nil] the context map's cache (.cache/); nil disables it
-    def initialize(config:, client:, setup:, reviewer: nil, cache_dir: nil)
+    def initialize(config:, client:, setup:, review: true, cache_dir: nil)
       @config = config
       @setup = setup
       map = Repo::Map.new(root: setup.worktree.root, cache_dir: cache_dir, protected: setup.stack.protected_paths)
+      @reviewer = if review
+                    Review::Reviewer.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
+                                         runner: setup.runner, baseline: setup.baseline, events: setup.events,
+                                         store: setup.store, map: map, cache_dir: cache_dir)
+                  end
       @ctx = Task::Context.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
                                runner: setup.runner, baseline: setup.baseline, events: setup.events, store: setup.store,
-                               reviewer: reviewer, map: map, summarizer: Task::Summarizer.new(client: client, config: config))
+                               reviewer: @reviewer, map: map, summarizer: Task::Summarizer.new(client: client, config: config))
     end
 
     # Reattach to a run started earlier (resume and answer): its worktree, stack, baseline and event log.
     # @param config [Config]
     # @param store [State::RunStore]
     # @param parent_env [Hash{String=>String}]
+    # @param cache_dir [String, nil] .cache/, for the empty git hooks directory
     # @return [Setup]
     # @raise [ConfigError] when the run or its worktree is gone
-    def self.reattach(config:, store:, parent_env: ENV)
+    def self.reattach(config:, store:, parent_env: ENV, cache_dir: nil)
       run = store.read_run
       raise ConfigError, "no run #{store.run_id}" if run.empty?
       raise ConfigError, "the worktree of run #{store.run_id} is gone (#{run['worktree']})" unless File.directory?(run["worktree"].to_s)
 
       env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
       worktree = Repo::Worktree.new(repo: run["repo"], root: run["worktree"], branch: run["branch"], base_sha: run["baseSha"],
-                                    git: Repo::Git.new(env: env))
+                                    git: Repo::Git.new(env: env, cache_dir: cache_dir))
       stack = config.stacks.fetch(run["stack"]) { raise ConfigError, "stack #{run['stack']} is no longer configured" }
       runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
       Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: Gates::Baseline.load(store.baseline_path),
@@ -109,7 +120,8 @@ module Harness
       @setup.store.update_run({ "status" => "running" })
       outcomes = {}
       stopped = false
-      plan.ordered.each do |task|
+      queue = plan.ordered
+      while (task = queue.shift)
         if stopped
           outcomes[task.id] = skip(task, "the model server is unavailable")
           next
@@ -123,14 +135,61 @@ module Harness
         saved = resume ? @setup.store.read_task_state(task.id) : nil
         # A stop before the task saved any state can still leave edits behind: start from the last commit.
         @setup.worktree.revert! if resume && %w[pending skipped].include?(saved&.fetch("state", nil) || "pending") && @setup.worktree.dirty?
+        seed(task)
         outcomes[task.id] = run_task(task, done, saved)
         stopped = outcomes[task.id].reason == "model.unavailable"
+        follow = outcomes[task.id].status == "done" ? add_follow_ups(plan, task) : []
+        plan = plan.with(tasks: plan.tasks + follow) unless follow.empty?
+        queue.unshift(*follow)
       end
       integration = stopped ? [] : run_integration
+      final_review(integration) unless stopped
       finish(outcomes, integration, stopped)
     end
 
     private
+
+    # Confirmed review claims of a finished task become fix tasks that run next. Each keeps its failing test in
+    # tasks/<id>/confirm-test.json until it runs, and the plan on disk lists it, so a resumed run has it too.
+    # @return [Array<Plan::Task>]
+    def add_follow_ups(plan, task)
+      return [] unless @reviewer
+
+      ups = @reviewer.follow_ups(task.id).reject { |u| plan.task(u.task.id) }
+      ups.each do |u|
+        @setup.store.write_task_file(u.task.id, "confirm-test.json", { "path" => u.test_path, "content" => u.test_content })
+        @setup.events.emit(stage: "review.confirm_test", kind: "split", task: task.id, subject: u.task.id,
+                           detail: "fix task for a claim confirmed by #{u.test_path}")
+      end
+      tasks = ups.map(&:task)
+      State.write_json(@setup.store.plan_path, plan.with(tasks: plan.tasks + tasks).to_json_hash) unless tasks.empty?
+      tasks
+    end
+
+    # Write a follow-up task's failing test into the worktree before the task runs.
+    # @return [void]
+    def seed(task)
+      file = File.join(@setup.store.task_dir(task.id), "confirm-test.json")
+      return unless File.file?(file)
+
+      saved = JSON.parse(File.read(file, encoding: "UTF-8"))
+      full = Repo::Paths.resolve_in_worktree(@setup.worktree.root, saved["path"], protected: @setup.stack.protected_paths)
+      return if File.file?(full)
+
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, saved["content"], encoding: "UTF-8")
+    end
+
+    # The review of everything the run committed (DESIGN.md 5.5 step 2).
+    # @return [void]
+    def final_review(integration)
+      return unless @reviewer && @setup.worktree.head != @setup.worktree.base_sha
+
+      typecheck = @setup.stack.gates.values.select { |g| Review::Reviewer::TYPE_PARSERS.include?(g.parser) }.map(&:name)
+      results = integration.select { |c| typecheck.include?(c.gate) }
+      passed = results.empty? ? @setup.baseline.values.any? { |r| typecheck.include?(r.gate) && r.passed? } : results.all?(&:ok?)
+      @reviewer.final(diff: @setup.worktree.range_patch(context: Task::Loop::REVIEW_CONTEXT), typecheck_passed: passed)
+    end
 
     # Finished tasks keep their outcome on resume; skipped tasks and those stopped by a model outage run again.
     # @return [Task::Outcome]

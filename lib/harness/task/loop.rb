@@ -16,7 +16,7 @@ require_relative "gather"
 
 module Harness
   module Task
-    # What the loop needs from the run. reviewer: #call(task:, diff:) -> Array of findings (M6); nil skips review.
+    # What the loop needs from the run. reviewer: #call(task:, diff:, gates:), see Review::Reviewer; nil skips review.
     # map: the context map of the worktree (rescanned before each gather); summarizer: #call(path, content).
     Context = Data.define(:client, :config, :worktree, :stack, :runner, :baseline, :events, :store, :reviewer, :map,
                           :summarizer) do
@@ -36,6 +36,7 @@ module Harness
     # committing -> done | blocked. State is persisted after every transition. Only gates mark a task done (I7).
     class Loop
       DIAGNOSTIC_CONTEXT = 5
+      REVIEW_CONTEXT = 10
 
       # Ends the task as blocked.
       class Blocked < StandardError
@@ -345,7 +346,7 @@ module Harness
           return
         end
 
-        @ctx.reviewer.call(task: @task, diff: @ctx.worktree.patch)
+        @ctx.reviewer.call(task: @task, diff: @ctx.worktree.patch(context: REVIEW_CONTEXT), gates: @last_gates)
       end
 
       # @return [Outcome]

@@ -43,6 +43,9 @@ module Harness
       # @return [String]
       def lock_path = File.join(@dir, "harness.lock")
 
+      # @return [String]
+      def final_review_path = File.join(@dir, "final_review.json")
+
       # @param text [String] the feature request, saved as runs/<runId>/request.md
       # @return [void]
       def write_request(text)

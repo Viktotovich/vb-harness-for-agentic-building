@@ -1,0 +1,14 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+The claim:
+<%= claim %>
+
+The code it is about:
+<%= code %>
+<% unless example.empty? -%>
+
+An existing test in this project, for its style and imports:
+<%= example %>
+<% end -%>
+
+Write the test at <%= path %>.

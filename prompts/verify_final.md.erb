@@ -1,0 +1,20 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+Now give your verdicts. For each claim fill in:
+- "claim_type": "framework-api" | "language" | "repository-logic" | "security" | "other"
+- "framework": the framework or library name, or "none"
+- "code_does": one sentence on what the cited code actually does
+- "code_quote": the exact code the claim is about, copied from the excerpt or a fetched file without line numbers
+- "false_statements": statements of the claim that the code or the docs CONTRADICT (empty list if none)
+- "preconditions": what must be true for the problem to occur
+- "trigger": a concrete input or sequence of events that causes it, or "" if none can be named
+- "refutation": the strongest grounded reason the claim is wrong, or ""
+- "refutation_quote": exact code you have seen that shows the claim is wrong, or ""
+- "citations": [{"evidence_id": "E1", "quote": "exact words copied from that passage", "relation": "supports" | "contradicts"}]
+- "impact": "low" | "medium" | "high" (what the evidence demonstrates, not the worst case)
+- "depends_on_unseen": true if your reasoning depends on code you have not seen (neither shown nor fetched)
+- "unseen": what that code is (a type, a function, a file), or ""
+- "requires_type_violation": true if the failure needs a value that the declared type does not allow
+- "verdict": "accept" (evidence establishes the defect) | "reject" (evidence disproves it) | "abstain" (cannot establish either)
+- "reason": one sentence
+Answer with the same "id" numbers as the CLAIMs. Output exactly one JSON object: {"verdicts": [...]}

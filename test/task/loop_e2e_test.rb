@@ -123,7 +123,7 @@ class LoopE2ETest < Minitest::Test
     assert_equal "done", t1.status
     rejected = events.find { |e| e["kind"] == "rejected" && e["stage"] == "task.apply" }
     assert_equal "edit.search_not_found", rejected["reason"]
-    retry_user = @result.server.chat_bodies.last["messages"].last["content"]
+    retry_user = @result.server.chat_bodies.map { |b| b["messages"].last["content"] }.find { |u| u.include?("could not be applied") }
     assert_includes retry_user, "matched 0 times"
   end
 
