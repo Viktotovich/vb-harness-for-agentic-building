@@ -42,12 +42,14 @@ module Harness
     # @param request [String, nil] feature request text
     # @param plan_hash [Hash, nil] a plan in its JSON form (--from-plan)
     # @param plan_only [Boolean] stop after planning
+    # @param run_id [String, nil] a new run id chosen by the caller (the app shows it before intake ends)
     # @return [Result]
     # @raise [GitError, ConfigError, ParseError, ModelOutputError, ModelUnavailableError]
-    def start(repo:, request: nil, plan_hash: nil, plan_only: false)
+    def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil)
       raise ArgumentError, "give a request or a plan" if request.nil? == plan_hash.nil?
 
-      store = State::RunStore.new(runs_dir: @runs_dir, run_id: State::RunStore.new_run_id)
+      store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
+      raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = @client_factory.call(store)

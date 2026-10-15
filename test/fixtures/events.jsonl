@@ -1,0 +1,24 @@
+{"seq":1,"at":"2026-10-15T12:00:00Z","run":"r20261015-120000-ab12","stage":"intake","kind":"stage_started"}
+{"seq":2,"at":"2026-10-15T12:00:05Z","run":"r20261015-120000-ab12","stage":"intake","kind":"stage_finished","detail":"stack astro"}
+{"seq":3,"at":"2026-10-15T12:00:06Z","run":"r20261015-120000-ab12","stage":"plan","kind":"stage_started"}
+{"seq":4,"at":"2026-10-15T12:00:40Z","run":"r20261015-120000-ab12","stage":"plan","kind":"stage_finished","tokens":{"in":1500,"out":400}}
+{"seq":5,"at":"2026-10-15T12:01:00Z","run":"r20261015-120000-ab12","stage":"task.gather","kind":"stage_started","task":"T1","attempt":1}
+{"seq":6,"at":"2026-10-15T12:02:00Z","run":"r20261015-120000-ab12","stage":"task.implement","kind":"accepted","task":"T1","attempt":1,"subject":"2 edits","tokens":{"in":1200,"out":300}}
+{"seq":7,"at":"2026-10-15T12:02:01Z","run":"r20261015-120000-ab12","stage":"task.apply","kind":"rejected","task":"T1","attempt":1,"subject":"replace src/lib/price.ts","reason":"edit.search_not_found","detail":"search text matched 0 times in src/lib/price.ts"}
+{"seq":8,"at":"2026-10-15T12:02:30Z","run":"r20261015-120000-ab12","stage":"task.apply","kind":"accepted","task":"T1","attempt":1,"subject":"1 files","tokens":{"in":800,"out":100}}
+{"seq":9,"at":"2026-10-15T12:02:31Z","run":"r20261015-120000-ab12","stage":"task.gates","kind":"stage_started","task":"T1","attempt":1}
+{"seq":10,"at":"2026-10-15T12:02:51Z","run":"r20261015-120000-ab12","stage":"task.gates","kind":"rejected","task":"T1","attempt":1,"subject":"typecheck","reason":"gate.failed:typecheck","detail":"1 new problems","ms":20000}
+{"seq":11,"at":"2026-10-15T12:04:00Z","run":"r20261015-120000-ab12","stage":"task.fix","kind":"accepted","task":"T1","attempt":2,"subject":"1 edits","tokens":{"in":1000,"out":200}}
+{"seq":12,"at":"2026-10-15T12:04:01Z","run":"r20261015-120000-ab12","stage":"task.gates","kind":"stage_started","task":"T1","attempt":2}
+{"seq":13,"at":"2026-10-15T12:04:22Z","run":"r20261015-120000-ab12","stage":"task.gates","kind":"accepted","task":"T1","attempt":2,"subject":"typecheck","detail":"pass","ms":21000}
+{"seq":14,"at":"2026-10-15T12:04:30Z","run":"r20261015-120000-ab12","stage":"task.commit","kind":"done","task":"T1","attempt":2,"subject":"task","detail":"a1b2c3d4e5f6"}
+{"seq":15,"at":"2026-10-15T12:05:00Z","run":"r20261015-120000-ab12","stage":"task.gather","kind":"stage_started","task":"T2","attempt":1}
+{"seq":16,"at":"2026-10-15T12:06:00Z","run":"r20261015-120000-ab12","stage":"task.implement","kind":"accepted","task":"T2","attempt":1,"subject":"1 edits","tokens":{"in":900,"out":200}}
+{"seq":17,"at":"2026-10-15T12:07:00Z","run":"r20261015-120000-ab12","stage":"review.discover","kind":"stage_started","task":"T2","subject":"discovery-1"}
+{"seq":18,"at":"2026-10-15T12:09:00Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"stage_started","task":"T2"}
+{"seq":19,"at":"2026-10-15T12:09:30Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"rejected","task":"T2","subject":"claim C1 (src/components/Card.astro:30)","reason":"verify.refuted_by_code","detail":"refuted by code the verifier saw","tokens":{"in":700,"out":100}}
+{"seq":20,"at":"2026-10-15T12:09:31Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"rejected","task":"T2","subject":"claim C2 (src/components/Card.astro:41)","reason":"verify.refuted_by_code","detail":"refuted by code the verifier saw"}
+{"seq":21,"at":"2026-10-15T12:09:32Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"accepted","task":"T2","subject":"claim C3 (src/lib/plans.ts:12)","detail":"all evidence requirements met"}
+{"seq":22,"at":"2026-10-15T12:09:33Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"accepted","task":"T2","subject":"claim C4 (src/lib/plans.ts:20)","detail":"all evidence requirements met"}
+{"seq":23,"at":"2026-10-15T12:11:00Z","run":"r20261015-120000-ab12","stage":"review.challenge","kind":"rejected","task":"T2","subject":"claim C3 (src/lib/plans.ts:12)","reason":"verify.unseen_code","detail":"depends on code not shown: PricingPlanType"}
+{"seq":24,"at":"2026-10-15T12:12:34Z","run":"r20261015-120000-ab12","stage":"review.judge","kind":"stage_finished","task":"T2"}

@@ -57,7 +57,10 @@ class GuardrailsTest < Minitest::Test
   # --- I3: subprocesses only through Harness::Exec ---
 
   def test_i3_no_process_calls_outside_exec
-    hits = Scan.files_in(ROOT, %w[lib exe bin]).flat_map { |f| Scan.shell_hits(read(f), f) }
+    # Binary files (the bundled fonts) are not code; every text file is scanned (approved by the user for M8).
+    files = Scan.files_in(ROOT, %w[lib exe bin]).reject { |f| Scan.binary?(File.join(ROOT, f)) }
+    assert_includes files, "lib/harness/ui/public/app.js", "the app's script is scanned too"
+    hits = files.flat_map { |f| Scan.shell_hits(read(f), f) }
     assert_empty hits, "I3: process calls outside Harness::Exec:\n#{report(hits)}"
   end
 
@@ -145,12 +148,29 @@ class GuardrailsTest < Minitest::Test
 
   # --- I4: no push, remote write, merge or gh call in any code path ---
 
-  def test_i4_only_git_and_gates_start_processes
+  # Processes start in four places only (approved by the user for M8): the git wrapper, the gate runner, the fixed
+  # provider subcommands (DESIGN.md 11.2) and the first-start browser opener (11.1).
+  def test_i4_only_git_gates_providers_and_the_browser_start_processes
     sites = Dir.glob("lib/**/*.rb", base: ROOT).flat_map do |rel|
       read(rel).lines.each_with_index.select { |l, _| l.include?("Exec.run(") }.map { |_, i| "#{rel}:#{i + 1}" }
     end
-    assert_equal %w[lib/harness/gates/runner.rb lib/harness/repo/git.rb], sites.map { |s| s.split(":").first }.uniq.sort,
-                 "processes start only in the git wrapper and the gate runner:\n#{sites.join("\n")}"
+    assert_equal %w[lib/harness/cli/ui_command.rb lib/harness/gates/runner.rb lib/harness/providers/actions.rb lib/harness/repo/git.rb],
+                 sites.map { |s| s.split(":").first }.uniq.sort, "unexpected process call sites:\n#{sites.join("\n")}"
+    assert_equal 1, sites.count { |s| s.start_with?("lib/harness/providers/actions.rb") }
+    assert_equal 1, sites.count { |s| s.start_with?("lib/harness/cli/ui_command.rb") }
+  end
+
+  def test_i4_provider_actions_are_a_fixed_list_with_no_remote_writes
+    actions = Harness::Providers::Actions::LIST
+    assert_equal({ "lmstudio" => %w[load ls ps server_start], "ollama" => %w[list ps pull] }, actions.transform_values { |a| a.keys.sort })
+    args = actions.values.flat_map { |a| a.values.flat_map(&:first) }
+    refute(args.any? { |a| a.match?(/push|rm|delete|cp|create|serve\z|run/) }, "no push, delete or run subcommands")
+    ["x; rm -rf /", "a b", "$(id)", "x" * 201, "", "../model"].each do |bad|
+      assert_raises(Harness::ParseError, bad.inspect) { Harness::Providers::Actions.argv("ollama", "pull", bad) } unless bad == "../model"
+    end
+    assert_raises(Harness::ParseError) { Harness::Providers::Actions.argv("ollama", "rm") }
+    assert_raises(Harness::ParseError) { Harness::Providers::Actions.argv("lmstudio", "push") }
+    assert_equal %w[pull name:tag], Harness::Providers::Actions.argv("ollama", "pull", "name:tag")
   end
 
   def test_i4_git_allowlist_has_no_remote_or_history_rewriting_command

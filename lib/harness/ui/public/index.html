@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 V and Bruno LLC -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="harness-token" content="{{TOKEN}}">
+  <title>vb-harness</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">vb-harness</div>
+      <button id="new-chat" class="btn primary wide" type="button">+ New chat</button>
+      <h2 class="side-title">Chats</h2>
+      <nav id="chat-list" class="chat-list" aria-label="Chats"></nav>
+      <button id="open-settings" class="btn ghost wide" type="button">Settings · providers</button>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <label class="picker">Model <select id="model-picker" aria-label="Model"></select></label>
+        <span class="status" aria-live="polite"><span id="status-dot" class="dot"></span><span id="status-text">idle</span></span>
+        <span class="chat-actions">
+          <button id="rename-chat" class="btn ghost small" type="button">Rename</button>
+          <button id="delete-chat" class="btn ghost small danger" type="button">Delete</button>
+        </span>
+      </header>
+      <section id="transcript" class="transcript" aria-live="polite"></section>
+      <section id="settings" class="settings" hidden></section>
+      <footer class="composer">
+        <div id="answering" class="answering" hidden></div>
+        <textarea id="input" rows="6" placeholder="Ask something, or switch to Build and describe a feature." aria-label="Message"></textarea>
+        <div class="composer-row">
+          <div class="mode" role="radiogroup" aria-label="Mode">
+            <button type="button" data-mode="chat" class="active" role="radio" aria-checked="true">Chat</button>
+            <button type="button" data-mode="build" role="radio" aria-checked="false">Build</button>
+          </div>
+          <label class="repo">repo <input id="repo" type="text" placeholder="/path/to/repo" spellcheck="false"></label>
+          <span class="spacer"></span>
+          <button id="stop" class="btn" type="button" hidden>Stop</button>
+          <button id="send" class="btn primary" type="button">Send ▶</button>
+        </div>
+        <div class="hint">Enter adds a line · Ctrl+Enter (⌘+Enter) sends</div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

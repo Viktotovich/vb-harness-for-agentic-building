@@ -21,11 +21,13 @@ module TestSupport
 
     # @param models [Array<Hash>] entries of GET /models "data"
     # @param replies [Array<Array(Integer, Object)>] [status, body] answers for chat completions
+    # @param routes [Hash{String=>Array(Integer, Object)}] fixed answers for other paths, e.g. "/api/tags"
     # @yieldparam body [Hash] the chat request body
     # @yieldparam n [Integer] 0-based index of this chat request
     # @yieldreturn [Array(Integer, Object)] [status, body]
-    def initialize(models: [{ "id" => "test-model" }], replies: nil, &handler)
+    def initialize(models: [{ "id" => "test-model" }], replies: nil, routes: {}, &handler)
       @models = models
+      @routes = routes
       @replies = replies
       @handler = handler
       @requests = []
@@ -112,6 +114,7 @@ module TestSupport
     end
 
     def route(req, n)
+      return @routes[req.path] if @routes.key?(req.path)
       return [200, { "object" => "list", "data" => @models }] if req.method == "GET" && req.path.end_with?("/models")
       return [404, { "error" => { "message" => "not found" } }] unless req.path.end_with?("/chat/completions")
       return @handler.call(req.body, n) if @handler

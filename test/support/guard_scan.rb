@@ -68,6 +68,12 @@ module TestSupport
       end.sort
     end
 
+    # @param path [String]
+    # @return [Boolean] true for a file with NUL bytes (fonts, images), which holds no code
+    def binary?(path)
+      File.binread(path, 8192).include?("\0")
+    end
+
     # Blank comments and simple string literals so rules see only code.
     # String contents become the single token S.
     # @param line [String]

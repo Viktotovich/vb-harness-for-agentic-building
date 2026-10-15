@@ -7,13 +7,14 @@ require "uri"
 require_relative "../config"
 require_relative "../errors"
 require_relative "../model/http"
+require_relative "../providers/detect"
 require_relative "../state/records"
 
 module Harness
   module CLI
     # harness init: write config.json from config.example.json, asking a few questions. The questions are ported
     # from REVIEWER src/setup/wizard.js (endpoint, model, docs); the target repository is given per run, so it is
-    # not asked. Provider detection arrives with onboarding (M8). Keys are never typed in: only the name of the
+    # not asked. LM Studio and Ollama found on this machine are offered first. Keys are never typed in: only the name of the
     # env var that holds one (I12).
     class Init
       # Raised when input ends before the questions are answered.
@@ -28,12 +29,14 @@ module Harness
       # @param http [Model::Http]
       # @param path [String] the config.json to write
       # @param env [Hash{String=>String}] read only for the key named by apiKeyEnv, to list the server's models
-      def initialize(input:, out:, path:, http: Model::Http.new, env: ENV)
+      # @param detect [#call, nil] -> Array<Providers::Provider>; nil looks for LM Studio and Ollama
+      def initialize(input:, out:, path:, http: Model::Http.new, env: ENV, detect: nil)
         @input = input
         @out = out
         @http = http
         @path = path
         @env = env
+        @detect = detect || -> { Providers::Detect.local(http: @http, env: @env) }
       end
 
       # @return [Integer] exit code: 0 written, 1 not written
@@ -50,7 +53,10 @@ module Harness
         profile = cfg["profiles"]["default"] ||= JSON.parse(JSON.generate(template["profiles"]["default"]))
 
         say "\nModel server (any OpenAI-compatible endpoint, such as LM Studio or Ollama)"
-        profile["baseUrl"] = ask("Server URL", profile["baseUrl"]) { |s| url_problem(s) }.chomp("/")
+        found = @detect.call.select(&:up)
+        found.each { |p| say "  Found #{p.label} at #{p.base_url} (#{p.models.empty? ? p.error : "#{p.models.size} models"})" }
+        default_url = base.equal?(template) && found.first ? found.first.base_url : profile["baseUrl"]
+        profile["baseUrl"] = ask("Server URL", default_url) { |s| url_problem(s) }.chomp("/")
         key = ask("Name of the env var holding an API key (empty if the server needs none)", profile["apiKeyEnv"].to_s) do |s|
           s.empty? || s.match?(ENV_NAME) ? nil : "an env var name such as MY_SERVER_KEY, not the key itself"
         end

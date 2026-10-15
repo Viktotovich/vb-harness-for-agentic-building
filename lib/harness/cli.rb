@@ -7,6 +7,7 @@ require_relative "cli/commands"
 require_relative "cli/eval_command"
 require_relative "cli/init"
 require_relative "cli/inspect"
+require_relative "cli/ui_command"
 
 module Harness
   # Command-line entry point. Subcommands arrive milestone by milestone (DESIGN.md section 11.1).
@@ -39,6 +40,7 @@ module Harness
       when "status", "report" then Inspect.call(name, args, out: out, err: err)
       when "eval" then EvalCommand.call(args, out: out, err: err, env: env)
       when "init" then init(args, out: out, err: err, env: env, input: input)
+      when "ui" then UICommand.call(args, out: out, err: err, env: env)
       else
         err.puts "harness: #{name} is not implemented yet"
         EXIT_CONFIG

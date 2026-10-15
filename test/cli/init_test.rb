@@ -28,7 +28,8 @@ class InitTest < Minitest::Test
 
   def init(answers, env: {})
     out = TestSupport::Sink.new
-    code = Harness::CLI::Init.new(input: Input.new(answers.map { |a| "#{a}\n" }), out: out, path: @path, env: env).call
+    code = Harness::CLI::Init.new(input: Input.new(answers.map { |a| "#{a}\n" }), out: out, path: @path, env: env,
+                                  detect: @detect || -> { [] }).call
     [code, out.string]
   end
 
@@ -68,6 +69,16 @@ class InitTest < Minitest::Test
     assert_equal 1, code
     assert_includes out, "Could not reach the server"
     refute File.exist?(@path)
+  end
+
+  def test_a_detected_provider_is_the_default_url
+    @server = Fake.new(models: [{ "id" => "local-model" }])
+    @detect = -> { [Harness::Providers::Provider.new(kind: "lmstudio", label: "LM Studio", base_url: @server.base_url, up: true,
+                                                     models: ["local-model"], cli: nil, error: nil)] }
+    code, out = init(["", "", "1", "probe", "", "y"])
+    assert_equal 0, code, out
+    assert_includes out, "Found LM Studio at #{@server.base_url} (1 models)"
+    assert_equal [@server.base_url, "local-model"], JSON.parse(File.read(@path))["profiles"]["default"].values_at("baseUrl", "model")
   end
 
   def test_existing_values_are_the_defaults_and_end_of_input_cancels
