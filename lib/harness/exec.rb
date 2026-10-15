@@ -29,10 +29,13 @@ module Harness
     # @param max_output [Integer] byte cap for each of stdout and stderr
     # @return [Result]
     # @raise [ArgumentError] when argv or env are malformed
+    # @raise [UnsafeArgumentError] when a Windows batch file would receive a cmd.exe metacharacter
     # @raise [CommandNotFoundError] when the executable cannot be started
     def self.run(argv, chdir:, env:, timeout: 600, max_output: 204_800)
       check_argv!(argv)
       check_env!(env)
+      shown = argv.dup.freeze
+      argv = prepare(argv, env) if windows?
       started = clock
       opts = { chdir: chdir, unsetenv_others: true }
       opts[:pgroup] = true unless windows?
@@ -46,7 +49,7 @@ module Harness
         status = waiter.value
         out, out_cut = finish(out_reader, stdout)
         err, err_cut = finish(err_reader, stderr)
-        Result.new(argv: argv.dup.freeze, exit_code: status.exitstatus, stdout: out, stderr: err,
+        Result.new(argv: shown, exit_code: timed_out ? nil : status.exitstatus, stdout: out, stderr: err,
                    timed_out: timed_out, truncated: out_cut || err_cut, ms: ((clock - started) * 1000).round)
       end
     rescue Errno::ENOENT, Errno::EACCES, Errno::ENOEXEC => e
@@ -56,6 +59,55 @@ module Harness
     # @return [Boolean] true on Windows
     def self.windows?
       RUBY_PLATFORM.match?(/mswin|mingw|cygwin/)
+    end
+
+    # Characters cmd.exe interprets even inside arguments; a batch file never receives them.
+    CMD_META = /[&|<>^%"\r\n]/
+    BATCH_EXT = /\.(?:cmd|bat)\z/i
+    DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD"
+
+    # Find an executable the way Windows does: each PATH entry, each PATHEXT extension.
+    # A name with a directory separator is returned as given.
+    #
+    # @param name [String] e.g. "npx"
+    # @param path [String, nil] PATH value
+    # @param pathext [String, nil] PATHEXT value (Windows only)
+    # @param windows [Boolean]
+    # @return [String, nil] the resolved file, or nil when nothing matches
+    def self.resolve(name, path:, pathext:, windows: windows?)
+      return name if name.include?("/") || name.include?("\\")
+
+      exts = (pathext || DEFAULT_PATHEXT).split(";").reject(&:empty?)
+      names = !windows || !File.extname(name).empty? ? [name] : exts.map { |e| name + e.downcase }
+      dirs = (path || "").split(windows ? ";" : ":").reject(&:empty?)
+      dirs.each do |dir|
+        names.each do |n|
+          candidate = File.join(dir, n)
+          return candidate if File.file?(candidate) && (windows || File.executable?(candidate))
+        end
+      end
+      nil
+    end
+
+    # Windows: resolve argv[0] through the child's PATH and PATHEXT, and refuse cmd.exe metacharacters
+    # in the arguments of a .cmd or .bat file.
+    #
+    # @param argv [Array<String>]
+    # @param env [Hash{String=>String}]
+    # @return [Array<String>] argv with argv[0] resolved
+    # @raise [CommandNotFoundError, UnsafeArgumentError]
+    def self.prepare(argv, env)
+      resolved = resolve(argv[0], path: env["PATH"] || env["Path"], pathext: env["PATHEXT"], windows: true)
+      raise CommandNotFoundError, "cannot run #{argv[0].inspect}: not found on PATH" unless resolved
+
+      if resolved.match?(BATCH_EXT)
+        bad = argv[1..].find { |a| a.match?(CMD_META) }
+        if bad
+          raise UnsafeArgumentError,
+                "refused: argument #{bad.inspect} for #{File.basename(resolved)} contains a cmd.exe metacharacter"
+        end
+      end
+      [resolved, *argv[1..]]
     end
 
     # @param argv [Object]
