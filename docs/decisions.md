@@ -181,3 +181,52 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
 - **A task that does not fit at run time is still blocked** (`plan.too_large_for_context`), not sent back to
   the planner. Plan checks already catch this before the run starts, so the run-time case means the files grew
   during the run.
+
+## M6: review port and the section 8 changes
+
+- **Evidence is the local docs checkout only.** Version detection, the BM25 index, the checkout index and the
+  retriever are ported. REVIEWER's online docs, network guard and dataset are not: online retrieval needs https,
+  and neither is needed for the gate to stay honest, since missing docs make framework claims abstain, never
+  accept. The stack's `docs.local` points at a checkout; `docs.siteUrl` (optional) builds links for the report.
+- **Framework claims** are recognised with REVIEWER's Astro markers when the stack's framework is Astro. For other
+  frameworks only a verdict of `claim_type: framework-api` naming the framework counts.
+- **Fetch tools** (`read_file`, at most 120 lines a call, and `find_symbol`, at most 3 files) go through
+  `Repo::Paths` (I2) and come back fenced (I9). Everything they return is added to the code the gate checks quotes
+  against. `lookup_docs` is offered only when docs are configured. Unknown tools get an error text.
+- **Without native tool calls** the model replies `{"lookup": {"tool", "args"}}` or `{"done": true}`.
+- **The verifier's schema** adds `depends_on_unseen`, `unseen` and `requires_type_violation`. An accept with
+  `depends_on_unseen` abstains (`verify.unseen_code`). `requires_type_violation` rejects
+  (`verify.requires_type_violation`) when every type-checking gate (parser `tsc` or `astro_check`) passed for the
+  task; with no such gate it has no effect.
+- **The challenge** has the same fetch tools and a required `unseen` field. A non-empty `unseen` abstains
+  (`verify.unseen_code`) whatever the rest says; only a concrete concession survives.
+- **Confirm by test:** the fixer writes one test, named `harness-confirm-<task>-<claim>` next to the project's
+  first test file (with its suffix), or under `tests/` with `.test.ts`. It is run with the stack's task-phase
+  `scope: tests` gate and compared with the baseline, then deleted. A regression confirms; a pass is
+  `confirm.test_passes`; no test gate, no test, or a test that could not run is `confirm.test_not_writable`.
+- **Follow-up fix tasks** are `<task>R<n>`, depend on the reviewed task, modify the claim's file, and accept on
+  the confirming test plus the parent's gate items. They run right after their parent, are appended to
+  `plan.json` (resume knows them), and get their test from `tasks/<id>/confirm-test.json`. A follow-up's own
+  review makes no further tasks.
+- **Review results** are saved as `tasks/<id>/review.json` and `final_review.json` (findings, questions,
+  abstained, rejected, suspicious, failures) for the report in M7. A model outage during review is recorded and
+  the commit goes ahead; the next model call stops the run as before.
+- **The final review** runs once over `base..HEAD` after integration, with confirmation by test but no follow-up
+  tasks. Diffs for review carry 10 lines of context.
+- **Limits not in DESIGN.md:** at most 6 diff chunks of up to 1500 lines and 60% of the reviewer's budget, one
+  re-evaluation round, verification batches of 3 that split to single claims on failure, 2 passages per support
+  check. Discovery gets docs for at most 4 framework APIs, 700 characters each.
+- **Task titles are not in review prompts:** they are planner output, so the subject is just the task id (I9).
+
+### Hardening found in review
+
+- **Git never runs hooks.** Every git command runs with `-c core.hooksPath=<.cache>/no-hooks` (an empty
+  directory, checked before each call), and commits also pass `--no-verify`. The allowlist only accepts
+  `commit --no-verify -m`. Hooks are repository code (or a model's edit to `.husky/`) that would run outside the
+  gate allowlist (I3).
+- **`.husky` is always protected**, like `.git`, and is in the example stack's `protectedPaths`.
+- **Windows path aliases are refused:** a path segment ending in a dot or a space (`.git.`, `.git `) and one that
+  looks like a short name (`GIT~1`) are refused before any read or write.
+- **Gates cannot install or touch a remote:** a gate whose program is `git` or `gh`, a package manager with an
+  install-like subcommand (`install`, `i`, `add`, `ci`, `update`, `upgrade`, `up`, `dlx`), or `npx`/`pnpx`/`bunx`
+  with `--yes` is a config error (I4, I10).
