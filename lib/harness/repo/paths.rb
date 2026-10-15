@@ -11,9 +11,9 @@ module Harness
       OUTSIDE = "edit.outside_worktree"
       PROTECTED = "edit.protected_path"
       FNM_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB | File::FNM_SYSCASE
-      # Protected in every stack, whatever the config says: git's own data, and hook managers that git or a
-      # package manager would run (I3).
-      ALWAYS_PROTECTED = %w[.git .husky].freeze
+      # Protected in every stack, whatever the config says: git's own data, hook managers that git or a package
+      # manager would run (I3), and node_modules, which may be hard links into the user's checkout (I11).
+      ALWAYS_PROTECTED = %w[.git .husky node_modules].freeze
       # Windows short (8.3) names such as GIT~1 alias a long name and could reach a protected path.
       SHORT_NAME = /~\d/
 
@@ -62,7 +62,7 @@ module Harness
 
       # @param rel [String] normalized relative path
       # @param patterns [Array<String>]
-      # @return [Boolean] true for .git, .husky and anything below them, or a match of any pattern
+      # @return [Boolean] true for .git, .husky, node_modules and anything below them, or a match of any pattern
       def self.protected?(rel, patterns)
         first = rel.split("/").first.to_s
         return true if ALWAYS_PROTECTED.any? { |p| first.casecmp?(p) }

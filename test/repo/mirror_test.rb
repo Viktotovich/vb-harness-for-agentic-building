@@ -49,6 +49,59 @@ class MirrorTest < Minitest::Test
     assert(Harness::State::Events.read(store.events_path).any? { |e| e["subject"] == "node_modules" && e["detail"] == "1 files linked into the worktree" })
   end
 
+  # I11: a mirrored file is a hard link into the user's checkout. Writing it in the worktree must never change the
+  # original, and edits from a model may not target it at all.
+  def test_writing_a_mirrored_file_leaves_the_users_original_unchanged
+    files = F::FILES.merge(".gitignore" => "node_modules/\nvendor-deps/\n")
+    repo, env = TestSupport.repo(@tmp, files)
+    { "node_modules/tool/index.js" => "original();\n", "vendor-deps/lib.js" => "original lib\n" }.each do |rel, text|
+      FileUtils.mkdir_p(File.dirname(File.join(repo, rel)))
+      File.write(File.join(repo, rel), text)
+    end
+    raw = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } },
+            "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+            "stacks" => { "astro" => { "detect" => ["astro.config.mjs"], "dependencyDirs" => %w[node_modules vendor-deps] } } }
+    config = Harness::Config.parse(raw)
+    store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: "m2")
+    setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+    mirrored = File.join(setup.worktree.root, "node_modules/tool/index.js")
+    original = File.join(repo, "node_modules/tool/index.js")
+    linked = File.identical?(mirrored, original)
+
+    Harness::Repo::AtomicFile.write(mirrored, "changed in the worktree();\n")
+    assert_equal "original();\n", File.read(original), "the user's file is untouched#{linked ? ' (it was a hard link)' : ''}"
+    assert_equal "changed in the worktree();\n", File.read(mirrored)
+    refute File.identical?(mirrored, original), "the write broke the link"
+
+    %w[node_modules/tool/index.js vendor-deps/lib.js node_modules].each do |rel|
+      assert Harness::Repo::Paths.protected?(rel, setup.stack.protected_paths), rel
+    end
+    set = Harness::Task::EditSet.parse({ "edits" => [{ "op" => "replace", "path" => "vendor-deps/lib.js", "search" => "original lib",
+                                                       "replace" => "pwned" }] })
+    result = Harness::Task::Edits.apply(root: setup.worktree.root, edit_set: set, modify: ["vendor-deps/lib.js"], create: [],
+                                        protected: setup.stack.protected_paths)
+    refute result.ok?
+    assert_equal "edit.protected_path", result.rejections.first.reason
+    assert_equal "original lib\n", File.read(File.join(repo, "vendor-deps/lib.js"))
+    assert_equal "original lib\n", File.read(File.join(setup.worktree.root, "vendor-deps/lib.js"))
+  end
+
+  def test_edits_replace_files_instead_of_writing_through_links
+    root = File.join(@tmp, "wt")
+    FileUtils.mkdir_p(File.join(root, "src"))
+    outside = File.join(@tmp, "outside.ts")
+    File.write(outside, "export const a = 1;\n")
+    begin
+      File.link(outside, File.join(root, "src", "a.ts"))
+    rescue SystemCallError, NotImplementedError => e
+      skip "hard links unavailable here (#{e.class})"
+    end
+    set = Harness::Task::EditSet.parse({ "edits" => [{ "op" => "replace", "path" => "src/a.ts", "search" => "1;", "replace" => "2;" }] })
+    assert Harness::Task::Edits.apply(root: root, edit_set: set, modify: ["src/a.ts"], create: []).ok?
+    assert_equal "export const a = 2;\n", File.read(File.join(root, "src", "a.ts"))
+    assert_equal "export const a = 1;\n", File.read(outside), "an edit never writes through a hard link"
+  end
+
   def test_dependency_dirs_are_plain_folder_names
     ["../outside", "a/b", ".git", ""].each do |bad|
       raw = { "detect" => ["x"], "dependencyDirs" => [bad] }

@@ -9,6 +9,7 @@ require_relative "../errors"
 require_relative "../gates/baseline"
 require_relative "../gates/env"
 require_relative "../gates/runner"
+require_relative "../repo/atomic_file"
 require_relative "../repo/git"
 require_relative "../repo/paths"
 require_relative "../repo/worktree"
@@ -148,9 +149,8 @@ module Harness
         return [false, "no hidden tests"] if task.hidden.empty?
 
         task.hidden.each do |rel|
-          dest = Repo::Paths.resolve_in_worktree(run["worktree"], rel)
-          FileUtils.mkdir_p(File.dirname(dest))
-          FileUtils.cp(File.join(task.dir, "hidden", rel), dest)
+          dest = Repo::Paths.resolve_in_worktree(run["worktree"], rel, protected: stack.protected_paths)
+          Repo::AtomicFile.write(dest, File.binread(File.join(task.dir, "hidden", rel)))
         end
         env = Gates::Env.build(@env, allow: config.gate_env_allow)
         r = Gates::Runner.new(root: run["worktree"], env: env, max_output: config.limits.max_gate_output_bytes).run(gate, tests: task.hidden)

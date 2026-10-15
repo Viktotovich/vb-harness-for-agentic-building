@@ -3,6 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "fileutils"
+require_relative "../repo/atomic_file"
 require_relative "../errors"
 require_relative "../parse"
 require_relative "../repo/paths"
@@ -257,8 +258,7 @@ module Harness
         if f[:after].nil?
           FileUtils.rm_f(f[:full])
         else
-          FileUtils.mkdir_p(File.dirname(f[:full]))
-          File.binwrite(f[:full], f[:after])
+          Repo::AtomicFile.write(f[:full], f[:after])
         end
       end
       private_class_method :declared_path, :stage, :load, :stage_create, :stage_replace, :stage_delete, :occurrences, :mismatch,

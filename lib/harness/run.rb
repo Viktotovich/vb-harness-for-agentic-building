@@ -9,6 +9,7 @@ require_relative "gates/baseline"
 require_relative "gates/env"
 require_relative "gates/runner"
 require_relative "plan/plan"
+require_relative "repo/atomic_file"
 require_relative "repo/git"
 require_relative "repo/map"
 require_relative "repo/mirror"
@@ -182,8 +183,7 @@ module Harness
       full = Repo::Paths.resolve_in_worktree(@setup.worktree.root, saved["path"], protected: @setup.stack.protected_paths)
       return if File.file?(full)
 
-      FileUtils.mkdir_p(File.dirname(full))
-      File.write(full, saved["content"], encoding: "UTF-8")
+      Repo::AtomicFile.write(full, saved["content"].to_s)
     end
 
     # The review of everything the run committed (DESIGN.md 5.5 step 2).

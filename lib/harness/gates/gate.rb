@@ -101,8 +101,15 @@ module Harness
             docs: Parse.hash!(h.fetch("docs", {}), "#{path}.docs"),
             package_manager: Parse.enum!(h.fetch("packageManager", "auto"), "#{path}.packageManager", %w[auto npm pnpm yarn]),
             gates: gates.freeze, always_gates: always.dup.freeze,
-            protected_paths: Parse.strings!(h.fetch("protectedPaths", []), "#{path}.protectedPaths").dup.freeze,
-            dependency_dirs: dependency_dirs(h, path))
+            protected_paths: protected_paths(h, path), dependency_dirs: dependency_dirs(h, path))
+      end
+
+      # The configured protectedPaths plus every dependencyDirs folder: mirrored files are hard links into the
+      # user's checkout, so nothing in the harness may write them (I11).
+      # @return [Array<String>]
+      def self.protected_paths(h, path)
+        mirrored = dependency_dirs(h, path).flat_map { |d| [d, "#{d}/**"] }
+        (Parse.strings!(h.fetch("protectedPaths", []), "#{path}.protectedPaths") + mirrored).uniq.freeze
       end
 
       # @return [Array<String>] plain folder names at the repository root
