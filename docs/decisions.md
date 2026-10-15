@@ -94,3 +94,31 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   `ok?` (I6).
 - **Parsers in M2:** `tsc` and `astro_check` (both tsc formats), eslint "stylish", and minimal `vitest` and
   `playwright` failure lines. Anything else falls back to the last 60 lines.
+
+## M3: the per-task loop
+
+- **Everything a model wrote is fenced when it goes back to a model,** including the plan's task text and the
+  previous reply in an apply retry. The retry is one user message ("your previous reply" fenced, plus the
+  fenced rejections), not an assistant turn, so I9 holds without exceptions.
+- **The untrusted fence tag is `untrusted-data`** (REVIEWER used `untrusted-pr-data`). Injection patterns
+  are ported unchanged.
+- **Prompt templates** carry the SPDX header as ERB comments, which render as nothing. The edit rules are
+  shared between implement and fix through one partial template.
+- **Review is a placeholder until M6:** the loop emits a `skipped` event with subject `review` and moves on.
+- **A task's final outcome event uses subject `task`** (done at `task.commit`, blocked at `task.commit`,
+  skipped at `task.gather`). The fold uses that subject to set task status, so `skipped` events for other
+  things (e.g. review) do not change a task.
+- **A gate that is skipped during a task blocks it at once** (`gate.skipped:<gate>`): no fix can install a
+  missing tool. A gate named in acceptance but not defined by the stack counts as skipped.
+- **When a failing gate has no parsed new diagnostics** (timeout, unparsed output), the fixer gets one
+  synthetic diagnostic with the gate's reason, and "the same errors twice" compares those too.
+- **A model outage stops the queue:** the current task is blocked with `model.unavailable` and reverted, the
+  remaining tasks are skipped, integration does not run, and the exit code is 2, so the run can be resumed
+  (M4).
+- **Integration runs the `integration` gates and every `tests`-scope gate,** without file arguments (the
+  whole suite), and compares them with the baseline. A non-blocking gate never fails the run.
+- **Gathering in M3** packs the task text, the full text of `modify` and `create` files (required; otherwise
+  `TaskTooLargeError`, recorded as `plan.too_large_for_context`), then `read` files and completed-task
+  summaries if they fit. Map signatures and docs come with M5. Protected paths are never read into a prompt.
+- **`harness run` needs `--from-plan` until the planner lands (M4).** Runs, logs and the probe cache live next
+  to the config file.
