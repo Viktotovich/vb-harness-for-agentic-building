@@ -8,7 +8,9 @@ require_relative "../model/client"
 require_relative "../model/tokens"
 require_relative "../prompts"
 require_relative "../task/edits"
+require_relative "../repo/map"
 require_relative "../task/gather"
+require_relative "../task/summarizer"
 require_relative "../untrusted"
 require_relative "checks"
 require_relative "overview"
@@ -46,10 +48,12 @@ module Harness
       # @param client [Model::Client]
       # @param config [Config]
       # @param events [State::Events]
-      def initialize(client:, config:, events:)
+      # @param cache_dir [String, nil] the context map's cache (.cache/); nil disables it
+      def initialize(client:, config:, events:, cache_dir: nil)
         @client = client
         @config = config
         @events = events
+        @cache_dir = cache_dir
       end
 
       # @param request [String] the user's feature request
@@ -85,7 +89,9 @@ module Harness
       def first_prompt(system, request, root, stack, answers)
         budget = Harness::Task::Gather.budget(client: @client, config: @config, role: :planner, system: system, schema: SCHEMA)
         budget -= Model::Tokens.estimate(request)
-        sections = Overview.sections(root: root, request: request, budget: [budget * 2 / 3, 0].max, protected: stack.protected_paths)
+        map = Repo::Map.new(root: root, cache_dir: @cache_dir, protected: stack.protected_paths)
+        sections = Overview.sections(root: root, request: request, budget: [budget * 2 / 3, 0].max, protected: stack.protected_paths,
+                                     map: map, summarize: Harness::Task::Summarizer.new(client: @client, config: @config))
         unless answers.empty?
           qa = answers.map { |q, a| "Q: #{q}\nA: #{a}" }.join("\n\n")
           sections << "Answers to your earlier questions:\n#{Untrusted.fence(qa)}"

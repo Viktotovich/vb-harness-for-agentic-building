@@ -32,6 +32,7 @@ module Harness
     def initialize(config:, home:, env:, client_factory:)
       @config = config
       @runs_dir = File.join(home, "runs")
+      @cache_dir = File.join(home, ".cache")
       @env = env
       @client_factory = client_factory
     end
@@ -122,7 +123,7 @@ module Harness
 
     # @return [Plan::Planner::Result]
     def plan_with_model(setup, client, request, answers)
-      Plan::Planner.new(client: client, config: @config, events: setup.events)
+      Plan::Planner.new(client: client, config: @config, events: setup.events, cache_dir: @cache_dir)
                    .call(request: request, root: setup.worktree.root, stack: setup.stack, answers: answers)
     end
 
@@ -168,7 +169,7 @@ module Harness
 
     # @return [Result]
     def execute(store, setup, client, plan, resume:)
-      outcome = Run.new(config: @config, client: client, setup: setup).execute(plan, resume: resume)
+      outcome = Run.new(config: @config, client: client, setup: setup, cache_dir: @cache_dir).execute(plan, resume: resume)
       Result.new(run_id: store.run_id, status: store.read_run["status"], exit_code: outcome.exit_code, outcome: outcome,
                  questions: [], issues: [], plan_path: store.plan_path)
     end

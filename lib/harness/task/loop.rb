@@ -17,7 +17,13 @@ require_relative "gather"
 module Harness
   module Task
     # What the loop needs from the run. reviewer: #call(task:, diff:) -> Array of findings (M6); nil skips review.
-    Context = Data.define(:client, :config, :worktree, :stack, :runner, :baseline, :events, :store, :reviewer)
+    # map: the context map of the worktree (rescanned before each gather); summarizer: #call(path, content).
+    Context = Data.define(:client, :config, :worktree, :stack, :runner, :baseline, :events, :store, :reviewer, :map,
+                          :summarizer) do
+      def initialize(map: nil, summarizer: nil, **rest)
+        super
+      end
+    end
 
     # A gate name the acceptance list uses but the stack does not define: always skipped, always blocking.
     MissingGate = Data.define(:name, :blocking, :cost_rank)
@@ -297,9 +303,10 @@ module Harness
         @fix_rounds += 1
         step("fixing")
         system = Prompts.render("fix_system", rules: rules)
-        bundle = gather(system)
-        user = Prompts.render("fix_user", task: task_text, diagnostics: Untrusted.fence(render_diagnostics(diagnostics)),
-                                          diff: Untrusted.fence(@ctx.worktree.patch), sections: bundle.sections)
+        shown = Untrusted.fence(render_diagnostics(diagnostics))
+        diff = Untrusted.fence(@ctx.worktree.patch)
+        bundle = gather(system, reserved: [shown, diff])
+        user = Prompts.render("fix_user", task: task_text, diagnostics: shown, diff: diff, sections: bundle.sections)
         messages = Model::Messages.new(system: system, user: user)
         apply(ask(:fixer, "task.fix", messages, "fix#{@fix_rounds}"), :fixer, messages)
       end
@@ -378,13 +385,15 @@ module Harness
         Untrusted.fence(@task.prompt_text)
       end
 
+      # @param reserved [Array<String>] text the prompt sends besides the bundle
       # @return [Bundle]
-      def gather(system)
+      def gather(system, reserved: [])
         role = @fix_rounds.zero? ? :implementer : :fixer
         budget = Gather.budget(client: @ctx.client, config: @ctx.config, role: role, system: system, schema: EditSet::SCHEMA)
         emit("task.gather", "stage_started")
+        @ctx.map&.scan
         bundle = Gather.build(task: @task, root: @ctx.worktree.root, budget: budget, protected: @ctx.stack.protected_paths,
-                              task_text: task_text, done: @done)
+                              task_text: task_text, reserved: reserved, done: @done, map: @ctx.map, summarize: @ctx.summarizer)
         emit("task.gather", "stage_finished", detail: "~#{bundle.tokens} tokens#{bundle.omitted.empty? ? '' : ", omitted #{bundle.omitted.join(', ')}"}")
         bundle
       end

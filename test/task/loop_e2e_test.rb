@@ -141,4 +141,16 @@ class LoopE2ETest < Minitest::Test
     assert_equal %w[blocked model.invalid_json], [t1.status, t1.reason]
     assert_equal 2, @result.server.chat_bodies.size, "one retry with thinking off, inside the client"
   end
+
+  def test_the_prompt_carries_signatures_and_summaries_of_imported_files
+    files = F::FILES.merge(PRICE => "import { rate } from \"./tax\";\n#{F::FILES[PRICE]}")
+    @result = F.run(@tmp, { "tasks" => [F.task("T1", "Double the price", modify: [PRICE])] },
+                    { "T1 implement" => F.replace(PRICE, "  return n;", "  return n * 2;"),
+                      "summary" => TestSupport::FakeLlmServer.ok("Holds the tax rate.") }, files: files)
+    assert_equal "done", @result.outcome.tasks.first.status
+    user = @result.server.chat_bodies.find { |b| b["messages"].first["content"].start_with?("You make") }["messages"].last["content"]
+    assert_match(/Signature of src\/lib\/tax\.ts:\n<untrusted-data id="\h+">\nsrc\/lib\/tax\.ts \(ts, \d+ bytes\)\nexports: rate/, user)
+    assert_match(/Summaries of related files:\n<untrusted-data id="\h+">\nsrc\/lib\/tax\.ts: Holds the tax rate\./, user)
+    refute_includes user, "File src/lib/tax.ts:", "a related file is shown by its surface, not in full"
+  end
 end

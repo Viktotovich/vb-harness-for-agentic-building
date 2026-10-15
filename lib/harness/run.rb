@@ -8,10 +8,12 @@ require_relative "gates/env"
 require_relative "gates/runner"
 require_relative "plan/plan"
 require_relative "repo/git"
+require_relative "repo/map"
 require_relative "repo/worktree"
 require_relative "state/events"
 require_relative "state/run_store"
 require_relative "task/loop"
+require_relative "task/summarizer"
 
 module Harness
   # One run of the pipeline (DESIGN.md 5): intake, the task queue, integration gates. Planning (M4), the final
@@ -67,12 +69,14 @@ module Harness
     # @param client [Model::Client]
     # @param setup [Setup]
     # @param reviewer [#call, nil]
-    def initialize(config:, client:, setup:, reviewer: nil)
+    # @param cache_dir [String, nil] the context map's cache (.cache/); nil disables it
+    def initialize(config:, client:, setup:, reviewer: nil, cache_dir: nil)
       @config = config
       @setup = setup
+      map = Repo::Map.new(root: setup.worktree.root, cache_dir: cache_dir, protected: setup.stack.protected_paths)
       @ctx = Task::Context.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
                                runner: setup.runner, baseline: setup.baseline, events: setup.events, store: setup.store,
-                               reviewer: reviewer)
+                               reviewer: reviewer, map: map, summarizer: Task::Summarizer.new(client: client, config: config))
     end
 
     # Reattach to a run started earlier (resume and answer): its worktree, stack, baseline and event log.

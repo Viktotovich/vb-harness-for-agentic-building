@@ -86,6 +86,8 @@ module TestSupport
       FakeLlmServer.new do |body, _n|
         system = body["messages"].first["content"]
         user = body["messages"].last["content"]
+        next replies.fetch("summary") { FakeLlmServer.ok("A source file.") } if system.start_with?("You summarize")
+
         key = if system.start_with?("You plan") then "plan"
               else
                 step = if user.include?("could not be applied") then "retry"
