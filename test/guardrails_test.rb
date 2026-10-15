@@ -81,6 +81,89 @@ class GuardrailsTest < Minitest::Test
     assert_empty Scan.shell_hits(clean, "lib/x.rb"), "false positive on role names"
   end
 
+  # --- I2: every write resolves inside the worktree ---
+
+  def test_i2_edits_never_write_outside_the_worktree_or_to_protected_paths
+    Dir.mktmpdir("harness-i2-") do |tmp|
+      root = File.join(tmp, "wt")
+      FileUtils.mkdir_p(root)
+      bad = ["../outside.txt", "/tmp/abs.txt", "C:\\abs.txt", "src/../../outside2.txt", ".git/config", ".env"]
+      bad.each do |path|
+        set = Harness::Task::EditSet.parse({ "edits" => [{ "op" => "create", "path" => path, "content" => "x" }] })
+        r = Harness::Task::Edits.apply(root: root, edit_set: set, modify: [], create: [path.tr("\\", "/")], protected: [".env*"])
+        refute r.ok?, path
+        assert_includes %w[edit.outside_worktree edit.protected_path], r.rejections.first.reason, path
+      end
+      assert_equal ["wt"], Dir.children(tmp), "nothing was written next to the worktree"
+      assert_empty Dir.children(root), "nothing was written inside it either"
+    end
+  end
+
+  # --- I5: gate subprocesses get a scrubbed environment ---
+
+  def test_i5_gate_children_see_no_secrets
+    secrets = %w[GITHUB_TOKEN GH_HOST AWS_PROFILE AZURE_TENANT GOOGLE_CREDS OPENAI_API_KEY ANTHROPIC_API_KEY
+                 MY_PASSWORD DEPLOY_SECRET NODE_AUTH_TOKEN NPM_TOKEN]
+    parent = ENV.to_h.merge(secrets.to_h { |k| [k, "do-not-leak"] })
+                .merge("NODE_ENV" => "test", "NODE_OPTIONS" => "--require ./evil.js", "RANDOM_THING" => "x",
+                       "SAFE_API_KEY" => "allowed-by-config")
+    env = Harness::Gates::Env.build(parent, allow: ["SAFE_API_KEY"])
+    Dir.mktmpdir("harness-i5-") do |root|
+      gate = Harness::Gates::Gate.parse("printenv", { "argv" => [RbConfig.ruby, "-e", "puts ENV.keys"] }, "g")
+      r = Harness::Gates::Runner.new(root: root, env: env).run(gate)
+      assert r.passed?, r.inspect
+      # The runner keeps no output for a passing gate, so read the same child environment directly.
+      pairs = Harness::Exec.run([RbConfig.ruby, "-e", "ENV.each { |k, v| puts [k, v].join(9.chr) }"], chdir: root, env: env)
+                           .stdout.lines.map { |l| l.chomp.split(9.chr, 2) }
+      seen = pairs.map(&:first)
+      refute(pairs.any? { |_, v| v.to_s.include?("do-not-leak") }, "I5: a secret value reached the gate")
+      # A Ruby child on Windows sets USER itself at startup; it does not come from the parent.
+      expected = Harness::Gates::Env::BASE + %w[NODE_ENV SAFE_API_KEY CI npm_config_yes] +
+                 (Harness::Exec.windows? ? %w[USER] : [])
+      node = ->(k) { k.upcase.start_with?("NODE_") && k.upcase != "NODE_OPTIONS" } # allowed by DESIGN.md 9.3
+      unexpected = seen.reject { |k| node.call(k) || expected.any? { |e| e.casecmp?(k) } }
+      assert_empty unexpected, "I5: unexpected variables reached the gate"
+      assert_includes seen, "SAFE_API_KEY", "gateEnvAllow passes a name through"
+      (secrets + %w[NODE_OPTIONS RANDOM_THING]).each { |k| refute_includes seen, k }
+    end
+  end
+
+  # --- I6: a gate that could not run is skipped, never passed ---
+
+  def test_i6_a_gate_that_cannot_run_is_skipped_with_a_reason_and_never_passes
+    Dir.mktmpdir("harness-i6-") do |root|
+      gate = Harness::Gates::Gate.parse("typecheck", { "argv" => ["harness-no-such-tool-#{Process.pid}", "check"] }, "g")
+      r = Harness::Gates::Runner.new(root: root, env: Harness::Gates::Env.build(ENV)).run(gate)
+      assert_equal "skipped", r.status
+      refute_empty r.reason.to_s
+      refute r.passed?
+      refute Harness::Gates::Baseline.compare(r, nil).ok?
+      refute Harness::Gates::Baseline.compare(r, r).ok?, "skipped at baseline and now is still not a pass"
+    end
+  end
+
+  # --- I11: the user's checkout is never modified ---
+
+  def test_i11_work_happens_only_in_the_run_worktree
+    Dir.mktmpdir("harness-i11-") do |tmp|
+      repo, env = TestSupport.repo(tmp, { "src/a.ts" => "export const a = 1;\n" })
+      git = Harness::Repo::Git.new(env: env)
+      head = TestSupport.git!(repo, env, "rev-parse", "HEAD")
+      wt = Harness::Repo::Worktree.create(repo: repo, run_id: "i11", git: git)
+      set = Harness::Task::EditSet.parse({ "edits" => [{ "op" => "replace", "path" => "src/a.ts", "search" => "1;", "replace" => "2;" },
+                                                       { "op" => "create", "path" => "src/b.ts", "content" => "b\n" }] })
+      assert Harness::Task::Edits.apply(root: wt.root, edit_set: set, modify: ["src/a.ts"], create: ["src/b.ts"]).ok?
+      wt.commit("T1: change a")
+      File.write(File.join(wt.root, "src/a.ts"), "broken")
+      wt.revert!
+      assert_equal head, TestSupport.git!(repo, env, "rev-parse", "HEAD"), "the user's branch did not move"
+      assert_empty TestSupport.git!(repo, env, "status", "--porcelain"), "the user's checkout is clean"
+      assert_equal "export const a = 1;\n", File.read(File.join(repo, "src/a.ts"))
+      refute File.exist?(File.join(repo, "src/b.ts"))
+      assert_equal "export const a = 2;\n", File.read(File.join(wt.root, "src/a.ts"))
+    end
+  end
+
   # --- I12: keys only from apiKeyEnv; never in records, logs, caches or error messages ---
 
   def test_i12_key_is_sent_but_never_recorded_logged_or_cached
