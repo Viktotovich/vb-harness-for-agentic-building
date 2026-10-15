@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 V and Bruno LLC
+
+require_relative "../lib/harness"
+
+exit Harness::CLI.run(ARGV)
