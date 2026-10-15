@@ -27,7 +27,24 @@
     "summarizer": "default"
   },
   "stack": "auto",
-  "stacks": {},
+  "stacks": {
+    "astro": {
+      "detect": ["astro.config.mjs", "astro.config.ts", "astro.config.js"],
+      "framework": { "name": "Astro", "lockfilePackage": "astro" },
+      "docs": { "local": null, "online": false, "matchVersion": true },
+      "packageManager": "auto",
+      "gates": {
+        "format": { "argv": ["npx", "prettier", "--check", "{files}"], "scope": "touched", "blocking": false, "costRank": 1 },
+        "lint": { "argv": ["npx", "eslint", "{files}"], "scope": "touched", "parser": "eslint", "costRank": 2 },
+        "typecheck": { "argv": ["npx", "astro", "check"], "scope": "project", "parser": "astro_check", "costRank": 3 },
+        "unit": { "argv": ["npx", "vitest", "run", "{tests}"], "scope": "tests", "parser": "vitest", "costRank": 4 },
+        "build": { "argv": ["npx", "astro", "build"], "scope": "project", "when": "integration", "costRank": 8 },
+        "e2e": { "argv": ["npx", "playwright", "test", "{tests}"], "scope": "tests", "when": "integration", "costRank": 9 }
+      },
+      "alwaysGates": ["lint", "typecheck"],
+      "protectedPaths": [".git/**", ".husky/**", ".env*", "**/*.lock", "package-lock.json", "pnpm-lock.yaml", ".github/**"]
+    }
+  },
   "gateEnvAllow": [],
   "maxFilesPerTask": 3,
   "maxFixRounds": 3,

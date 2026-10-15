@@ -26,6 +26,11 @@ module Harness
     # Parsing for Gate.
     class Gate
       KEYS = %w[argv scope parser blocking costRank when timeoutSec].freeze
+      # A gate checks; it never installs (I10) or touches a remote (I4). Installs need the user's approval.
+      PACKAGE_MANAGERS = %w[npm pnpm yarn bun].freeze
+      INSTALL_WORDS = %w[install i add ci update upgrade up dlx].freeze
+      AUTO_INSTALL = %w[--yes -y].freeze
+      NEVER = %w[git gh].freeze
 
       # @param name [String]
       # @param raw [Hash]
@@ -42,6 +47,7 @@ module Harness
 
           raise ParseError, "#{path}.argv[#{i}]: {files} and {tests} must be whole arguments, got #{a.inspect}"
         end
+        refuse_side_effects!(argv, path)
         parser = h["parser"]
         Parse.enum!(parser, "#{path}.parser", PARSERS) unless parser.nil?
         new(name: name, argv: argv.dup.freeze, scope: Parse.enum!(h.fetch("scope", "project"), "#{path}.scope", SCOPES),
@@ -50,6 +56,20 @@ module Harness
             phase: Parse.enum!(h.fetch("when", "task"), "#{path}.when", %w[task integration]),
             timeout_sec: Parse.int!(h.fetch("timeoutSec", 600), "#{path}.timeoutSec", min: 1))
       end
+
+      # @return [void]
+      # @raise [ParseError] for a gate that would install packages, run git or gh, or let npx install on its own
+      def self.refuse_side_effects!(argv, path)
+        tool = File.basename(argv[0], ".*").downcase
+        raise ParseError, "#{path}.argv: a gate may not run #{tool} (no git or remote calls, I4)" if NEVER.include?(tool)
+        if PACKAGE_MANAGERS.include?(tool) && argv[1..].any? { |a| INSTALL_WORDS.include?(a) }
+          raise ParseError, "#{path}.argv: a gate may not install packages (I10); install them yourself first"
+        end
+        return unless %w[npx pnpx bunx].include?(tool) && argv[1..].any? { |a| AUTO_INSTALL.include?(a) }
+
+        raise ParseError, "#{path}.argv: #{argv[0]} with --yes installs missing packages (I10)"
+      end
+      private_class_method :refuse_side_effects!
     end
 
     # A stack profile from config "stacks" (DESIGN.md 6). framework and docs stay raw until the evidence port.

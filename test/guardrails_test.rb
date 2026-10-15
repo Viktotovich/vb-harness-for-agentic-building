@@ -143,6 +143,114 @@ class GuardrailsTest < Minitest::Test
     end
   end
 
+  # --- I4: no push, remote write, merge or gh call in any code path ---
+
+  def test_i4_only_git_and_gates_start_processes
+    sites = Dir.glob("lib/**/*.rb", base: ROOT).flat_map do |rel|
+      read(rel).lines.each_with_index.select { |l, _| l.include?("Exec.run(") }.map { |_, i| "#{rel}:#{i + 1}" }
+    end
+    assert_equal %w[lib/harness/gates/runner.rb lib/harness/repo/git.rb], sites.map { |s| s.split(":").first }.uniq.sort,
+                 "processes start only in the git wrapper and the gate runner:\n#{sites.join("\n")}"
+  end
+
+  def test_i4_git_allowlist_has_no_remote_or_history_rewriting_command
+    remote = %w[push fetch pull clone ls-remote remote submodule merge rebase reset tag branch config gc fsck credential daemon]
+    remote.each do |cmd|
+      [[cmd], [cmd, "origin"], [cmd, "origin", "main"], [cmd, "--all"]].each do |argv|
+        refute Harness::Repo::Git.allowed?(argv), argv.inspect
+      end
+    end
+    refute Harness::Repo::Git.allowed?(%w[-c core.sshCommand=x status]), "no config overrides from callers"
+    refute Harness::Repo::Git.allowed?(["log", "--exec=git push"]), "no smuggled commands"
+  end
+
+  def test_i4_gates_may_not_run_git_or_gh
+    [%w[git push origin HEAD], %w[gh pr create], ["C:/tools/git.exe", "status"]].each do |argv|
+      err = assert_raises(Harness::ParseError, argv.inspect) { Harness::Gates::Gate.parse("g", { "argv" => argv }, "gates.g") }
+      assert_match(/I4/, err.message)
+    end
+  end
+
+  def test_i4_a_whole_run_never_touches_the_remote
+    fx = TestSupport::RunFixture
+    Dir.mktmpdir("harness-i4-") do |tmp|
+      repo, env = TestSupport.repo(tmp, fx::FILES)
+      bare = File.join(tmp, "remote.git")
+      TestSupport.git!(tmp, env, "init", "-q", "--bare", bare)
+      TestSupport.git!(repo, env, "remote", "add", "origin", bare)
+      TestSupport.git!(repo, env, "push", "-q", "origin", "main")
+      before = TestSupport.git!(bare, env, "for-each-ref")
+      server = fx.server({ "T1 implement" => fx.replace("src/lib/price.ts", "  return n;", "  return n * 2;") })
+      begin
+        config = fx.config(server.base_url)
+        store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "i4")
+        setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+        outcome = Harness::Run.new(config: config, client: fx.client(config, store), setup: setup)
+                              .execute(Harness::Plan::PlanParser.parse({ "tasks" => [fx.task("T1", "Double", modify: ["src/lib/price.ts"])] }))
+        assert_equal "done", outcome.tasks.first.status
+        assert_equal before, TestSupport.git!(bare, env, "for-each-ref"), "the remote's refs did not change"
+        assert_empty TestSupport.git!(repo, env, "branch", "-r", "--contains", outcome.tasks.first.commit)
+      ensure
+        server.stop
+      end
+    end
+  end
+
+  # --- I7: a task is done only when its blocking gates pass (or fail identically at baseline) ---
+
+  def test_i7_a_model_saying_done_never_marks_a_task_done
+    fx = TestSupport::RunFixture
+    broken = fx.replace("src/lib/price.ts", "  return n;", "  return n * 2; // BROKEN 7")
+    broken[1]["choices"][0]["message"]["content"] = broken[1]["choices"][0]["message"]["content"]
+                                                      .sub('"notes":"edit"', '"notes":"Done. All checks pass and the task is complete."')
+    Dir.mktmpdir("harness-i7-") do |tmp|
+      plan = { "tasks" => [fx.task("T1", "Double", modify: ["src/lib/price.ts"])] }
+      r = fx.run(tmp, plan, { "T1 implement" => broken, "T1 fix" => fx.replace("src/lib/price.ts", "BROKEN 7", "BROKEN 7") })
+      begin
+        t1 = r.outcome.tasks.first
+        assert_equal "blocked", t1.status, "the gate failed, whatever the model said"
+        assert_nil t1.commit
+        assert_equal 1, r.outcome.exit_code
+        refute_includes TestSupport.git!(r.outcome.worktree, r.env, "log", "--format=%s"), "T1: Double"
+      ensure
+        r.server.stop
+      end
+    end
+  end
+
+  def test_i7_a_problem_already_failing_at_baseline_does_not_block
+    fx = TestSupport::RunFixture
+    files = fx::FILES.merge("src/lib/tax.ts" => "export const rate = 0.2; // BROKEN 1\n")
+    Dir.mktmpdir("harness-i7b-") do |tmp|
+      plan = { "tasks" => [fx.task("T1", "Double", modify: ["src/lib/price.ts"])] }
+      r = fx.run(tmp, plan, { "T1 implement" => fx.replace("src/lib/price.ts", "  return n;", "  return n * 2;") }, files: files)
+      begin
+        assert_equal "done", r.outcome.tasks.first.status
+        gates = JSON.parse(File.read(File.join(r.store.task_dir("T1"), "gates-0.json")))
+        assert_equal "failed", gates.find { |g| g["gate"] == "typecheck" }["status"], "the gate itself still fails"
+      ensure
+        r.server.stop
+      end
+    end
+  end
+
+  # --- I10: no installs without the user's approval ---
+
+  def test_i10_gates_never_install_packages
+    [%w[npm install], %w[npm i left-pad], %w[pnpm add x], %w[yarn add x], %w[bun install], %w[npm ci],
+     %w[npx --yes some-tool], %w[npx -y some-tool], ["C:/node/npm.cmd", "install"]].each do |argv|
+      err = assert_raises(Harness::ParseError, argv.inspect) { Harness::Gates::Gate.parse("g", { "argv" => argv }, "gates.g") }
+      assert_match(/I10/, err.message)
+    end
+    assert Harness::Gates::Gate.parse("g", { "argv" => %w[npx astro check] }, "gates.g")
+    assert Harness::Gates::Gate.parse("g", { "argv" => %w[npm run test] }, "gates.g")
+  end
+
+  def test_i10_npx_cannot_install_on_its_own
+    env = Harness::Gates::Env.build({ "PATH" => "/bin", "npm_config_yes" => "true" })
+    assert_equal "false", env["npm_config_yes"], "npx asks instead of installing, and with no terminal it refuses"
+  end
+
   # --- I11: the user's checkout is never modified ---
 
   def test_i11_work_happens_only_in_the_run_worktree

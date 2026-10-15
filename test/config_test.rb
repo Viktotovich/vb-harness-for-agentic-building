@@ -35,6 +35,16 @@ class ConfigTest < Minitest::Test
     assert_nil c.profiles["default"].api_key_env
   end
 
+  def test_config_example_ships_the_astro_stack
+    c = parse(JSON.parse(File.read(File.join(TestSupport::ROOT, "config.example.json"))))
+    astro = c.stacks.fetch("astro")
+    assert_equal %w[build e2e format lint typecheck unit], astro.gates.keys.sort
+    assert_equal %w[lint typecheck], astro.always_gates
+    assert_equal %w[integration integration], %w[build e2e].map { |g| astro.gates[g].phase }
+    assert_includes astro.protected_paths, ".husky/**"
+    assert_includes astro.protected_paths, ".git/**"
+  end
+
   def test_role_defaults_follow_the_named_roles
     c = parse({ "profiles" => { "small" => BASE, "big" => BASE },
                 "roles" => { "planner" => "big", "implementer" => "small", "reviewer" => "big" } })
