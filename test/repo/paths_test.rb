@@ -55,6 +55,18 @@ class PathsTest < Minitest::Test
 
   def test_git_is_protected_even_without_patterns
     assert_raises(Harness::PathError) { P.resolve_in_worktree(@root, ".git/HEAD") }
+    assert_raises(Harness::PathError) { P.resolve_in_worktree(@root, ".husky/pre-commit") }
+  end
+
+  # Windows resolves ".git." and ".git " to .git, and a short name such as GIT~1 to a long one.
+  def test_windows_path_aliases_are_refused
+    { ".git./config" => "dot or a space", ".git /config" => "dot or a space", "src/a.ts." => "dot or a space",
+      "GIT~1/config" => "short name", "src/PROGRA~1/x.ts" => "short name", ".husky /pre-commit" => "dot or a space" }.each do |path, why|
+      err = assert_raises(Harness::PathError, path.inspect) { P.resolve_in_worktree(@root, path) }
+      assert_match(/#{why}/, err.message, path)
+    end
+    assert resolve("src/../src/a.ts"), ".. segments are still resolved"
+    assert resolve("src/v1.2/a.ts")
   end
 
   def symlink_or_skip(target, link)

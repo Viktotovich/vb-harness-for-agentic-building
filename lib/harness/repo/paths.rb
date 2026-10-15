@@ -11,6 +11,11 @@ module Harness
       OUTSIDE = "edit.outside_worktree"
       PROTECTED = "edit.protected_path"
       FNM_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB | File::FNM_SYSCASE
+      # Protected in every stack, whatever the config says: git's own data, and hook managers that git or a
+      # package manager would run (I3).
+      ALWAYS_PROTECTED = %w[.git .husky].freeze
+      # Windows short (8.3) names such as GIT~1 alias a long name and could reach a protected path.
+      SHORT_NAME = /~\d/
 
       # @param root [String] the worktree root
       # @param path [String] a relative path from a model, plan or config
@@ -41,6 +46,9 @@ module Harness
         parts = s.split("/").each_with_object([]) do |seg, acc|
           next if seg.empty? || seg == "."
           refuse!(path, "a path segment contains ':'") if seg.include?(":")
+          # Windows drops trailing dots and spaces, so ".git." and ".git " name .git.
+          refuse!(path, "a path segment ends with a dot or a space") if seg != ".." && seg.match?(/[. ]\z/)
+          refuse!(path, "a path segment looks like a Windows short name (~N)") if seg.match?(SHORT_NAME)
           if seg == ".."
             refuse!(path, "escapes the worktree") if acc.empty?
             acc.pop
@@ -54,9 +62,10 @@ module Harness
 
       # @param rel [String] normalized relative path
       # @param patterns [Array<String>]
-      # @return [Boolean] true for .git and anything below it, or a match of any pattern
+      # @return [Boolean] true for .git, .husky and anything below them, or a match of any pattern
       def self.protected?(rel, patterns)
-        return true if rel.split("/").first.casecmp?(".git")
+        first = rel.split("/").first.to_s
+        return true if ALWAYS_PROTECTED.any? { |p| first.casecmp?(p) }
 
         patterns.any? do |pat|
           File.fnmatch?(pat, rel, FNM_FLAGS) ||
