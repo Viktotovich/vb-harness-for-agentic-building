@@ -122,3 +122,31 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   summaries if they fit. Map signatures and docs come with M5. Protected paths are never read into a prompt.
 - **`harness run` needs `--from-plan` until the planner lands (M4).** Runs, logs and the probe cache live next
   to the config file.
+
+## M4: planner, plan checks, questions, resume
+
+- **New reason code `plan.unknown_gate`:** an acceptance item that names a gate the stack does not define. It
+  would otherwise block every task as "skipped", so the planner is told at once.
+- **Outside-the-repo paths in a plan** report as `plan.protected_path` with the message "is outside the
+  repository"; the spec lists no separate code for them.
+- **A plan given with `--from-plan`, or edited after `--plan-only`,** goes through the same checks but is not
+  replanned. Problems stop the run as `plan_rejected` (exit 1) with the messages printed.
+- **After `maxReplanRounds` replans the run stops as `plan_rejected` (exit 1),** with the last plan saved and
+  every problem printed, as "stop and show the user" asks.
+- **The planner's repository view until M5:** the file list (with sizes, skipping dependency, build and binary
+  files) plus the full text of files whose path contains a word from the request, packed into two thirds of
+  the planner's budget. The context map replaces this in M5.
+- **The request itself is not fenced;** it is the user's instruction. Everything else the planner sees (file
+  list, files, its previous plan, check messages, and the question and answer pairs) is fenced.
+- **Questions:** only blocking questions pause the run (status `waiting`, exit 3). `harness answer RUN_ID`
+  takes one answer per blocking question, from `--answers FILE` (a JSON array) or typed on stdin. The answers
+  go back to the planner, which plans again, and may ask again.
+- **Resume rules per task state:** `pending`, `gathering`, `implementing` and `applying` revert the task's
+  partial work and start over. `applied`, `gating`, `fixing`, `reviewing` and `committing` continue at the
+  gates with the saved fix rounds and touched files. A task whose commit is already HEAD is done. `done` and
+  `blocked` keep their outcome, except `blocked` by `model.unavailable`, which runs again. A task with no saved
+  state starts from a clean worktree.
+- **The lock lives at `runs/<runId>/harness.lock`,** not in the worktree, where `git add -A` would commit it.
+  One run is one worktree, so this is the same "one run per worktree" rule.
+- **Run statuses** in `run.json`: `planning`, `waiting`, `planned`, `plan_rejected`, `running`, `done`, `failed`,
+  `stopped`.
