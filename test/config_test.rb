@@ -87,4 +87,14 @@ class ConfigTest < Minitest::Test
       assert_equal "default", Harness::Config.load(path, env: {}).profile_for(:planner).name
     end
   end
+
+  def test_stacks_are_parsed_into_gates
+    c = parse({ "profiles" => { "default" => BASE },
+                "stacks" => { "astro" => { "gates" => { "typecheck" => { "argv" => %w[npx astro check], "parser" => "astro_check" } },
+                                           "alwaysGates" => ["typecheck"] } } })
+    assert_equal %w[npx astro check], c.stacks["astro"].gates["typecheck"].argv
+    assert_match(/\Astacks.astro.gates.lint.parser: expected one of/,
+                 error({ "profiles" => { "default" => BASE },
+                         "stacks" => { "astro" => { "gates" => { "lint" => { "argv" => ["x"], "parser" => "pylint" } } } } }))
+  end
 end

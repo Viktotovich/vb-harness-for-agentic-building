@@ -5,13 +5,14 @@
 require "json"
 require_relative "parse"
 require_relative "model/profiles"
+require_relative "gates/gate"
 
 module Harness
   # Limits with their defaults from DESIGN.md section 14.
   Limits = Data.define(:max_files_per_task, :max_fix_rounds, :max_replan_rounds, :max_diagnostics, :max_lookups,
                        :max_review_fix_tasks, :whole_file_rewrite_max_bytes, :max_gate_output_bytes)
 
-  # Validated config.json. Stack and gate details are kept raw here and parsed by their own milestone.
+  # Validated config.json. stacks maps a stack name to a Gates::Stack.
   Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
@@ -62,7 +63,7 @@ module Harness
         roles: Model::Roles.parse(h["roles"], profiles.keys).freeze,
         limits: parse_limits(h),
         stack: Parse.str!(h.fetch("stack", "auto"), "stack"),
-        stacks: Parse.hash!(h.fetch("stacks", {}), "stacks"),
+        stacks: Parse.hash!(h.fetch("stacks", {}), "stacks").to_h { |name, s| [name, Gates::Stack.parse(name, s)] }.freeze,
         gate_env_allow: Parse.strings!(h.fetch("gateEnvAllow", []), "gateEnvAllow").dup.freeze,
         dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun")
       )
