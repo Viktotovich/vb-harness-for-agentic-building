@@ -23,6 +23,18 @@ module Harness
     # Parsing for EditSet.
     class EditSet
       OPS = %w[create replace delete].freeze
+      EDIT_SCHEMA = {
+        "type" => "object", "required" => %w[op path],
+        "properties" => { "op" => { "type" => "string", "enum" => OPS }, "path" => { "type" => "string" },
+                          "content" => { "type" => "string" }, "search" => { "type" => "string" },
+                          "replace" => { "type" => "string" } }
+      }.freeze
+      # JSON schema of the implementer's and fixer's reply, sent to the server or put into the prompt.
+      SCHEMA = {
+        "type" => "object", "required" => ["edits"],
+        "properties" => { "edits" => { "type" => "array", "items" => EDIT_SCHEMA },
+                          "tests" => { "type" => "array", "items" => EDIT_SCHEMA }, "notes" => { "type" => "string" } }
+      }.freeze
 
       # @param raw [Hash] model JSON
       # @return [EditSet]

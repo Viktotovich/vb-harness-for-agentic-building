@@ -54,4 +54,7 @@ module Harness
 
   # A git command failed, or was not on the allowlist (DESIGN.md 9.2).
   class GitError < Error; end
+
+  # The configuration or the environment does not allow a run (exit code 2), e.g. no stack matches the repo.
+  class ConfigError < Error; end
 end

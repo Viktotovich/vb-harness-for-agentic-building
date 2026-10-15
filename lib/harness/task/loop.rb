@@ -1,0 +1,359 @@
+# frozen_string_literal: true
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 V and Bruno LLC
+
+require "json"
+require "set"
+require_relative "../errors"
+require_relative "../gates/baseline"
+require_relative "../model/client"
+require_relative "../model/tokens"
+require_relative "../prompts"
+require_relative "../repo/paths"
+require_relative "../untrusted"
+require_relative "edits"
+require_relative "gather"
+
+module Harness
+  module Task
+    # What the loop needs from the run. reviewer: #call(task:, diff:) -> Array of findings (M6); nil skips review.
+    Context = Data.define(:client, :config, :worktree, :stack, :runner, :baseline, :events, :store, :reviewer)
+
+    # A gate name the acceptance list uses but the stack does not define: always skipped, always blocking.
+    MissingGate = Data.define(:name, :blocking, :cost_rank)
+
+    # status: done | blocked. commit is the sha, or nil when the task changed nothing or was blocked.
+    Outcome = Data.define(:id, :status, :commit, :fix_rounds, :reason, :detail, :gates)
+
+    # The per-task state machine (DESIGN.md 5.4):
+    # pending -> gathering -> implementing -> applying -> gating -> (fixing <-> gating) -> reviewing ->
+    # committing -> done | blocked. State is persisted after every transition. Only gates mark a task done (I7).
+    class Loop
+      DIAGNOSTIC_CONTEXT = 5
+
+      # Ends the task as blocked.
+      class Blocked < StandardError
+        # @return [String] reason code
+        attr_reader :reason
+
+        def initialize(reason, detail)
+          super(detail)
+          @reason = reason
+        end
+      end
+
+      # @param ctx [Context]
+      def initialize(ctx)
+        @ctx = ctx
+        @limits = ctx.config.limits
+      end
+
+      # @param task [Plan::Task]
+      # @param done [Array<String>] one-line summaries of tasks already committed
+      # @return [Outcome]
+      def run(task, done: [])
+        @task = task
+        @done = done
+        @fix_rounds = 0
+        @touched = Set.new
+        @created = Set.new
+        @last_gates = []
+        step("gathering")
+        edit_set = implement
+        apply(edit_set, :implementer, @implement_messages)
+        fix_until_green
+        review
+        commit
+      rescue Blocked => e
+        block(e.reason, e.message)
+      rescue TaskTooLargeError, ContextOverflowError => e
+        block(e.is_a?(TaskTooLargeError) ? "plan.too_large_for_context" : "model.context_overflow", e.message)
+      rescue ModelUnavailableError => e
+        emit("task.implement", "rejected", reason: "model.unavailable", detail: e.message[0, 300])
+        block("model.unavailable", e.message)
+      end
+
+      private
+
+      # --- implement and apply ---
+
+      # @return [EditSet]
+      def implement
+        step("implementing")
+        system = Prompts.render("implement_system", rules: rules)
+        bundle = gather(system)
+        user = Prompts.render("implement_user", task: task_text, sections: bundle.sections)
+        @implement_messages = Model::Messages.new(system: system, user: user)
+        ask(:implementer, "task.implement", @implement_messages, "implement")
+      end
+
+      # One model call for an EditSet, with its events.
+      # @return [EditSet]
+      def ask(role, stage, messages, label)
+        emit(stage, "stage_started")
+        c = @ctx.client.complete(role, messages, label: "#{@task.id}.#{label}", parser: EditSet.method(:parse), schema: EditSet::SCHEMA)
+        emit(stage, "retried", detail: "retried once with thinking off") if c.retried_without_thinking
+        emit(stage, "accepted", subject: "#{c.value.all.size} edits", model: c.model, profile: c.profile,
+                                tokens: { "in" => c.usage[:in], "out" => c.usage[:out] }, ms: c.ms)
+        emit(stage, "stage_finished")
+        c.value
+      rescue ModelOutputError => e
+        emit(stage, "rejected", reason: e.reason, detail: e.message[0, 300])
+        raise Blocked.new(e.reason, e.message)
+      end
+
+      # Apply edits; on rejections give the model one retry for the rejected edits only.
+      # @return [void]
+      def apply(edit_set, role, messages)
+        step("applying")
+        result = apply_once(edit_set)
+        return record_applied(result) if result.ok?
+
+        kept = edit_set.all - result.rejections.map(&:edit)
+        retry_set = ask(role, "task.apply", retry_messages(messages, edit_set, result.rejections), "apply_retry")
+        merged = EditSet.new(edits: kept + retry_set.edits, tests: retry_set.tests, notes: retry_set.notes)
+        second = apply_once(merged)
+        raise Blocked.new(second.rejections.first.reason, rejection_text(second.rejections)) unless second.ok?
+
+        record_applied(second)
+      end
+
+      # @return [Edits::Result]
+      def apply_once(edit_set)
+        emit("task.apply", "stage_started")
+        result = Edits.apply(root: @ctx.worktree.root, edit_set: edit_set, modify: @task.files.modify,
+                             create: @task.files.create + @task.test_paths, protected: @ctx.stack.protected_paths,
+                             rewrite_max_bytes: @limits.whole_file_rewrite_max_bytes)
+        result.rejections.each do |r|
+          emit("task.apply", "rejected", subject: "#{r.edit.op} #{r.edit.path}"[0, 120], reason: r.reason, detail: r.message[0, 300])
+        end
+        emit("task.apply", "accepted", subject: "#{result.written.size} files") if result.ok?
+        emit("task.apply", "stage_finished")
+        result
+      end
+
+      # @return [void]
+      def record_applied(result)
+        @touched.merge(result.written)
+        @created.merge(result.created)
+        save("applied")
+      end
+
+      # @return [Model::Messages]
+      def retry_messages(messages, edit_set, rejections)
+        previous = JSON.generate({ "edits" => edit_set.edits.map(&:to_h), "tests" => edit_set.tests.map(&:to_h) })
+        user = "#{messages.user}\n\nYour previous reply:\n#{Untrusted.fence(previous)}\n\n" +
+               Prompts.render("apply_retry", rejections: Untrusted.fence(rejection_text(rejections)))
+        Model::Messages.new(system: messages.system, user: user)
+      end
+
+      # @return [String]
+      def rejection_text(rejections)
+        rejections.map { |r| "- #{r.edit.op} #{r.edit.path}: #{r.message}" }.join("\n")
+      end
+
+      # --- gates and fixing ---
+
+      # @return [void]
+      # @raise [Blocked]
+      def fix_until_green
+        previous = nil
+        loop do
+          failing = run_gates
+          return if failing.empty?
+
+          skipped = failing.find { |_, c| c.verdict == "skipped" }
+          raise Blocked.new("gate.skipped:#{skipped[0].name}", skipped[1].current.reason.to_s) if skipped
+
+          diagnostics = trimmed_diagnostics(failing)
+          key = diagnostics.map { |d| [d.file, d.code, d.message] }.sort
+          if key == previous
+            emit("task.fix", "rejected", reason: "fix.same_errors_twice", detail: "#{key.size} diagnostics unchanged")
+            raise Blocked.new("fix.same_errors_twice", "the fix left the same #{key.size} problems")
+          end
+          if @fix_rounds >= @limits.max_fix_rounds
+            emit("task.fix", "rejected", reason: "fix.rounds_exhausted", detail: "#{@fix_rounds} rounds")
+            raise Blocked.new("fix.rounds_exhausted", "still failing after #{@fix_rounds} fix rounds")
+          end
+          previous = key
+          fix(diagnostics)
+        end
+      end
+
+      # @return [Array<Array(Gates::Gate, Gates::Baseline::Comparison)>] blocking gates that are not ok
+      def run_gates
+        step("gating")
+        emit("task.gates", "stage_started")
+        files = @touched.select { |rel| File.file?(File.join(@ctx.worktree.root, rel)) }.sort
+        results = gate_list.map do |gate|
+          current = gate.is_a?(MissingGate) ? missing_gate(gate.name) : @ctx.runner.run(gate, files: files, tests: @task.test_paths)
+          cmp = Gates::Baseline.compare(current, @ctx.baseline[current.gate])
+          emit_gate(cmp)
+          [gate, cmp]
+        end
+        @last_gates = results.map { |_, c| c }
+        @ctx.store.write_task_file(@task.id, "gates-#{@fix_rounds}.json", @last_gates.map { |c| c.current.to_json_hash })
+        emit("task.gates", "stage_finished")
+        results.select { |gate, c| gate.blocking && !c.ok? }
+      end
+
+      # The task's gate acceptance items plus alwaysGates, plus the unit gate when tests are listed, cheapest first.
+      # @return [Array<Gates::Gate, MissingGate>]
+      def gate_list
+        names = (@task.acceptance.select { |a| a.kind == "gate" }.map(&:gate) + @ctx.stack.always_gates).uniq
+        gates = names.map { |n| @ctx.stack.gates[n] || MissingGate.new(name: n, blocking: true, cost_rank: -1) }
+        if @task.acceptance.any? { |a| a.kind == "test" }
+          unit = @ctx.stack.gates.values.find { |g| g.scope == "tests" && g.phase == "task" }
+          gates << unit if unit && !names.include?(unit.name)
+        end
+        gates.sort_by(&:cost_rank)
+      end
+
+      # @return [Gates::Result]
+      def missing_gate(name)
+        Gates::Result.new(gate: name, status: "skipped", exit_code: nil, diagnostics: [],
+                          reason: "the stack defines no gate named #{name}", ms: 0, argv: [])
+      end
+
+      # @return [void]
+      def emit_gate(cmp)
+        if cmp.ok?
+          emit("task.gates", "accepted", subject: cmp.gate, detail: cmp.verdict, ms: cmp.current.ms)
+        else
+          kind = { "skipped" => "skipped", "timeout" => "timeout" }.fetch(cmp.current.status, "failed")
+          emit("task.gates", "rejected", subject: cmp.gate, reason: "gate.#{kind}:#{cmp.gate}",
+                                         detail: (cmp.current.reason || "#{cmp.new_diagnostics.size} new problems").to_s[0, 300],
+                                         ms: cmp.current.ms)
+        end
+      end
+
+      # @return [Array<Gates::Diagnostic>] new problems of the failing gates, at most maxDiagnostics
+      def trimmed_diagnostics(failing)
+        failing.flat_map do |gate, c|
+          next c.new_diagnostics unless c.new_diagnostics.empty?
+
+          [Gates::Diagnostic.new(file: nil, line: nil, col: nil, code: gate.name,
+                                 message: c.current.reason || "#{gate.name} #{c.current.status}", severity: "error")]
+        end.first(@limits.max_diagnostics)
+      end
+
+      # @return [void]
+      def fix(diagnostics)
+        @fix_rounds += 1
+        step("fixing")
+        system = Prompts.render("fix_system", rules: rules)
+        bundle = gather(system)
+        user = Prompts.render("fix_user", task: task_text, diagnostics: Untrusted.fence(render_diagnostics(diagnostics)),
+                                          diff: Untrusted.fence(@ctx.worktree.patch), sections: bundle.sections)
+        messages = Model::Messages.new(system: system, user: user)
+        apply(ask(:fixer, "task.fix", messages, "fix#{@fix_rounds}"), :fixer, messages)
+      end
+
+      # Each diagnostic with up to 5 lines of source on either side.
+      # @return [String]
+      def render_diagnostics(diagnostics)
+        diagnostics.map do |d|
+          head = [d.file && "#{d.file}#{d.line ? ":#{d.line}" : ''}#{d.col ? ":#{d.col}" : ''}", d.severity, d.code].compact.join(" ")
+          "#{head}: #{d.message}#{source_excerpt(d)}"
+        end.join("\n\n")
+      end
+
+      # @return [String]
+      def source_excerpt(d)
+        return "" unless d.file && d.line
+
+        full = Repo::Paths.resolve_in_worktree(@ctx.worktree.root, d.file, protected: @ctx.stack.protected_paths)
+        return "" unless File.file?(full)
+
+        lines = File.read(full, mode: "rb").force_encoding(Encoding::UTF_8).scrub.lines
+        from = [d.line - DIAGNOSTIC_CONTEXT, 1].max
+        to = [d.line + DIAGNOSTIC_CONTEXT, lines.size].min
+        "\n" + (from..to).map { |n| format("%<mark>s%<n>5d | %<text>s", mark: n == d.line ? ">" : " ", n: n, text: lines[n - 1].chomp) }.join("\n")
+      rescue PathError
+        ""
+      end
+
+      # --- review and commit ---
+
+      # @return [void]
+      def review
+        step("reviewing")
+        if @ctx.reviewer.nil?
+          emit("review.discover", "skipped", subject: "review", detail: "review is not configured yet")
+          return
+        end
+
+        @ctx.reviewer.call(task: @task, diff: @ctx.worktree.patch)
+      end
+
+      # @return [Outcome]
+      def commit
+        step("committing")
+        emit("task.commit", "stage_started")
+        passed = @last_gates.select(&:ok?).map(&:gate)
+        sha = @ctx.worktree.dirty? ? @ctx.worktree.commit("#{@task.id}: #{@task.title}\n\nGates passed: #{passed.join(', ')}") : nil
+        emit("task.commit", "done", subject: "task", detail: sha ? sha[0, 12] : "no changes")
+        save("done", commit: sha)
+        Outcome.new(id: @task.id, status: "done", commit: sha, fix_rounds: @fix_rounds, reason: nil, detail: nil, gates: passed)
+      end
+
+      # Save the patch and the last diagnostics, revert the task, and report it blocked.
+      # @return [Outcome]
+      def block(reason, detail)
+        patch = @ctx.worktree.patch
+        @ctx.store.write_task_file(@task.id, "blocked.patch", patch) unless patch.empty?
+        @ctx.store.write_task_file(@task.id, "blocked.json", { "reason" => reason, "detail" => detail,
+                                                               "gates" => @last_gates.map { |c| c.current.to_json_hash } })
+        @ctx.worktree.revert!(created: @created.to_a)
+        emit("task.commit", "blocked", subject: "task", reason: reason, detail: detail.to_s[0, 300])
+        save("blocked", reason: reason)
+        Outcome.new(id: @task.id, status: "blocked", commit: nil, fix_rounds: @fix_rounds, reason: reason, detail: detail,
+                    gates: @last_gates.select(&:ok?).map(&:gate))
+      end
+
+      # --- helpers ---
+
+      # @return [String]
+      def rules
+        Prompts.render("edit_rules", files: @task.writable.join(", "))
+      end
+
+      # @return [String] the task as planned, fenced (planner output is model output, I9)
+      def task_text
+        acceptance = @task.acceptance.map { |a| "- #{a.summary}" }.join("\n")
+        Untrusted.fence("#{@task.id}: #{@task.title}\n#{@task.intent}\n\nAcceptance:\n#{acceptance}")
+      end
+
+      # @return [Bundle]
+      def gather(system)
+        role = @fix_rounds.zero? ? :implementer : :fixer
+        caps = @ctx.client.capabilities(role)
+        reserved = @ctx.config.profile_for(role).max_output_tokens
+        schema = JSON.generate(EditSet::SCHEMA)
+        budget = caps.context_tokens - Model::Tokens.estimate(system) - Model::Tokens.estimate(schema) - reserved - 64
+        emit("task.gather", "stage_started")
+        bundle = Gather.build(task: @task, root: @ctx.worktree.root, budget: budget, protected: @ctx.stack.protected_paths,
+                              task_text: task_text, done: @done)
+        emit("task.gather", "stage_finished", detail: "~#{bundle.tokens} tokens#{bundle.omitted.empty? ? '' : ", omitted #{bundle.omitted.join(', ')}"}")
+        bundle
+      end
+
+      # @return [void]
+      def step(state)
+        save(state)
+      end
+
+      # @return [void]
+      def save(state, commit: nil, reason: nil)
+        @ctx.store.write_task_state(@task.id, { "id" => @task.id, "state" => state, "fixRounds" => @fix_rounds,
+                                                "commit" => commit, "reason" => reason, "touched" => @touched.to_a.sort,
+                                                "created" => @created.to_a.sort })
+      end
+
+      # @return [void]
+      def emit(stage, kind, **fields)
+        @ctx.events.emit(stage: stage, kind: kind, task: @task.id, attempt: @fix_rounds + 1, **fields)
+      end
+    end
+  end
+end
