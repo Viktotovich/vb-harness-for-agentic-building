@@ -72,12 +72,14 @@ module Harness
       private_class_method :refuse_side_effects!
     end
 
-    # A stack profile from config "stacks" (DESIGN.md 6). framework and docs stay raw until the evidence port.
-    Stack = Data.define(:name, :detect, :framework, :docs, :package_manager, :gates, :always_gates, :protected_paths)
+    # A stack profile from config "stacks" (DESIGN.md 6). framework and docs stay raw hashes. dependency_dirs are
+    # git-ignored folders (node_modules) mirrored from the repository into each worktree, so gates can run there.
+    Stack = Data.define(:name, :detect, :framework, :docs, :package_manager, :gates, :always_gates, :protected_paths,
+                        :dependency_dirs)
 
     # Parsing for Stack.
     class Stack
-      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths].freeze
+      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths dependencyDirs].freeze
 
       # @param name [String]
       # @param raw [Hash]
@@ -99,7 +101,18 @@ module Harness
             docs: Parse.hash!(h.fetch("docs", {}), "#{path}.docs"),
             package_manager: Parse.enum!(h.fetch("packageManager", "auto"), "#{path}.packageManager", %w[auto npm pnpm yarn]),
             gates: gates.freeze, always_gates: always.dup.freeze,
-            protected_paths: Parse.strings!(h.fetch("protectedPaths", []), "#{path}.protectedPaths").dup.freeze)
+            protected_paths: Parse.strings!(h.fetch("protectedPaths", []), "#{path}.protectedPaths").dup.freeze,
+            dependency_dirs: dependency_dirs(h, path))
+      end
+
+      # @return [Array<String>] plain folder names at the repository root
+      # @raise [ParseError]
+      def self.dependency_dirs(h, path)
+        dirs = Parse.strings!(h.fetch("dependencyDirs", []), "#{path}.dependencyDirs")
+        bad = dirs.find { |d| !d.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/) || d.casecmp?(".git") }
+        raise ParseError, "#{path}.dependencyDirs: #{bad.inspect} must be a folder name at the repository root" if bad
+
+        dirs.dup.freeze
       end
     end
   end

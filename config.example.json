@@ -33,6 +33,7 @@
       "framework": { "name": "Astro", "lockfilePackage": "astro" },
       "docs": { "local": null, "online": false, "matchVersion": true },
       "packageManager": "auto",
+      "dependencyDirs": ["node_modules"],
       "gates": {
         "format": { "argv": ["npx", "prettier", "--check", "{files}"], "scope": "touched", "blocking": false, "costRank": 1 },
         "lint": { "argv": ["npx", "eslint", "{files}"], "scope": "touched", "parser": "eslint", "costRank": 2 },
