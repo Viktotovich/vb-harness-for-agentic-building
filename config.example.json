@@ -1,0 +1,41 @@
+{
+  "_comment": "Copy to config.json (git-ignored) or run `harness init`. Every value here is a placeholder or a default.",
+  "profiles": {
+    "default": {
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "model": "auto",
+      "apiKeyEnv": null,
+      "contextTokens": "probe",
+      "maxOutputTokens": 4000,
+      "temperature": null,
+      "thinking": { "control": "probe", "effort": "low", "budgetTokens": null },
+      "structuredOutput": "probe",
+      "toolCalls": "probe",
+      "concurrency": 1,
+      "timeoutSec": 900,
+      "promptNotes": null,
+      "swap": { "start": null, "stop": null, "readyTimeoutSec": 300 },
+      "fallback": null
+    }
+  },
+  "roles": {
+    "planner": "default",
+    "implementer": "default",
+    "fixer": "default",
+    "reviewer": "default",
+    "verifier": "default",
+    "summarizer": "default"
+  },
+  "stack": "auto",
+  "stacks": {},
+  "gateEnvAllow": [],
+  "maxFilesPerTask": 3,
+  "maxFixRounds": 3,
+  "maxReplanRounds": 2,
+  "maxDiagnostics": 20,
+  "maxLookups": 6,
+  "maxReviewFixTasks": 2,
+  "wholeFileRewriteMaxBytes": 4096,
+  "maxGateOutputBytes": 204800,
+  "dryRun": false
+}
