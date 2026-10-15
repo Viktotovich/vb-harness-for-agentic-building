@@ -1,0 +1,16 @@
+# Local config and run data (I13)
+config.json
+chats/
+runs/
+logs/
+.cache/
+harness.lock
+*.log
+*.gem
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/
