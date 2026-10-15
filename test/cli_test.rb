@@ -33,7 +33,7 @@ class CliTest < Minitest::Test
   end
 
   def test_unimplemented_command_says_so
-    code, _out, err = run_cli("status")
+    code, _out, err = run_cli("cleanup")
     assert_equal 2, code
     assert_includes err, "not implemented yet"
   end

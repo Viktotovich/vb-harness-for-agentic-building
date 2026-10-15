@@ -1,0 +1,3 @@
+# The prepared astro-mini repository (see eval/README.md), and the commit to run on.
+$HARNESS_EVAL_ASTRO
+HEAD

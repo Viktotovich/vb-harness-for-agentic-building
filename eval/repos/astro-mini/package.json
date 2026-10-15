@@ -1,0 +1,11 @@
+{
+  "name": "astro-mini",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "check": "astro check",
+    "test": "vitest run"
+  }
+}

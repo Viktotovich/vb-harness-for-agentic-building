@@ -4,6 +4,9 @@
 
 require "optparse"
 require_relative "cli/commands"
+require_relative "cli/eval_command"
+require_relative "cli/init"
+require_relative "cli/inspect"
 
 module Harness
   # Command-line entry point. Subcommands arrive milestone by milestone (DESIGN.md section 11.1).
@@ -33,6 +36,9 @@ module Harness
       end
       case name
       when "run", "answer", "resume" then Commands.call(name, args, out: out, err: err, env: env, input: input)
+      when "status", "report" then Inspect.call(name, args, out: out, err: err)
+      when "eval" then EvalCommand.call(args, out: out, err: err, env: env)
+      when "init" then init(args, out: out, err: err, env: env, input: input)
       else
         err.puts "harness: #{name} is not implemented yet"
         EXIT_CONFIG
@@ -41,6 +47,20 @@ module Harness
       err.puts "harness: #{e.message}"
       EXIT_CONFIG
     end
+
+    # @return [Integer]
+    def self.init(args, out:, err:, env:, input:)
+      path = "config.json"
+      OptionParser.new do |o|
+        o.banner = "Usage: harness init [--config FILE]"
+        o.on("--config FILE", "Where to write the config (default config.json)") { |v| path = v }
+      end.parse(args)
+      Init.new(input: input, out: out, path: path, env: env).call
+    rescue Init::Cancelled, ParseError => e
+      err.puts "harness init: #{e.message}"
+      EXIT_CONFIG
+    end
+    private_class_method :init
 
     # @param out [IO]
     # @return [OptionParser]

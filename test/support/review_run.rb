@@ -35,20 +35,25 @@ module TestSupport
 
     # @return [Harness::Config] the run fixture's stack plus a unit gate
     def self.config(base_url)
+      Harness::Config.parse(raw_config(base_url))
+    end
+
+    # @return [Hash] the same config as JSON
+    def self.raw_config(base_url)
       ruby = RbConfig.ruby
-      Harness::Config.parse({
-                              "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
-                              "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
-                              "stacks" => { "astro" => {
-                                "detect" => ["astro.config.mjs"],
-                                "gates" => {
-                                  "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check", "costRank" => 3 },
-                                  "unit" => { "argv" => [ruby, "tools/unit.rb", "{tests}"], "scope" => "tests", "costRank" => 4 }
-                                },
-                                "alwaysGates" => ["typecheck"],
-                                "protectedPaths" => [".env*", "tools/**"]
-                              } }
-                            })
+      {
+        "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
+        "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+        "stacks" => { "astro" => {
+          "detect" => ["astro.config.mjs"],
+          "gates" => {
+            "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check", "costRank" => 3 },
+            "unit" => { "argv" => [ruby, "tools/unit.rb", "{tests}"], "scope" => "tests", "costRank" => 4 }
+          },
+          "alwaysGates" => ["typecheck"],
+          "protectedPaths" => [".env*", "tools/**"]
+        } }
+      }
     end
 
     # @param system [String] a request's system prompt

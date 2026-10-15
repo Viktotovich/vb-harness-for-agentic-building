@@ -1,0 +1,8 @@
+---
+import Base from "../layouts/Base.astro";
+import { formatPrice } from "../lib/format";
+---
+<Base title="Home">
+  <h1>Welcome</h1>
+  <p>Plans start at {formatPrice(900)} a month.</p>
+</Base>

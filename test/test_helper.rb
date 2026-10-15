@@ -25,6 +25,13 @@ module TestSupport
       lines.flatten.each { |l| @string << l.to_s << (l.to_s.end_with?("\n") ? "" : "\n") }
       nil
     end
+
+    # @param parts [Array<Object>]
+    # @return [nil]
+    def print(*parts)
+      parts.each { |p| @string << p.to_s }
+      nil
+    end
   end
 
   # Capabilities a test client starts with; override per test with caps:.

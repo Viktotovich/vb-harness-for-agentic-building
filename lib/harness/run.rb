@@ -13,6 +13,7 @@ require_relative "repo/git"
 require_relative "repo/map"
 require_relative "repo/mirror"
 require_relative "repo/paths"
+require_relative "report/render"
 require_relative "review/reviewer"
 require_relative "repo/worktree"
 require_relative "state/events"
@@ -250,6 +251,11 @@ module Harness
              else 1
              end
       @setup.store.update_run({ "status" => %w[done failed stopped][code], "exitCode" => code, "head" => @setup.worktree.head })
+      State.write_json(File.join(@setup.store.dir, "integration.json"),
+                       integration.map { |c| { "gate" => c.gate, "verdict" => c.verdict, "status" => c.current.status, "reason" => c.current.reason } })
+      @setup.events.emit(stage: "report", kind: "stage_started")
+      path = Report::Render.write(@setup.store)
+      @setup.events.emit(stage: "report", kind: "stage_finished", detail: File.basename(path))
       Outcome.new(run_id: @setup.store.run_id, tasks: outcomes.values, integration: integration, exit_code: code,
                   branch: @setup.worktree.branch, worktree: @setup.worktree.root)
     end

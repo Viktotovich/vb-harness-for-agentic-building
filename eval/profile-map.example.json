@@ -1,0 +1,12 @@
+{
+  "_comment": "Each mapping overrides roles (and may add profiles) on top of config.json. Names and URLs are placeholders.",
+  "one-model": {
+    "roles": { "planner": "default", "implementer": "default", "reviewer": "default" }
+  },
+  "two-models": {
+    "profiles": {
+      "second": { "baseUrl": "http://127.0.0.1:8081/v1", "model": "auto" }
+    },
+    "roles": { "planner": "second", "implementer": "default", "fixer": "default", "reviewer": "second" }
+  }
+}

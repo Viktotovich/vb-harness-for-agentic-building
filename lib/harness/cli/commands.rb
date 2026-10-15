@@ -75,7 +75,16 @@ module Harness
       # @return [Pipeline]
       def self.pipeline(config_path, env, err)
         config = Config.load(config_path, env: env)
-        home = File.dirname(File.expand_path(config_path))
+        pipeline_for(config, File.dirname(File.expand_path(config_path)), env, err)
+      end
+
+      # A pipeline whose runs, logs and caches live under home.
+      # @param config [Config]
+      # @param home [String]
+      # @param env [Hash{String=>String}]
+      # @param err [IO] progress lines
+      # @return [Pipeline]
+      def self.pipeline_for(config, home, env, err)
         http = Model::Http.new
         probe = Model::Probe.new(http: http, cache_dir: File.join(home, ".cache"), env: env)
         log = Log.new(dir: File.join(home, "logs"), echo: err)
