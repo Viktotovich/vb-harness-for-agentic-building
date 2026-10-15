@@ -40,10 +40,48 @@ module Harness
       # @return [String]
       def task_dir(id) = File.join(@dir, "tasks", id)
 
+      # @return [String]
+      def lock_path = File.join(@dir, "harness.lock")
+
+      # @param text [String] the feature request, saved as runs/<runId>/request.md
+      # @return [void]
+      def write_request(text)
+        FileUtils.mkdir_p(@dir)
+        File.write(File.join(@dir, "request.md"), text, encoding: "UTF-8")
+      end
+
+      # @return [String, nil]
+      def read_request
+        File.read(File.join(@dir, "request.md"), encoding: "UTF-8")
+      rescue Errno::ENOENT
+        nil
+      end
+
+      # @return [Boolean]
+      def exist?
+        File.file?(File.join(@dir, "run.json"))
+      end
+
       # @param data [Hash]
       # @return [void]
       def write_run(data)
         State.write_json(File.join(@dir, "run.json"), data)
+      end
+
+      # @return [Hash] run.json, or {} when there is none yet
+      def read_run
+        JSON.parse(File.read(File.join(@dir, "run.json"), encoding: "UTF-8"))
+      rescue Errno::ENOENT
+        {}
+      end
+
+      # Merge fields into run.json.
+      # @param fields [Hash]
+      # @return [Hash] the new content
+      def update_run(fields)
+        data = read_run.merge(fields)
+        write_run(data)
+        data
       end
 
       # @param id [String]

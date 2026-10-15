@@ -52,18 +52,66 @@ module Harness
       # @param done [Array<String>] one-line summaries of tasks already committed
       # @return [Outcome]
       def run(task, done: [])
+        start(task, done)
+        guarded { from_the_start }
+      end
+
+      # Continue a task from its saved state.json after a stop or crash. Before the edits were applied, the
+      # task starts over (its partial work is reverted); after that, it continues at the gates; a task whose
+      # commit already landed is done.
+      # @param task [Plan::Task]
+      # @param saved [Hash] the task's state.json
+      # @param done [Array<String>]
+      # @return [Outcome]
+      def resume(task, saved, done: [])
+        start(task, done)
+        state = saved["state"].to_s
+        emit("task.gather", "retried", detail: "resumed from #{state.empty? ? 'pending' : state}")
+        guarded do
+          if CONTINUE_AT_GATES.include?(state)
+            @fix_rounds = saved["fixRounds"].to_i
+            @touched.merge(Array(saved["touched"]))
+            @created.merge(Array(saved["created"]))
+            next landed if @ctx.worktree.head_subject.start_with?("#{task.id}: ")
+
+            fix_until_green
+            review
+            commit
+          else
+            @ctx.worktree.revert!(created: Array(saved["created"]))
+            from_the_start
+          end
+        end
+      end
+
+      CONTINUE_AT_GATES = %w[applied gating fixing reviewing committing].freeze
+
+      private
+
+      # @return [void]
+      def start(task, done)
         @task = task
         @done = done
         @fix_rounds = 0
         @touched = Set.new
         @created = Set.new
         @last_gates = []
+      end
+
+      # @return [Outcome]
+      def from_the_start
         step("gathering")
         edit_set = implement
         apply(edit_set, :implementer, @implement_messages)
         fix_until_green
         review
         commit
+      end
+
+      # Turn the ways a task can fail into a blocked Outcome.
+      # @return [Outcome]
+      def guarded
+        yield
       rescue Blocked => e
         block(e.reason, e.message)
       rescue TaskTooLargeError, ContextOverflowError => e
@@ -73,7 +121,14 @@ module Harness
         block("model.unavailable", e.message)
       end
 
-      private
+      # The task's commit is already HEAD (the process stopped right after committing).
+      # @return [Outcome]
+      def landed
+        sha = @ctx.worktree.head
+        emit("task.commit", "done", subject: "task", detail: sha[0, 12])
+        save("done", commit: sha)
+        Outcome.new(id: @task.id, status: "done", commit: sha, fix_rounds: @fix_rounds, reason: nil, detail: nil, gates: [])
+      end
 
       # --- implement and apply ---
 
@@ -320,17 +375,13 @@ module Harness
 
       # @return [String] the task as planned, fenced (planner output is model output, I9)
       def task_text
-        acceptance = @task.acceptance.map { |a| "- #{a.summary}" }.join("\n")
-        Untrusted.fence("#{@task.id}: #{@task.title}\n#{@task.intent}\n\nAcceptance:\n#{acceptance}")
+        Untrusted.fence(@task.prompt_text)
       end
 
       # @return [Bundle]
       def gather(system)
         role = @fix_rounds.zero? ? :implementer : :fixer
-        caps = @ctx.client.capabilities(role)
-        reserved = @ctx.config.profile_for(role).max_output_tokens
-        schema = JSON.generate(EditSet::SCHEMA)
-        budget = caps.context_tokens - Model::Tokens.estimate(system) - Model::Tokens.estimate(schema) - reserved - 64
+        budget = Gather.budget(client: @ctx.client, config: @ctx.config, role: role, system: system, schema: EditSet::SCHEMA)
         emit("task.gather", "stage_started")
         bundle = Gather.build(task: @task, root: @ctx.worktree.root, budget: budget, protected: @ctx.stack.protected_paths,
                               task_text: task_text, done: @done)

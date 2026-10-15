@@ -77,6 +77,12 @@ module Harness
         @git.run(%w[rev-parse HEAD], chdir: @root).strip
       end
 
+      # @return [String] subject line of the last commit
+      # @raise [GitError]
+      def head_subject
+        @git.run(%w[log -1 --format=%s], chdir: @root).strip
+      end
+
       # @return [Boolean] true when the worktree has uncommitted changes or untracked files
       # @raise [GitError]
       def dirty?

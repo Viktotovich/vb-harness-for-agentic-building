@@ -44,7 +44,7 @@ module Harness
 
         events.emit(stage: "intake", kind: "rejected", subject: r.gate, reason: "gate.skipped:#{r.gate}", detail: r.reason.to_s[0, 300])
       end
-      store.write_run({ "status" => "running", "repo" => worktree.repo, "worktree" => worktree.root, "branch" => worktree.branch,
+      store.update_run({ "status" => "planning", "repo" => worktree.repo, "worktree" => worktree.root, "branch" => worktree.branch,
                         "baseSha" => worktree.base_sha, "stack" => stack.name })
       events.emit(stage: "intake", kind: "stage_finished", detail: "stack #{stack.name}, base #{worktree.base_sha[0, 12]}")
       Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: baseline, events: events, store: store, env: env)
@@ -75,12 +75,34 @@ module Harness
                                reviewer: reviewer)
     end
 
+    # Reattach to a run started earlier (resume and answer): its worktree, stack, baseline and event log.
+    # @param config [Config]
+    # @param store [State::RunStore]
+    # @param parent_env [Hash{String=>String}]
+    # @return [Setup]
+    # @raise [ConfigError] when the run or its worktree is gone
+    def self.reattach(config:, store:, parent_env: ENV)
+      run = store.read_run
+      raise ConfigError, "no run #{store.run_id}" if run.empty?
+      raise ConfigError, "the worktree of run #{store.run_id} is gone (#{run['worktree']})" unless File.directory?(run["worktree"].to_s)
+
+      env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
+      worktree = Repo::Worktree.new(repo: run["repo"], root: run["worktree"], branch: run["branch"], base_sha: run["baseSha"],
+                                    git: Repo::Git.new(env: env))
+      stack = config.stacks.fetch(run["stack"]) { raise ConfigError, "stack #{run['stack']} is no longer configured" }
+      runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
+      Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: Gates::Baseline.load(store.baseline_path),
+                events: State::Events.new(path: store.events_path, run_id: store.run_id), store: store, env: env)
+    end
+
     # Run every task in dependency order. Dependants of a task that is not done are skipped; independent
     # tasks continue. A model outage stops the queue.
     # @param plan [Plan::Plan]
+    # @param resume [Boolean] continue each task from its saved state instead of starting fresh
     # @return [Outcome]
-    def execute(plan)
+    def execute(plan, resume: false)
       State.write_json(@setup.store.plan_path, plan.to_json_hash)
+      @setup.store.update_run({ "status" => "running" })
       outcomes = {}
       stopped = false
       plan.ordered.each do |task|
@@ -94,7 +116,10 @@ module Harness
           next
         end
         done = outcomes.values.select { |o| o.status == "done" }.map { |o| "#{o.id}: #{plan.task(o.id).title}" }
-        outcomes[task.id] = Task::Loop.new(@ctx).run(task, done: done)
+        saved = resume ? @setup.store.read_task_state(task.id) : nil
+        # A stop before the task saved any state can still leave edits behind: start from the last commit.
+        @setup.worktree.revert! if resume && %w[pending skipped].include?(saved&.fetch("state", nil) || "pending") && @setup.worktree.dirty?
+        outcomes[task.id] = run_task(task, done, saved)
         stopped = outcomes[task.id].reason == "model.unavailable"
       end
       integration = stopped ? [] : run_integration
@@ -102,6 +127,24 @@ module Harness
     end
 
     private
+
+    # Finished tasks keep their outcome on resume; skipped tasks and those stopped by a model outage run again.
+    # @return [Task::Outcome]
+    def run_task(task, done, saved)
+      loop_ = Task::Loop.new(@ctx)
+      case saved&.fetch("state", nil)
+      when nil, "pending", "skipped" then loop_.run(task, done: done)
+      when "done"
+        Task::Outcome.new(id: task.id, status: "done", commit: saved["commit"], fix_rounds: saved["fixRounds"].to_i,
+                          reason: nil, detail: "finished before resume", gates: [])
+      when "blocked"
+        return loop_.run(task, done: done) if saved["reason"] == "model.unavailable"
+
+        Task::Outcome.new(id: task.id, status: "blocked", commit: nil, fix_rounds: saved["fixRounds"].to_i,
+                          reason: saved["reason"], detail: "blocked before resume", gates: [])
+      else loop_.resume(task, saved, done: done)
+      end
+    end
 
     # @return [Task::Outcome]
     def skip(task, why)
@@ -138,10 +181,7 @@ module Harness
              elsif green then 0
              else 1
              end
-      @setup.store.write_run({ "status" => %w[done failed stopped][[0, 1, 2].index(code)], "exitCode" => code,
-                               "repo" => @setup.worktree.repo, "worktree" => @setup.worktree.root,
-                               "branch" => @setup.worktree.branch, "baseSha" => @setup.worktree.base_sha,
-                               "stack" => @setup.stack.name, "head" => @setup.worktree.head })
+      @setup.store.update_run({ "status" => %w[done failed stopped][code], "exitCode" => code, "head" => @setup.worktree.head })
       Outcome.new(run_id: @setup.store.run_id, tasks: outcomes.values, integration: integration, exit_code: code,
                   branch: @setup.worktree.branch, worktree: @setup.worktree.root)
     end
