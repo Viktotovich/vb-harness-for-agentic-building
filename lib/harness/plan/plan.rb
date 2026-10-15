@@ -35,6 +35,12 @@ module Harness
       def writable
         (files.create + files.modify + test_paths).uniq
       end
+
+      # @return [String] the task as a model sees it (callers fence it: plans are model output, I9)
+      def prompt_text
+        lines = acceptance.map { |a| "- #{a.summary}" }.join("\n")
+        "#{id}: #{title}\n#{intent}\n\nAcceptance:\n#{lines}"
+      end
     end
 
     Question = Data.define(:text, :blocking)

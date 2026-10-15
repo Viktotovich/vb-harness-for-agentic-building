@@ -22,6 +22,7 @@ module Harness
         "plan.cycle" => "tasks depend on each other in a cycle",
         "plan.no_acceptance" => "task has no gate or test to prove it",
         "plan.too_large_for_context" => "task too large for the context",
+        "plan.unknown_gate" => "plan names a gate the stack does not define",
         "edit.search_not_found" => "edit search text not found",
         "edit.search_ambiguous" => "edit search text matched more than once",
         "edit.undeclared_path" => "edit to a file the task does not declare",

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require "json"
 require_relative "../errors"
 require_relative "../model/tokens"
 require_relative "../repo/paths"
@@ -45,6 +46,20 @@ module Harness
           end
         end
         Bundle.new(sections: sections.freeze, tokens: used, omitted: omitted.freeze)
+      end
+
+      # Tokens left for the task and its context: the role's context minus its system prompt, the reply
+      # schema and the reserved output (DESIGN.md 7).
+      # @param client [Model::Client]
+      # @param config [Config]
+      # @param role [Symbol]
+      # @param system [String] the system prompt the call will use
+      # @param schema [Hash]
+      # @return [Integer]
+      def self.budget(client:, config:, role:, system:, schema:)
+        caps = client.capabilities(role)
+        caps.context_tokens - Model::Tokens.estimate(system) - Model::Tokens.estimate(JSON.generate(schema)) -
+          config.profile_for(role).max_output_tokens - Model::Tokens::MESSAGE_OVERHEAD * 2
       end
 
       # @return [String] "File <path>:" and the fenced content, or a note for a file that does not exist yet
