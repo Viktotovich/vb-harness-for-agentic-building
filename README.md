@@ -7,7 +7,7 @@ hallucinated APIs, wrong changes, broken JSON and small context windows.
 
 AstroJS is the first supported stack. Any OpenAI-compatible model works: LM Studio, Ollama or your own endpoint.
 
-**Status: early development (milestone M4: `harness run --request` plans and builds; `answer` and `resume` work).**
+**Status: early development (milestone M5: a context map of imports, exports and Astro routes packs each prompt by priority).**
 
 ## Key points
 

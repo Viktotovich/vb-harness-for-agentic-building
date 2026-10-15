@@ -150,3 +150,34 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   One run is one worktree, so this is the same "one run per worktree" rule.
 - **Run statuses** in `run.json`: `planning`, `waiting`, `planned`, `plan_rejected`, `running`, `done`, `failed`,
   `stopped`.
+
+## M5: context map and packing
+
+- **Files the map leaves out** are the REVIEWER `skipReason` lists (binaries, lockfiles, build output, generated
+  and minified files, lines over 1000 bytes), plus `.git/`, `.cache/`, files over 1 MB and every `protectedPaths`
+  match. A protected file is never listed, described or summarised.
+- **The map cache** is `.cache/map/<sha256>.json`, keyed by the file's language and content hash, so a rescan
+  reads every file but parses only changed ones. Summaries are cached next to it by content hash.
+- **Import resolution:** relative specifiers, the `~/` and `@/` aliases (both read as `src/`), a `.js` or `.jsx`
+  specifier that names a `.ts` or `.tsx` file, and `index` files. Package imports and `tsconfig` paths beyond
+  those two aliases are not resolved.
+- **A signature** is the file's path, language and size, its route, `getStaticPaths`, resolved imports, export
+  names, content collections, the `Props` type text, and each export line as written. Ruby and Python files
+  list their `class`, `module` and `def` lines.
+- **Content collections** are found where `defineCollection` is assigned (`const blog = defineCollection(...)`).
+  The file holding that call is where the schema lives.
+- **Packing is strict:** sections go in priority order, and once one does not fit, it and everything after it
+  are omitted, so the lowest priorities are always trimmed first. The one fallback is a `files.read` file that
+  does not fit in full: its signature is tried in the same place.
+- **Diagnostics and the diff in a fix round are counted before every optional section** and never trimmed. The
+  loop already caps diagnostics at `maxDiagnostics`, and a fix round without them is useless.
+- **Signatures and summaries cover direct imports and importers** of the task's files (`related`, depth 1),
+  nearest first. At most 6 summaries are made per bundle. The planner overview uses depth 2 and at most 8.
+- **Summaries come from the summarizer role** and are made only when a bundle has room for them. A model failure,
+  or a reply that reads like an instruction (I9), means no summary. Large files are cut to the summarizer's
+  context first.
+- **Docs passages (priority 5) are not packed yet.** They need the REVIEWER docs retrieval, which comes with
+  the review port in M6.
+- **A task that does not fit at run time is still blocked** (`plan.too_large_for_context`), not sent back to
+  the planner. Plan checks already catch this before the run starts, so the run-time case means the files grew
+  during the run.
