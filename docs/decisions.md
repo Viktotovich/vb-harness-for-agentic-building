@@ -262,3 +262,36 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   named `config` uses the config as it is.
 - **Not verified yet:** the ten hidden tests have not run against a real Astro install here (no Node packages were
   downloaded). They use the container API and may need small fixes on the first manual eval.
+
+## M8: onboarding and the app
+
+- **Fonts:** InterVariable.woff2, InterVariable-Italic.woff2 and OFL.txt from the official Inter 4.1 release
+  (github.com/rsms/inter), downloaded with the user's approval. Nothing else is bundled; no CDN.
+- **Guardrail changes approved by the user:** the I3 scan skips binary files (the fonts), and still scans every
+  text file under `lib/`, `app.js` included (which therefore has no backticks). The I4 call-site test lists four
+  places that start processes: the git wrapper, the gate runner, the fixed provider subcommands, and the
+  first-start browser opener. A new I4 test pins the provider subcommand list.
+- **Server:** one thread per connection, one request per connection, headers up to 16 KB and bodies up to 1 MB.
+  Refusals: 421 for a foreign Host, 403 for a missing token or foreign Origin, 400 for a POST without a JSON
+  body, 405 for other methods. CSP, nosniff, no-referrer, DENY framing and same-origin policies on every
+  response; no CORS headers.
+- **The token** is 32 random bytes per start, in a meta tag of the page. GET requests need no token: they change
+  nothing.
+- **Chat mode** streams through `Model::Stream` (server-sent chunks), with reasoning fields and inline `<think>`
+  tags split into a Thinking block. Context fitting keeps the newest messages that fit in the probed context
+  minus the output reserve, the system prompt and 600 tokens for the summary; older messages are summarised once
+  by the chat's own model and the summary is cached in the chat.
+- **Build mode** runs the pipeline in a thread of the app process (no subprocess). The run id is chosen before
+  intake so the card appears at once. Events stream by SSE from `after=<seq>`; the page drops events it has seen,
+  so reconnects never duplicate. Answers are one per line in the text box.
+- **The progress view** folds events in the browser the same way `Events.fold` does; reason texts come from
+  `Reasons::TEXT` in each event (`reasonText`).
+- **Providers:** LM Studio and Ollama are probed in parallel with 2 s timeouts. CLI actions: `lms server start`,
+  `ls --json`, `load <key>`, `ps`; `ollama list`, `pull <name>`, `ps`; model names match
+  `/\A[\w.:\/@-]{1,200}\z/`. The first provider set up takes every role; later ones are added as profiles.
+  `harness init` runs the same detection and offers what it found.
+- **Mirrored dependencies are protected (I11).** Every `dependencyDirs` folder is added to the stack's protected
+  paths, and `node_modules` is protected in every stack, so no edit, test or tool result can target them. Every
+  file the harness writes in a worktree goes through `Repo::AtomicFile` (a temporary file renamed over the
+  target), which replaces a hard link instead of writing through it. Remaining risk: a project tool run by a gate
+  could rewrite a mirrored file in place; the gates are the user's own commands.
