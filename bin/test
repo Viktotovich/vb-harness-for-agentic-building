@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 V and Bruno LLC
+
+# Runs the test suite in one process: `ruby bin/test` for everything, or `ruby bin/test FILE...`.
+
+root = File.expand_path("..", __dir__)
+files = ARGV.empty? ? Dir.glob("test/**/*_test.rb", base: root).sort : ARGV.dup
+ARGV.clear # minitest reads ARGV for its own options
+files.each { |f| require File.expand_path(f, root) }

@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 V and Bruno LLC
+
+# Pre-commit check (DESIGN.md section 2): warnings-clean syntax check of every Ruby file,
+# the guardrail scans (test/guardrails_test.rb), then the rest of the test suite.
+
+require_relative "../lib/harness"
+
+ROOT = File.expand_path("..", __dir__)
+RUBY = RbConfig.ruby
+CHILD_ENV_KEYS = %w[PATH PATHEXT SystemRoot COMSPEC TEMP TMP TMPDIR HOME USERPROFILE APPDATA LOCALAPPDATA LANG LC_ALL].freeze
+
+# @return [Hash{String=>String}] a minimal environment for the checks' child processes
+def child_env
+  CHILD_ENV_KEYS.each_with_object({}) { |k, env| env[k] = ENV[k] if ENV[k] }
+end
+
+# @param argv [Array<String>]
+# @return [Harness::Exec::Result]
+def run(argv, timeout: 900)
+  Harness::Exec.run(argv, chdir: ROOT, env: child_env, timeout: timeout, max_output: 4 * 1024 * 1024)
+end
+
+ruby_files = Dir.glob(%w[lib/**/*.rb test/**/*.rb eval/**/*.rb exe/* bin/* *.gemspec], base: ROOT).sort
+bad = ruby_files.filter_map do |file|
+  r = run([RUBY, "-wc", file], timeout: 60)
+  next if r.success? && r.stderr.strip.empty?
+
+  "#{file}:\n#{r.stderr}#{r.stdout unless r.success?}"
+end
+if bad.empty?
+  puts "syntax:     #{ruby_files.size} files OK, no warnings"
+else
+  puts "syntax:     FAILED"
+  puts bad
+end
+
+guard = run([RUBY, "-w", "bin/test", "test/guardrails_test.rb"])
+puts guard.success? ? "guardrails: OK" : "guardrails: FAILED\n#{guard.stdout}#{guard.stderr}"
+
+others = Dir.glob("test/**/*_test.rb", base: ROOT).sort - ["test/guardrails_test.rb"]
+tests = run([RUBY, "-w", "bin/test", *others])
+summary = tests.stdout.lines.grep(/runs,.*assertions/).last&.strip || "no summary"
+puts tests.success? ? "tests:      OK (#{summary})" : "tests:      FAILED\n#{tests.stdout}#{tests.stderr}"
+
+exit(bad.empty? && guard.success? && tests.success? ? 0 : 1)
