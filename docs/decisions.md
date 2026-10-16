@@ -295,3 +295,27 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
   file the harness writes in a worktree goes through `Repo::AtomicFile` (a temporary file renamed over the
   target), which replaces a hard link instead of writing through it. Remaining risk: a project tool run by a gate
   could rewrite a mirrored file in place; the gates are the user's own commands.
+
+## Shakedown with a real model
+
+A first run with a local model on a real Astro 7 project found three bugs, each fixed with a test:
+
+- **Inspection-only tasks** (empty `files.create` and `files.modify`) are rejected by the plan checks
+  (`plan.no_changes`), and the planner prompt says to put the reading into the task that writes.
+- **A test the task writes** (`{"kind": "test", "write": true}`) is added to `files.create` when the plan does not
+  list it under `files.modify`, so the checks, the file count and the edit rules all see it. The edit rules name
+  the exact test path to use.
+- **Unparsed gate output** (no parser, only the output tail) is compared with volatile text normalised: ANSI
+  colours, ISO dates, clock times, durations, sizes, run ids, worktree and temp paths, and content hashes. Two
+  unparsed failures match when their exit status and normalised tails are equal; a changed count such as "3 tests
+  failed" still regresses. An `astro build` failing identically at baseline and integration is no longer
+  "regressed".
+- **The eval template** used `/// <reference types="vitest" />`, which Astro 7's types reject; it now uses
+  `vitest/config`, and `astro check` is clean on it. Hidden test 01 passes against a reference solution on
+  Astro 7.4.
+
+## App colours (changed at the user's request)
+
+The dark purples of DESIGN.md 11.4 are replaced by neutral blacks (`--bg #0b0b0d`, `--surface #16161a`, `--border
+#2b2b33`), the light purple is much lighter (`--accent-soft #ddcbff`), and corners are 4px (cards, inputs) and 3px
+(buttons). The brand purple `--accent #5809e0` stays the one strong colour.
