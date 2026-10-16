@@ -38,6 +38,7 @@ module Harness
           "## Gates against the baseline", "", *gates(data), "",
           "## Findings", "", *findings(data), "",
           "## Questions", "", *questions(data), "",
+          "## Suspicious text", "", *suspicious(data), "",
           "## Blocked tasks", "", *blocked(data), "",
           "## Rejections", "", *rejections(data), "",
           "## Cost", "", *cost(data), ""
@@ -170,6 +171,20 @@ module Harness
         out.empty? ? ["None."] : ["Claims here are model output that no test confirmed; they are not findings.", "", *out]
       end
 
+      # Instruction-like text found in repository content during the tasks, and what the review flagged in a change.
+      # @return [Array<String>]
+      def self.suspicious(data)
+        found = data.events.select { |e| e["reason"] == "untrusted.instruction_like" }.map do |e|
+          "- #{e['task'] || 'run'}, #{code(e['subject'])}: #{line(e['detail'], 200)}"
+        end
+        all_reviews(data).each do |where, r|
+          Array(r["suspicious"]).each { |q| found << "- Review of #{where}: \"#{line(q, 200)}\"" }
+        end
+        return ["None found."] if found.empty?
+
+        ["Text in the repository that reads like instructions to a model. The model was told it is data, and the gates "          "decided every task; check these files for planted text.", "", *found.uniq]
+      end
+
       # @return [Array<String>]
       def self.blocked(data)
         ids = data.states.select { |_, s| s["state"] == "blocked" }.keys
@@ -234,7 +249,7 @@ module Harness
         m, s = rest.divmod(60)
         h.positive? ? "#{h}h #{m}m" : "#{m}m #{s}s"
       end
-      private_class_method :summary, :tasks, :gates, :findings, :questions, :blocked, :rejections, :cost, :all_reviews
+      private_class_method :summary, :tasks, :gates, :findings, :questions, :suspicious, :blocked, :rejections, :cost, :all_reviews
     end
   end
 end

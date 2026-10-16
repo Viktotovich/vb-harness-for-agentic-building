@@ -357,3 +357,14 @@ This departs from DESIGN.md 16, which describes a CI workflow.
   files.
 - **Layout:** the main column is `minmax(0, 1fr)` and the top bar and composer wrap, so nothing runs past the right
   edge at narrow widths.
+
+## Instruction-like text in task context
+
+Before each implement or fix call, every section of the context bundle (files, signatures, summaries) is scanned
+with the same patterns the review uses. A match is recorded as a `task.gather` event with reason
+`untrusted.instruction_like` (once per task and source), named to the model in a fenced warning that says it is
+data, and listed in the report's "Suspicious text" section together with what the review flagged. It never blocks
+a task: a pattern match catches common phrasings, misses reworded ones and can fire on harmless text (a security
+doc, a test fixture), so blocking on it would be both unreliable and easy to trip. The protection against planted
+instructions remains structural: the nonce fence (I9), edits limited to declared files (I2), and gates deciding
+done (I7).

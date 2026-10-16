@@ -10,8 +10,9 @@ require_relative "../untrusted"
 
 module Harness
   module Task
-    # sections: prompt-ready text blocks, each already fenced; tokens: their estimate; omitted: what did not fit.
-    Bundle = Data.define(:sections, :tokens, :omitted)
+    # sections: prompt-ready text blocks, each already fenced; tokens: their estimate; omitted: what did not fit;
+    # suspicious: instruction-like text found in the repository content of the sections (Untrusted::Hit list).
+    Bundle = Data.define(:sections, :tokens, :omitted, :suspicious)
 
     # Context bundle for the implementer and fixer (DESIGN.md 7), filled in priority order:
     # 1. the task text; 2. the files it modifies or creates, in full, then the files it reads, in full or as a
@@ -53,7 +54,9 @@ module Harness
           summaries(map, related, summarize, packer)
         end
         packer.add("completed tasks", "Completed tasks:\n#{Untrusted.fence(done.join("\n"))}") unless done.empty?
-        packer.bundle
+        bundle = packer.bundle
+        hits = Untrusted.detect_injection(bundle.sections.map { |s| [s.lines.first.to_s.strip.chomp(":"), s] })
+        bundle.with(suspicious: hits.freeze)
       end
 
       # Tokens left for the task and its context: the role's context minus its system prompt, the reply
@@ -114,7 +117,7 @@ module Harness
         def full? = @full
 
         # @return [Bundle]
-        def bundle = Bundle.new(sections: @sections.freeze, tokens: @used, omitted: @omitted.uniq.freeze)
+        def bundle = Bundle.new(sections: @sections.freeze, tokens: @used, omitted: @omitted.uniq.freeze, suspicious: [])
       end
 
       # @return [void]

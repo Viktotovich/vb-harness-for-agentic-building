@@ -268,7 +268,10 @@ The harness assumes the model can be wrong or manipulated, and limits what it ca
 - **Scrubbed environment.** Gates run without your tokens and secrets unless you list them in `gateEnvAllow`.
 - **Tools decide.** A task is done only when its blocking gates pass or fail exactly as they did at baseline.
 - **Untrusted text is fenced.** Repository content, docs, gate output and model output reach a model only inside a
-  fenced block marked as data, never as instructions; the review reports instruction-like text it finds in a change.
+  fenced block marked as data, never as instructions. Instruction-like text in your files ("ignore previous
+  instructions", "note to the AI", ...) is also pointed out to the model as data and listed in the report. That
+  detection is a pattern match: it catches common phrasings, not every reworded attempt, so it warns and never
+  blocks. The fence, the fixed edit format and your gates are what keep a planted instruction from taking effect.
 - **Findings need proof.** A review claim is presented as fact only when a test confirmed it.
 - **No installs.** The harness never installs your project's dependencies; you do.
 - **Your checkout is untouched.** All work happens on a branch in a separate worktree.
