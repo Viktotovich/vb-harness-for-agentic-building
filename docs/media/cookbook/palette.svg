@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 200" width="1080" height="200" font-family="Segoe UI, system-ui, sans-serif">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 V and Bruno LLC -->
+<rect width="1080" height="200" fill="#fbf8f2"/>
+<rect x="6" y="12" width="86.18181818181819" height="96" rx="6" fill="#fbf8f2" stroke="#ddd2bf"/>
+<text x="6" y="132" font-size="14" font-weight="600" fill="#0d3b42">sand-50</text>
+<text x="6" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#fbf8f2</text>
+<text x="6" y="172" font-size="12" fill="#5b6869">page</text>
+<rect x="104.18181818181819" y="12" width="86.18181818181819" height="96" rx="6" fill="#f3ecdf" stroke="#ddd2bf"/>
+<text x="104.18181818181819" y="132" font-size="14" font-weight="600" fill="#0d3b42">sand-100</text>
+<text x="104.18181818181819" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#f3ecdf</text>
+<text x="104.18181818181819" y="172" font-size="12" fill="#5b6869">sections</text>
+<rect x="202.36363636363637" y="12" width="86.18181818181819" height="96" rx="6" fill="#ddd2bf" stroke="#ddd2bf"/>
+<text x="202.36363636363637" y="132" font-size="14" font-weight="600" fill="#0d3b42">border</text>
+<text x="202.36363636363637" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#ddd2bf</text>
+<text x="202.36363636363637" y="172" font-size="12" fill="#5b6869">hairlines</text>
+<rect x="300.54545454545456" y="12" width="86.18181818181819" height="96" rx="6" fill="#145561" stroke="#ddd2bf"/>
+<text x="300.54545454545456" y="132" font-size="14" font-weight="600" fill="#0d3b42">teal-700</text>
+<text x="300.54545454545456" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#145561</text>
+<text x="300.54545454545456" y="172" font-size="12" fill="#5b6869">links</text>
+<rect x="398.72727272727275" y="12" width="86.18181818181819" height="96" rx="6" fill="#0d3b42" stroke="#ddd2bf"/>
+<text x="398.72727272727275" y="132" font-size="14" font-weight="600" fill="#0d3b42">teal-900</text>
+<text x="398.72727272727275" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#0d3b42</text>
+<text x="398.72727272727275" y="172" font-size="12" fill="#5b6869">headings, footer</text>
+<rect x="496.90909090909093" y="12" width="86.18181818181819" height="96" rx="6" fill="#b5472f" stroke="#ddd2bf"/>
+<text x="496.90909090909093" y="132" font-size="14" font-weight="600" fill="#0d3b42">clay-600</text>
+<text x="496.90909090909093" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#b5472f</text>
+<text x="496.90909090909093" y="172" font-size="12" fill="#5b6869">buttons</text>
+<rect x="595.0909090909091" y="12" width="86.18181818181819" height="96" rx="6" fill="#943822" stroke="#ddd2bf"/>
+<text x="595.0909090909091" y="132" font-size="14" font-weight="600" fill="#0d3b42">clay-700</text>
+<text x="595.0909090909091" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#943822</text>
+<text x="595.0909090909091" y="172" font-size="12" fill="#5b6869">button hover</text>
+<rect x="693.2727272727273" y="12" width="86.18181818181819" height="96" rx="6" fill="#f7cdbc" stroke="#ddd2bf"/>
+<text x="693.2727272727273" y="132" font-size="14" font-weight="600" fill="#0d3b42">peach-200</text>
+<text x="693.2727272727273" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#f7cdbc</text>
+<text x="693.2727272727273" y="172" font-size="12" fill="#5b6869">soft fills</text>
+<rect x="791.4545454545455" y="12" width="86.18181818181819" height="96" rx="6" fill="#f2b69f" stroke="#ddd2bf"/>
+<text x="791.4545454545455" y="132" font-size="14" font-weight="600" fill="#0d3b42">peach-300</text>
+<text x="791.4545454545455" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#f2b69f</text>
+<text x="791.4545454545455" y="172" font-size="12" fill="#5b6869">tile rules</text>
+<rect x="889.6363636363637" y="12" width="86.18181818181819" height="96" rx="6" fill="#3b4a4c" stroke="#ddd2bf"/>
+<text x="889.6363636363637" y="132" font-size="14" font-weight="600" fill="#0d3b42">text-body</text>
+<text x="889.6363636363637" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#3b4a4c</text>
+<text x="889.6363636363637" y="172" font-size="12" fill="#5b6869">body text</text>
+<rect x="987.8181818181819" y="12" width="86.18181818181819" height="96" rx="6" fill="#5b6869" stroke="#ddd2bf"/>
+<text x="987.8181818181819" y="132" font-size="14" font-weight="600" fill="#0d3b42">text-muted</text>
+<text x="987.8181818181819" y="152" font-size="13" fill="#3b4a4c" font-family="Consolas, monospace">#5b6869</text>
+<text x="987.8181818181819" y="172" font-size="12" fill="#5b6869">captions</text>
+</svg>
