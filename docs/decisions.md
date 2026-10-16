@@ -436,3 +436,21 @@ compiles, not that it matches the request. Three changes, none tied to a model:
   `../components/Layout.astro` for a file at `src/layouts/Layout.astro`. When a diagnostic reads "Cannot find module
   'x'" (or a bundler's "Could not resolve" / "Failed to resolve import"), the fixer is shown up to five repository
   files with the same base name.
+
+## A role that keeps running out of room stops thinking
+
+In the same runs, a verifier reply with thinking on often ran for about three minutes, used its whole output
+allowance on thinking, and then answered in seconds when asked again with thinking off. Run 2 had 17 such replies.
+The client now counts, per role, the replies that ran out of room (`model.thinking_exhausted` or
+`model.truncated`) while thinking was on. After two, that role asks with thinking off from the start for the rest
+of the run, and the log says so once. Other roles keep thinking. The count lives in the client, which is made per
+run, so the next run starts with thinking on again.
+
+## A retry sees the file as the accepted edits left it
+
+In the cookbook's layout run, a task sent three edits to one file. The first changed the file, the other two
+searched for text the first had already replaced, and both were refused. The retry showed the model the file as
+it was before any edit, while its retried edits were applied after the accepted one, so they failed again and
+the task was blocked. Now the edit rules say that edits to one file apply in order and must not overlap, and
+that a small file can be rewritten whole instead. When a retry is needed, it includes each file with refused edits
+as the accepted edits left it (fenced, up to 12,000 characters in all), and says to copy the search text from that.

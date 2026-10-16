@@ -83,8 +83,11 @@ module Harness
     module Edits
       # A refused edit, with a reason code from DESIGN.md 10.3 and a message for the model.
       Rejection = Data.define(:edit, :reason, :message)
-      # written: relative paths changed; created: relative paths that did not exist before.
-      Result = Data.define(:written, :created, :rejections) do
+      # written: relative paths changed; created: relative paths that did not exist before; staged: when some edits
+      # were refused, each file as the accepted edits left it (nil for a file they delete), for the model's retry.
+      Result = Data.define(:written, :created, :rejections, :staged) do
+        def initialize(written:, created:, rejections:, staged: {}) = super
+
         # @return [Boolean]
         def ok?
           rejections.empty?
@@ -107,7 +110,10 @@ module Harness
           rejection = stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes)
           rejections << rejection if rejection
         end
-        return Result.new(written: [], created: [], rejections: rejections) unless rejections.empty?
+        unless rejections.empty?
+          staged = files.select { |rel, _| rejections.any? { |r| declared_path(r.edit.path) == rel } }.transform_values { |f| f[:after] }
+          return Result.new(written: [], created: [], rejections: rejections, staged: staged)
+        end
 
         write_all(files)
         changed = files.reject { |_, f| f[:before] == f[:after] }

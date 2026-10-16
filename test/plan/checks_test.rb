@@ -58,7 +58,7 @@ class ChecksTest < Minitest::Test
     assert_equal ["tests/a.test.ts"], t.files.create
     assert_includes t.writable, "tests/a.test.ts"
     assert_empty issues(task("T1", acceptance: [written]))
-    rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: t.test_paths)
+    rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: t.test_paths, rewrite_bytes: 4096)
     assert_includes rules, "Edit only these files: src/a.ts, tests/a.test.ts."
     assert_includes rules, "Write the test for this task exactly at tests/a.test.ts"
     i = only(issues(task("T2", acceptance: [written.merge("path" => "src/b.ts")])))

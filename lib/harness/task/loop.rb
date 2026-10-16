@@ -40,6 +40,7 @@ module Harness
       MISSING_MODULE = /(?:Cannot find module|Could not resolve|Failed to resolve import)\s+["'\x60]([^"'\x60]+)["'\x60]/
       MAX_PATH_HINTS = 5
       MAX_REQUEST_CHARS = 6000
+      MAX_STAGED_CHARS = 12_000
       REVIEW_CONTEXT = 10
 
       # Ends the task as blocked.
@@ -176,7 +177,7 @@ module Harness
         return record_applied(result) if result.ok?
 
         kept = edit_set.all - result.rejections.map(&:edit)
-        retry_set = ask(role, "task.apply", retry_messages(messages, edit_set, result.rejections), "apply_retry")
+        retry_set = ask(role, "task.apply", retry_messages(messages, edit_set, result), "apply_retry")
         merged = EditSet.new(edits: kept + retry_set.edits, tests: retry_set.tests, notes: retry_set.notes)
         second = apply_once(merged)
         raise Blocked.new(second.rejections.first.reason, rejection_text(second.rejections)) unless second.ok?
@@ -206,11 +207,22 @@ module Harness
       end
 
       # @return [Model::Messages]
-      def retry_messages(messages, edit_set, rejections)
+      def retry_messages(messages, edit_set, result)
         previous = JSON.generate({ "edits" => edit_set.edits.map(&:to_h), "tests" => edit_set.tests.map(&:to_h) })
         user = "#{messages.user}\n\nYour previous reply:\n#{Untrusted.fence(previous)}\n\n" +
-               Prompts.render("apply_retry", rejections: Untrusted.fence(rejection_text(rejections)))
+               Prompts.render("apply_retry", rejections: Untrusted.fence(rejection_text(result.rejections)),
+                                             staged: staged_text(result.staged))
         Model::Messages.new(system: messages.system, user: user)
+      end
+
+      # The files with refused edits as the accepted edits left them. A retried edit is applied after those, so its
+      # "search" must come from this text, not from the file as first shown (a live run lost a task to that).
+      # @return [String, nil] nil when there is nothing to show or it is too large to add
+      def staged_text(staged)
+        shown = staged.compact
+        return nil if shown.empty? || shown.sum { |_, text| text.size } > MAX_STAGED_CHARS
+
+        shown.map { |rel, text| "File #{rel}, after your accepted edits:\n#{Untrusted.fence(text)}" }.join("\n\n")
       end
 
       # @return [String]
@@ -395,7 +407,8 @@ module Harness
 
       # @return [String]
       def rules
-        Prompts.render("edit_rules", files: @task.writable.join(", "), tests: @task.test_paths)
+        Prompts.render("edit_rules", files: @task.writable.join(", "), tests: @task.test_paths,
+                                     rewrite_bytes: @limits.whole_file_rewrite_max_bytes)
       end
 
       # @return [String] the task as planned, fenced (planner output is model output, I9)

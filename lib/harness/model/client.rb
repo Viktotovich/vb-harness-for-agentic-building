@@ -40,6 +40,10 @@ module Harness
       Call = Data.define(:role, :label, :profile, :caps)
       # A label that starts with a task id ("T1.implement", "T1R1.fix2") names that task in log lines.
       TASK_LABEL = /\A(T\d+(?:R\d+)?)\./
+      # Replies that ran out of output room. After THINKING_STRIKES of them with thinking on, a role asks with
+      # thinking off from the start: each one had cost a whole output allowance of thinking before the retry.
+      OUT_OF_ROOM = %w[model.thinking_exhausted model.truncated].freeze
+      THINKING_STRIKES = 2
 
       # @param config [Config]
       # @param probe [Probe, #call] returns a Probe::Result for a profile
@@ -64,6 +68,7 @@ module Harness
         @backoff = backoff
         @clock = clock
         @caps = {}
+        @strikes = Hash.new(0)
       end
 
       # Called with (role:, label:, reason:, message:) for every reply the client throws away and retries, so the
@@ -95,11 +100,15 @@ module Harness
         json = !parser.nil? || !schema.nil?
         native = !tools.nil? && !tools.empty? && caps.tool_calls == "native"
         body = build_body(call, messages, schema, json, native ? tools : nil, max_output_tokens || profile.max_output_tokens)
+        thinking = caps.thinking_control != "none" && @strikes[role] < THINKING_STRIKES
+        body = Wire.thinking_off(body, caps.thinking_control) unless thinking
         started = @clock.call
         usage = { in: 0, out: 0 }
         outcome = attempt(call, body, usage, json, parser, native)
         retried = outcome.is_a?(Bad)
-        @on_discard&.call(role: role, label: label, reason: outcome.reason, message: "#{outcome.message[0, 200]}; retried with thinking off") if retried
+        strike(call, outcome.reason) if retried && thinking
+        @on_discard&.call(role: role, label: label, reason: outcome.reason,
+                          message: "#{outcome.message[0, 200]}; #{thinking ? 'retried with thinking off' : 'retried'}") if retried
         outcome = attempt(call, Wire.thinking_off(body, caps.thinking_control), usage, json, parser, native) if retried
         raise ModelOutputError.new("#{label}: #{outcome.message}", reason: outcome.reason) if outcome.is_a?(Bad)
 
@@ -323,6 +332,18 @@ module Harness
       # @return [Integer]
       def ms_since(started)
         ((@clock.call - started) * 1000).round
+      end
+
+      # Count a reply that ran out of room with thinking on; at THINKING_STRIKES the role stops thinking.
+      # @return [void]
+      def strike(call, reason)
+        return unless OUT_OF_ROOM.include?(reason)
+
+        @strikes[call.role] += 1
+        return unless @strikes[call.role] == THINKING_STRIKES
+
+        @log&.write(action: "model.thinking", outcome: "off", run: @run_id || "-", task: call.label[TASK_LABEL, 1] || "-",
+                    detail: "role=#{call.role} asks with thinking off from now on: #{THINKING_STRIKES} replies ran out of room thinking")
       end
     end
   end

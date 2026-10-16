@@ -104,6 +104,19 @@ class ClientTest < Minitest::Test
     refute_kind_of Harness::ModelUnavailableError, err
   end
 
+  # A live run spent about three minutes on each verifier reply that thought until it ran out of room, then
+  # answered in seconds with thinking off. After two of those, the role starts with thinking off.
+  def test_a_role_that_keeps_running_out_of_room_thinking_stops_thinking
+    srv = server([INCOMPLETE, Fake.ok("{}"), INCOMPLETE, Fake.ok("{}"), Fake.ok("{}"), Fake.ok("{}")])
+    c = client(srv)
+    2.times { assert ask(c).retried_without_thinking }
+    third = ask(c)
+    refute third.retried_without_thinking, "no reply was thrown away"
+    assert_equal({ "enable_thinking" => false }, srv.chat_bodies[4]["chat_template_kwargs"], "the third call starts with thinking off")
+    c.complete(:planner, msgs, label: "plan", parser: ->(v) { v }, schema: { "type" => "object" })
+    assert_nil srv.chat_bodies[5]["chat_template_kwargs"], "other roles still think"
+  end
+
   def test_inline_thinking_is_stripped_before_parsing
     srv = server([Fake.ok("<think>let me see</think>\n```json\n{\"a\": 1}\n```")])
     assert_equal({ "a" => 1 }, ask(client(srv)).value)

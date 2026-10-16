@@ -107,7 +107,7 @@ module Harness
       # The implementer's budget, for the "fits the context" check.
       # @return [Integer]
       def implementer_budget
-        system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: []))
+        system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: [], rewrite_bytes: @config.limits.whole_file_rewrite_max_bytes))
         Harness::Task::Gather.budget(client: @client, config: @config, role: :implementer, system: system, schema: Harness::Task::EditSet::SCHEMA)
       end
 

@@ -2,5 +2,10 @@
 <%# Copyright 2026 V and Bruno LLC -%>
 Some of your edits could not be applied:
 <%= rejections %>
+<% if staged -%>
+
+Your accepted edits were applied first, so the file has changed. Copy each "search" from it as it is now:
+<%= staged %>
+<% end -%>
 
 Send corrected versions of only the rejected edits, in the same JSON format. Copy each "search" text exactly from the current file.

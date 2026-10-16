@@ -133,6 +133,23 @@ class LoopE2ETest < Minitest::Test
     assert_includes fix_user, "Files named tax in this repository: #{TAX}"
   end
 
+  # A live run: the first edit to a file changed it, and the second searched for the text as it was before. The
+  # retry is applied after the accepted edit, so it is shown the file as that edit left it.
+  def test_a_retry_sees_the_file_as_the_accepted_edits_left_it
+    overlapping = TestSupport::FakeLlmServer.ok(JSON.generate({ "edits" => [
+      { "op" => "replace", "path" => PRICE, "search" => "  return n;", "replace" => "  return n * 2;" },
+      { "op" => "replace", "path" => PRICE, "search" => "  return n;\n}", "replace" => "  return n * 2;\n}\n" }
+    ], "notes" => "two edits" }))
+    run_plan([F.task("T1", "Double the price", modify: [PRICE])],
+             { "T1 implement" => overlapping, "T1 retry" => F.replace(PRICE, "export function price", "export function price") })
+    assert_equal "done", @result.outcome.tasks.first.status
+    retry_user = @result.server.chat_bodies.map { |b| b["messages"].last["content"] }.find { |c| c.include?("could not be applied") }
+    assert_includes retry_user, "Your accepted edits were applied first"
+    assert_match(/File src\/lib\/price\.ts, after your accepted edits:\n<untrusted-data id="\h+">\n[^<]*return n \* 2;/, retry_user)
+    implement_system = @result.server.chat_bodies.first["messages"].first["content"]
+    assert_includes implement_system, "Several edits to one file apply in order"
+  end
+
   def test_rejected_edits_get_one_retry
     run_plan([F.task("T1", "Double the price", modify: [PRICE])],
              { "T1 implement" => F.replace(PRICE, "return n ;", "return n * 2;"),
