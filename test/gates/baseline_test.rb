@@ -34,6 +34,39 @@ class BaselineTest < Minitest::Test
     refute cmp.ok?
   end
 
+  # Shakedown bug 3: astro build failing identically at baseline and integration was reported "regressed",
+  # because its unparsed output carries times, durations, sizes, hashes and worktree paths.
+  BUILD = <<~OUT
+    03:08:43 [build] output: "static"
+    03:08:43 [build] directory: D:/build/tmp/x/.harness-worktrees/r20261016-030800-ab12/dist/
+    03:08:44 [build] Collecting build info...
+    03:08:44 [build] ✓ Completed in 812ms.
+    dist/_astro/index.BkZ3c9aQ.js  12.4 kB
+    [ERROR] [vite] src/pages/broken.astro: Expected ";" but found "}"
+    Build failed in 8.01s at 2026-10-16T03:08:51.120Z
+  OUT
+
+  def unparsed(text, exit_code: 1)
+    G::Result.new(gate: "build", status: "failed", exit_code: exit_code, diagnostics: G::Parsers.parse(nil, text, root: "/repo"),
+                  reason: nil, ms: 9000, argv: %w[npx astro build])
+  end
+
+  def test_unparsed_output_that_differs_only_in_volatile_text_is_the_same_failure
+    later = BUILD.gsub("03:08:4", "03:21:1").gsub("812ms", "655ms").gsub("8.01s", "7.42s").gsub("2026-10-16T03:08:51.120Z", "2026-10-16T03:21:19.004Z")
+                 .gsub("r20261016-030800-ab12", "r20261016-032100-cd34").gsub("BkZ3c9aQ", "Cq81Zx0w").gsub("12.4 kB", "12.9 kB")
+    cmp = B.compare(unparsed(later), unparsed(BUILD))
+    assert_equal "baseline_same", cmp.verdict
+    assert_equal B.normalize(BUILD.lines.last(3).join), B.normalize(later.lines.last(3).join)
+    assert_includes B.normalize("in 8.01s at 03:08:43 in /tmp/abc/x"), "in <duration> at <time> in <path>"
+  end
+
+  def test_unparsed_failures_with_another_exit_status_still_regress
+    cmp = B.compare(unparsed("Out of memory\n", exit_code: 137), unparsed(BUILD))
+    assert_equal "regressed", cmp.verdict
+    refute cmp.ok?
+    assert_equal "regressed", B.compare(unparsed(BUILD), result("passed")).verdict, "a build that passed at baseline regresses"
+  end
+
   def test_diagnostics_are_counted_as_a_multiset
     cmp = B.compare(result("failed", [diag(*A), diag(*A, line: 2)]), result("failed", [diag(*A)]))
     assert_equal 1, cmp.new_diagnostics.size

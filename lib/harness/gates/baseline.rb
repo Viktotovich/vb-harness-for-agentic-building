@@ -52,23 +52,68 @@ module Harness
         return comparison(current, "pass", []) if current.passed?
         return comparison(current, "regressed", current.diagnostics) unless baseline_failed?(baseline)
         return same_status(current, baseline) if current.status == "timeout" || baseline.status == "timeout"
+        return same_exit(current, baseline) if unparsed?(current) && unparsed?(baseline)
 
         added = new_diagnostics(current.diagnostics, baseline.diagnostics)
         comparison(current, added.empty? ? "baseline_same" : "regressed", added)
       end
 
       # Diagnostics in current that baseline does not have, counted as a multiset by file, code and message.
+      # Unparsed output is compared with its volatile text normalised.
       # @param current [Array<Diagnostic>]
       # @param baseline [Array<Diagnostic>]
       # @return [Array<Diagnostic>]
       def self.new_diagnostics(current, baseline)
-        left = baseline.map(&:key).tally
+        left = baseline.map { |d| key(d) }.tally
         current.reject do |d|
-          next false unless left.fetch(d.key, 0).positive?
+          k = key(d)
+          next false unless left.fetch(k, 0).positive?
 
-          left[d.key] -= 1
+          left[k] -= 1
           true
         end
+      end
+
+      VOLATILE = [
+        [/\e\[[0-9;]*[A-Za-z]/, ""],                                                  # ANSI colours
+        [/\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/, "<time>"], # ISO dates
+        [/\b\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\b/, "<time>"],                              # clock times like 03:08:43
+        [/\b\d+(?:\.\d+)?\s?(?:ms|s|sec|seconds|m|min)\b/, "<duration>"],              # "in 8.01s", "120ms"
+        [/\b\d+(?:\.\d+)?\s?(?:B|kB|KB|KiB|MB|MiB)\b/, "<size>"],                      # build sizes
+        [/\br\d{8}-\d{6}-\h{4}\b/, "<run>"],                                          # run ids
+        [%r{(?:[A-Za-z]:)?[\\/][^\s:"'()]*\.harness-worktrees[\\/][^\s:"'()]+}, "<worktree>"], # worktree paths
+        [%r{(?:[A-Za-z]:[\\/]|/(?:tmp|var|private|Users|home)/)[^\s:"'()]+}, "<path>"], # absolute and temp paths
+        [/\.[A-Za-z0-9_-]{6,12}(?=\.(?:m?js|css|map)\b)/, ".<hash>"],                 # bundler hashes: index.BkZ3c9aQ.js
+        [/\b\h{8,}\b/, "<hash>"]                                                       # content hashes in file names
+      ].freeze
+
+      # Text with timestamps, durations, sizes, run ids, paths and hashes replaced, so two runs of a failing tool
+      # compare equal when only those differ.
+      # @param text [String]
+      # @return [String]
+      def self.normalize(text)
+        VOLATILE.reduce(text.to_s) { |s, (re, to)| s.gsub(re, to) }.gsub(/[ \t]+/, " ").strip
+      end
+
+      # @return [Array]
+      def self.key(d)
+        d.code == "output" ? [d.file, d.code, normalize(d.message)] : d.key
+      end
+
+      # Output no parser understood: only the fallback tail.
+      # @return [Boolean]
+      def self.unparsed?(result)
+        !result.diagnostics.empty? && result.diagnostics.all? { |d| d.code == "output" && d.file.nil? }
+      end
+
+      # Two unparsed failures are the same when they end with the same exit status and their output tails match once
+      # volatile text (times, durations, sizes, paths, run ids, hashes) is normalised. A changed count such as
+      # "3 tests failed" -> "4 tests failed" still regresses.
+      # @return [Comparison]
+      def self.same_exit(current, baseline)
+        same = current.exit_code == baseline.exit_code &&
+               normalize(current.diagnostics.map(&:message).join("\n")) == normalize(baseline.diagnostics.map(&:message).join("\n"))
+        comparison(current, same ? "baseline_same" : "regressed", same ? [] : current.diagnostics)
       end
 
       # @return [Boolean]
@@ -85,7 +130,7 @@ module Harness
       def self.comparison(current, verdict, added)
         Comparison.new(gate: current.gate, verdict: verdict, new_diagnostics: added, current: current)
       end
-      private_class_method :baseline_failed?, :same_status, :comparison
+      private_class_method :baseline_failed?, :same_status, :comparison, :key, :unparsed?, :same_exit
     end
   end
 end
