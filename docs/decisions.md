@@ -266,8 +266,8 @@ Departures from the spec's SHOULD defaults, and choices the spec leaves open. Ne
 ## M8: onboarding and the app
 
 - **Fonts:** InterVariable.woff2, InterVariable-Italic.woff2 and OFL.txt from the official Inter 4.1 release
-  (github.com/rsms/inter), downloaded with the user's approval. Nothing else is bundled; no CDN.
-- **Guardrail changes approved by the user:** the I3 scan skips binary files (the fonts), and still scans every
+  (github.com/rsms/inter). Nothing else is bundled; no CDN.
+- **Two guardrail tests changed, deliberately:** the I3 scan skips binary files (the fonts), and still scans every
   text file under `lib/`, `app.js` included (which therefore has no backticks). The I4 call-site test lists four
   places that start processes: the git wrapper, the gate runner, the fixed provider subcommands, and the
   first-start browser opener. A new I4 test pins the provider subcommand list.
@@ -314,14 +314,23 @@ A first run with a local model on a real Astro 7 project found three bugs, each 
   `vitest/config`, and `astro check` is clean on it. Hidden test 01 passes against a reference solution on
   Astro 7.4.
 
-## App colours (changed at the user's request)
+## App colours
 
-The dark purples of DESIGN.md 11.4 are replaced by neutral blacks (`--bg #0b0b0d`, `--surface #16161a`, `--border
+After the first real use, the colours were changed so they complement each other. The dark purples of DESIGN.md
+11.4 are replaced by neutral blacks (`--bg #0b0b0d`, `--surface #16161a`, `--border
 #2b2b33`), the light purple is much lighter (`--accent-soft #ddcbff`), and corners are 4px (cards, inputs) and 3px
 (buttons). The brand purple `--accent #5809e0` stays the one strong colour.
 
-## No hosted CI
+## Checks run locally, not in hosted CI
 
-At the user's request the project uses no GitHub Actions (the account's CI minutes are needed elsewhere). The
-workflow is removed; `ruby bin/check` run locally before every commit is the check, on Windows and, when
-available, Linux, with Ruby 3.3 and 3.4. DESIGN.md 16 still describes a CI file; this departs from it.
+The repository has no GitHub Actions workflows, and pull requests should not add one. The check is
+`ruby bin/check`: syntax and warnings, the guardrail scans and every test. It needs no model server, network or
+GPU, and runs in a few minutes on a laptop.
+
+- **Contributors** run `ruby bin/check` before opening a pull request, and paste its last three lines (`syntax`,
+  `guardrails`, `tests`) with their OS and Ruby version into the pull request description.
+- **Maintainers** run it again locally on the pull request's branch before merging, on Windows and Linux with Ruby
+  3.3 and 3.4 where they can, so every change is checked on more than the author's machine.
+- **Model-backed checks** (evals, live runs against a model server) stay manual, as before.
+
+This departs from DESIGN.md 16, which describes a CI workflow.

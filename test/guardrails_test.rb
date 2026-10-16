@@ -57,7 +57,7 @@ class GuardrailsTest < Minitest::Test
   # --- I3: subprocesses only through Harness::Exec ---
 
   def test_i3_no_process_calls_outside_exec
-    # Binary files (the bundled fonts) are not code; every text file is scanned (approved by the user for M8).
+    # Binary files (the bundled fonts) are not code; every text file is scanned (docs/decisions.md, M8).
     files = Scan.files_in(ROOT, %w[lib exe bin]).reject { |f| Scan.binary?(File.join(ROOT, f)) }
     assert_includes files, "lib/harness/ui/public/app.js", "the app's script is scanned too"
     hits = files.flat_map { |f| Scan.shell_hits(read(f), f) }
@@ -148,7 +148,7 @@ class GuardrailsTest < Minitest::Test
 
   # --- I4: no push, remote write, merge or gh call in any code path ---
 
-  # Processes start in four places only (approved by the user for M8): the git wrapper, the gate runner, the fixed
+  # Processes start in four places only (docs/decisions.md, M8): the git wrapper, the gate runner, the fixed
   # provider subcommands (DESIGN.md 11.2) and the first-start browser opener (11.1).
   def test_i4_only_git_gates_providers_and_the_browser_start_processes
     sites = Dir.glob("lib/**/*.rb", base: ROOT).flat_map do |rel|

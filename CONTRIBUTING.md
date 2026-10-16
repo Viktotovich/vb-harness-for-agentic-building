@@ -11,9 +11,18 @@ Thanks for helping. A few rules keep the harness safe and model-agnostic:
 - Every Ruby source file starts with the `frozen_string_literal`, SPDX and copyright header lines.
 - Value objects use `Data.define`; data from outside goes through one `parse` method that raises a precise error.
 - Public methods carry YARD-style `@param` / `@return` / `@raise` comments.
-- Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`, `ci:`).
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`).
 
-Run `ruby bin/check` before opening a pull request. The guardrail tests in `test/guardrails_test.rb` must never be
-weakened or deleted.
+## Checks
+
+There is no hosted CI: checks run on your machine and again on a maintainer's before a merge.
+
+1. Run `ruby bin/check`. It needs Ruby >= 3.3 and git, and no model server, network or GPU.
+2. Paste its last three lines (`syntax`, `guardrails`, `tests`) into the pull request, with your OS and Ruby
+   version. The pull request template has a place for them.
+3. A maintainer runs `ruby bin/check` on your branch before merging, on Windows and Linux where they can.
+
+Please don't add GitHub Actions workflows. The guardrail tests in `test/guardrails_test.rb` must never be weakened
+or deleted; if one blocks a change you need, open an issue first to discuss it.
 
 By contributing you agree that your contribution is licensed under the Apache License 2.0.
