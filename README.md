@@ -12,6 +12,9 @@ hallucinated APIs and defects, wrong edits, broken JSON, and small context windo
 AstroJS is the first supported stack. Any OpenAI-compatible endpoint works: LM Studio, Ollama, llama.cpp's server,
 vLLM, or a hosted API.
 
+**Documentation: [vb-harness.vandbruno.net](https://vb-harness.vandbruno.net)**, with the guides, the cookbook and the design
+decisions.
+
 **Status: early development.** Everything below works and is tested, but expect rough edges and changes.
 
 ## Contents

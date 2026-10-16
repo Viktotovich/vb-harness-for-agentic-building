@@ -478,5 +478,6 @@ npm run preview
   CSS the browser silently drops. Add a CSS linter as a gate if you have one.
 - **Iterate in small requests.** A layout pass after a content pass is cheaper and clearer than one request that
   tries to get everything right.
-- **Expect rejections.** With a 16K model, more than half of the model's outputs were thrown away in every run.
-  That is the harness doing its job: each one was caught, explained in the report, and asked again.
+- **Expect rejections.** With a 16K model, between a quarter and more than half of the model's outputs were thrown
+  away in each run (fewer in the small ones). That is the harness doing its job: each one was caught, explained in
+  the report, and asked again.
