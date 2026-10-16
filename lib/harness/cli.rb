@@ -13,6 +13,7 @@ module Harness
   # Command-line entry point. Subcommands arrive milestone by milestone (DESIGN.md section 11.1).
   module CLI
     SUBCOMMANDS = %w[init probe run status resume answer report eval cleanup push ui].freeze
+    DOCS_URL = "https://vb-harness.vandbruno.net"
 
     EXIT_OK = 0
     EXIT_CONFIG = 2
@@ -71,6 +72,7 @@ module Harness
         o.banner = "Usage: harness [--version] [--help] <command> [options]"
         o.separator ""
         o.separator "Commands: #{SUBCOMMANDS.join(', ')}"
+        o.separator "Documentation: #{DOCS_URL}"
         o.on("--version", "Print the version") { out.puts VERSION }
         o.on("-h", "--help", "Show this help") { out.puts o.help }
       end

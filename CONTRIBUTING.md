@@ -13,6 +13,12 @@ Thanks for helping. A few rules keep the harness safe and model-agnostic:
 - Public methods carry YARD-style `@param` / `@return` / `@raise` comments.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`).
 
+## Documentation
+
+The documentation site, https://vb-harness.vandbruno.net, is built from this repository: its pages are generated
+from `README.md`, `docs/cookbook/` and `docs/decisions.md`, and its images from `docs/media/`, by the import script
+in [vb-harness-docs](https://github.com/Viktotovich/vb-harness-docs). Change the text here, not on the site.
+
 ## Checks
 
 There is no hosted CI: checks run on your machine and again on a maintainer's before a merge.

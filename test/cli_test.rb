@@ -24,6 +24,7 @@ class CliTest < Minitest::Test
     assert_equal 0, code
     assert_includes out, "Usage: harness"
     assert_includes out, "push"
+    assert_includes out, "Documentation: https://vb-harness.vandbruno.net"
   end
 
   def test_unknown_command_is_a_config_error
