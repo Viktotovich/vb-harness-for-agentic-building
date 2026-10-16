@@ -81,7 +81,7 @@ module Harness
         [/\b\d+(?:\.\d+)?\s?(?:ms|s|sec|seconds|m|min)\b/, "<duration>"],              # "in 8.01s", "120ms"
         [/\b\d+(?:\.\d+)?\s?(?:B|kB|KB|KiB|MB|MiB)\b/, "<size>"],                      # build sizes
         [/\br\d{8}-\d{6}-\h{4}\b/, "<run>"],                                          # run ids
-        [%r{(?:[A-Za-z]:)?[\\/][^\s:"'()]*\.harness-worktrees[\\/][^\s:"'()]+}, "<worktree>"], # worktree paths
+        [%r{(?:[A-Za-z]:)?[\\/][^\s:"'()]*(?:\.harness-worktrees|workspaces)[\\/][^\s:"'()]+}, "<worktree>"], # worktree paths
         [%r{(?:[A-Za-z]:[\\/]|/(?:tmp|var|private|Users|home)/)[^\s:"'()]+}, "<path>"], # absolute and temp paths
         [/\.[A-Za-z0-9_-]{6,12}(?=\.(?:m?js|css|map)\b)/, ".<hash>"],                 # bundler hashes: index.BkZ3c9aQ.js
         [/\b\h{8,}\b/, "<hash>"]                                                       # content hashes in file names

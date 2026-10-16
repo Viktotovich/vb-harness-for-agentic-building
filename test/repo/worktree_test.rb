@@ -21,7 +21,7 @@ class WorktreeTest < Minitest::Test
   end
 
   def create(run_id = "r1")
-    Worktree.create(repo: @repo, run_id: run_id, git: @git)
+    Worktree.create(repo: @repo, run_id: run_id, git: @git, workspaces: File.join(@tmp, "home", "workspaces"))
   end
 
   def repo_head
@@ -31,7 +31,8 @@ class WorktreeTest < Minitest::Test
   def test_create_makes_a_branch_in_a_sibling_directory
     wt = create
     assert_equal "harness/r1", wt.branch
-    assert File.identical?(File.join(@tmp, ".harness-worktrees", "r1"), wt.root), wt.root
+    assert File.identical?(File.join(@tmp, "home", "workspaces", "r1"), wt.root), wt.root
+    refute File.exist?(File.join(@tmp, ".harness-worktrees")), "nothing is created next to the user's repository"
     assert_equal repo_head, wt.base_sha
     assert_equal "export const a = 1;\n", File.read(File.join(wt.root, "src/a.ts"))
     refute wt.dirty?
@@ -46,7 +47,7 @@ class WorktreeTest < Minitest::Test
   def test_refuses_a_directory_that_is_not_a_repository
     plain = File.join(@tmp, "plain")
     FileUtils.mkdir_p(plain)
-    assert_raises(Harness::GitError) { Worktree.create(repo: plain, run_id: "r1", git: @git) }
+    assert_raises(Harness::GitError) { Worktree.create(repo: plain, run_id: "r1", git: @git, workspaces: File.join(@tmp, "home", "workspaces")) }
   end
 
   def test_refuses_malformed_run_ids

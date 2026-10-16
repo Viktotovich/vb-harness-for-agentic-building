@@ -15,3 +15,5 @@ Thumbs.db
 .vscode/
 .claude/
 eval-out/
+workspaces/
+projects/

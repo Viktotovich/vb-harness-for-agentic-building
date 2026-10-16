@@ -37,14 +37,17 @@ module Harness
     # @param store [State::RunStore]
     # @param parent_env [Hash{String=>String}]
     # @param cache_dir [String, nil] .cache/, for the empty git hooks directory
+    # @param workspaces [String, nil] where worktrees go; default workspaces/ next to runs/
     # @return [Setup]
     # @raise [GitError] on a dirty or missing repository
     # @raise [ConfigError] when no configured stack matches the repository
-    def self.intake(config:, repo:, store:, parent_env: ENV, cache_dir: nil)
+    def self.intake(config:, repo:, store:, parent_env: ENV, cache_dir: nil, workspaces: nil)
       events = State::Events.new(path: store.events_path, run_id: store.run_id)
       events.emit(stage: "intake", kind: "stage_started")
       env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
-      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env, cache_dir: cache_dir))
+      workspaces ||= File.join(File.dirname(File.dirname(store.dir)), "workspaces")
+      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env, cache_dir: cache_dir),
+                                       workspaces: workspaces)
       stack = detect_stack(config, worktree.root)
       stack.dependency_dirs.each do |dir|
         m = Repo::Mirror.link(File.join(worktree.repo, dir), File.join(worktree.root, dir))

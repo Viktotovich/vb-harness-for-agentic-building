@@ -319,3 +319,9 @@ A first run with a local model on a real Astro 7 project found three bugs, each 
 The dark purples of DESIGN.md 11.4 are replaced by neutral blacks (`--bg #0b0b0d`, `--surface #16161a`, `--border
 #2b2b33`), the light purple is much lighter (`--accent-soft #ddcbff`), and corners are 4px (cards, inputs) and 3px
 (buttons). The brand purple `--accent #5809e0` stays the one strong colour.
+
+## No hosted CI
+
+At the user's request the project uses no GitHub Actions (the account's CI minutes are needed elsewhere). The
+workflow is removed; `ruby bin/check` run locally before every commit is the check, on Windows and, when
+available, Linux, with Ruby 3.3 and 3.4. DESIGN.md 16 still describes a CI file; this departs from it.

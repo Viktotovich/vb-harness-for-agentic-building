@@ -23,14 +23,15 @@ module Harness
       # @return [String] HEAD of the repository when the run started
       attr_reader :base_sha
 
-      # Create <repo>/../.harness-worktrees/<runId> on a new branch harness/<runId> from HEAD.
+      # Create <workspaces>/<runId> on a new branch harness/<runId> from HEAD. Workspaces live in the harness's own
+      # folder, never next to or inside the user's repository.
       # @param repo [String] path inside the user's repository
       # @param run_id [String]
       # @param git [Git]
       # @return [Worktree]
       # @raise [GitError] when repo is not a git repository, has uncommitted changes, or the worktree exists
       # @raise [ArgumentError] on a malformed run id
-      def self.create(repo:, run_id:, git:)
+      def self.create(repo:, run_id:, git:, workspaces:)
         raise ArgumentError, "run id #{run_id.inspect}: expected letters, digits, - or _" unless run_id.to_s.match?(RUN_ID)
 
         top = top_level(repo, git)
@@ -38,7 +39,8 @@ module Harness
         raise GitError, "the repository has uncommitted changes; commit or stash them first" unless dirty.strip.empty?
 
         base = git.run(%w[rev-parse HEAD], chdir: top).strip
-        dir = File.join(File.dirname(top), ".harness-worktrees", run_id)
+        dir = File.join(File.expand_path(workspaces), run_id)
+        FileUtils.mkdir_p(File.dirname(dir))
         raise GitError, "worktree for run #{run_id} already exists" if File.exist?(dir)
 
         branch = "harness/#{run_id}"

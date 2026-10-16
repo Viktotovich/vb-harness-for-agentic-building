@@ -278,7 +278,8 @@ class GuardrailsTest < Minitest::Test
       repo, env = TestSupport.repo(tmp, { "src/a.ts" => "export const a = 1;\n" })
       git = Harness::Repo::Git.new(env: env)
       head = TestSupport.git!(repo, env, "rev-parse", "HEAD")
-      wt = Harness::Repo::Worktree.create(repo: repo, run_id: "i11", git: git)
+      wt = Harness::Repo::Worktree.create(repo: repo, run_id: "i11", git: git, workspaces: File.join(tmp, "home", "workspaces"))
+      refute wt.root.start_with?(File.realpath(repo)), "the worktree is not inside the user's checkout"
       set = Harness::Task::EditSet.parse({ "edits" => [{ "op" => "replace", "path" => "src/a.ts", "search" => "1;", "replace" => "2;" },
                                                        { "op" => "create", "path" => "src/b.ts", "content" => "b\n" }] })
       assert Harness::Task::Edits.apply(root: wt.root, edit_set: set, modify: ["src/a.ts"], create: ["src/b.ts"]).ok?

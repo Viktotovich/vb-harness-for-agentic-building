@@ -71,7 +71,8 @@ class EvalRunnerTest < Minitest::Test
     assert_match(/^\| \*\*all\*\* \| 0\/2 \| 0\/2 \|/, weak)
     assert_match(/^\| implementer \| \d+ \| \d+s \|$/, good)
     assert_empty TestSupport.git!(@repo, @git_env, "status", "--porcelain"), "the prepared repository stays clean"
-    refute(Dir.exist?(File.join(@tmp, ".harness-worktrees")) && !Dir.empty?(File.join(@tmp, ".harness-worktrees")), "worktrees are removed")
+    workspaces = File.join(@tmp, "eval-out", "weak", "workspaces")
+    assert(Dir.exist?(workspaces) && Dir.empty?(workspaces), "worktrees were made under the mapping's workspaces/ and removed")
     assert_equal 2, Dir.children(File.join(@tmp, "eval-out", "weak", "runs")).size
   end
 
