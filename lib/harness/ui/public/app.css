@@ -18,20 +18,20 @@
 }
 
 :root {
-  --bg:            #0a0518;
-  --bg-sidebar:    #0e0720;
-  --surface:       #140a2c;
-  --surface-hover: #1c0f3d;
-  --border:        #2a1758;
-  --accent:        #5809e0;
+  --bg:            #0b0b0d;  /* near-black, neutral: lets the purple carry the colour */
+  --bg-sidebar:    #0f0f12;
+  --surface:       #16161a;  /* message bubbles, cards, inputs */
+  --surface-hover: #1f1f25;
+  --border:        #2b2b33;
+  --accent:        #5809e0;  /* primary buttons, active chat, the user's bubble, selection */
   --accent-hover:  #6105ff;
-  --accent-soft:   #a259ff;
+  --accent-soft:   #ddcbff;  /* links, focus ring, active marks, the streaming cursor: a pale lavender */
   --text:          #fafafa;
-  --text-muted:    #a4a6bd;
+  --text-muted:    #a3a3ad;
   --success:       #3ddc97;
   --danger:        #ff5c7a;
-  --radius:        10px;
-  --radius-btn:    8px;
+  --radius:        4px;
+  --radius-btn:    3px;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 ::selection { background: var(--accent); color: #fff; }
@@ -115,7 +115,7 @@ input, select, textarea {
 .msg h1, .msg h2, .msg h3, .msg h4 { margin: 14px 0 8px; line-height: 1.3; }
 .msg h1 { font-size: 20px; } .msg h2 { font-size: 18px; } .msg h3, .msg h4 { font-size: 16px; }
 .msg ul, .msg ol { margin: 0 0 10px; padding-left: 22px; }
-.msg code { font-family: var(--mono); font-size: 13.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px; }
+.msg code { font-family: var(--mono); font-size: 13.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px; }
 .codeblock { position: relative; margin: 0 0 10px; }
 .codeblock pre { margin: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; }
 .codeblock pre code { border: 0; padding: 0; background: none; }
