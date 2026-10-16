@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" role="img" aria-labelledby="title desc">
+  <title id="title">Safety model</title>
+  <desc id="desc">Model output passes six layers before anything reaches your repository: untrusted text is fenced as data; replies are only exact edits to declared files; every path is checked to stay inside the worktree and away from protected paths; the project's own gates decide when a task is done; review findings need a failing test; and work happens on a branch in a separate worktree, with no pushes, no installs, git hooks off and secrets removed from the environment. The local app listens on 127.0.0.1 only, needs a per-start token and its own origin, sends a strict content security policy, and shows model output as text.</desc>
+  <style>
+    .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #fafafa; }
+    .m { fill: #a3a3ad; }
+    .s { font-size: 13px; }
+    .h { font-size: 15px; font-weight: 600; }
+    .n { font-size: 12px; font-weight: 700; fill: #0b0b0d; }
+    .layer { fill: #16161a; stroke: #2b2b33; }
+    .arrow { stroke: #ddcbff; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#ddcbff"/></marker>
+  </defs>
+  <rect width="960" height="520" rx="6" fill="#0b0b0d"/>
+  <text class="t h" x="24" y="34">Safety model: what stands between a model and your repository</text>
+
+  <!-- model -->
+  <rect x="24" y="64" width="150" height="372" rx="4" fill="#5809e0"/>
+  <text class="t h" x="99" y="236" text-anchor="middle">model</text>
+  <text class="t s" x="99" y="256" text-anchor="middle" fill="#ddcbff">may be wrong</text>
+  <text class="t s" x="99" y="274" text-anchor="middle" fill="#ddcbff">or manipulated</text>
+  <path class="arrow" d="M176 250 H206"/>
+
+  <!-- layers -->
+  <g>
+    <rect class="layer" x="210" y="64" width="520" height="52" rx="4"/>
+    <circle cx="232" cy="90" r="11" fill="#ddcbff"/><text class="t n" x="232" y="94" text-anchor="middle">1</text>
+    <text class="t s" x="254" y="86" font-weight="600">Untrusted text is fenced</text>
+    <text class="t s m" x="254" y="104">repo files, docs, gate output and model output arrive as marked data (I9)</text>
+
+    <rect class="layer" x="210" y="126" width="520" height="52" rx="4"/>
+    <circle cx="232" cy="152" r="11" fill="#ddcbff"/><text class="t n" x="232" y="156" text-anchor="middle">2</text>
+    <text class="t s" x="254" y="148" font-weight="600">Only exact edits to declared files</text>
+    <text class="t s m" x="254" y="166">search text must match once; no commands, ever (I3)</text>
+
+    <rect class="layer" x="210" y="188" width="520" height="52" rx="4"/>
+    <circle cx="232" cy="214" r="11" fill="#ddcbff"/><text class="t n" x="232" y="218" text-anchor="middle">3</text>
+    <text class="t s" x="254" y="210" font-weight="600">Path guard</text>
+    <text class="t s m" x="254" y="228">inside the worktree; no .git, .husky, node_modules or protected paths (I2)</text>
+
+    <rect class="layer" x="210" y="250" width="520" height="52" rx="4"/>
+    <circle cx="232" cy="276" r="11" fill="#ddcbff"/><text class="t n" x="232" y="280" text-anchor="middle">4</text>
+    <text class="t s" x="254" y="272" font-weight="600">Your gates decide "done"</text>
+    <text class="t s m" x="254" y="290">type check, lint, tests; a skipped gate never passes (I6, I7)</text>
+
+    <rect class="layer" x="210" y="312" width="520" height="52" rx="4"/>
+    <circle cx="232" cy="338" r="11" fill="#ddcbff"/><text class="t n" x="232" y="342" text-anchor="middle">5</text>
+    <text class="t s" x="254" y="334" font-weight="600">Findings need a failing test</text>
+    <text class="t s m" x="254" y="352">everything else stays a question (I8)</text>
+
+    <rect class="layer" x="210" y="374" width="520" height="62" rx="4"/>
+    <circle cx="232" cy="400" r="11" fill="#ddcbff"/><text class="t n" x="232" y="404" text-anchor="middle">6</text>
+    <text class="t s" x="254" y="396" font-weight="600">A branch in a separate worktree</text>
+    <text class="t s m" x="254" y="414">no push or fetch, no installs, git hooks off (I4, I10, I11)</text>
+    <text class="t s m" x="254" y="430">secrets removed from the gates' environment (I5)</text>
+  </g>
+
+  <path class="arrow" d="M732 250 H762"/>
+  <rect x="766" y="190" width="170" height="120" rx="4" fill="#16161a" stroke="#3ddc97" stroke-width="1.5"/>
+  <text class="t h" x="851" y="236" text-anchor="middle">your repository</text>
+  <text class="t s m" x="851" y="258" text-anchor="middle">unchanged until you</text>
+  <text class="t s m" x="851" y="276" text-anchor="middle">merge the branch</text>
+
+  <!-- the app -->
+  <rect x="24" y="456" width="912" height="44" rx="4" fill="none" stroke="#2b2b33" stroke-dasharray="6 5"/>
+  <text class="t s" x="40" y="483" font-weight="600">The local app (I15):</text>
+  <text class="t s m" x="176" y="483">127.0.0.1 only · foreign hosts refused · token + own origin for every change · strict CSP · model output shown as text</text>
+</svg>

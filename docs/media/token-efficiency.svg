@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="622" viewBox="0 0 960 622" role="img" aria-labelledby="title desc">
+  <title id="title">Average tokens per task by language</title>
+  <desc id="desc">Average GPT-4 tokens per Rosetta Code task, lower is better: Clojure 109, Julia 109, Ruby 116, Perl 119, Python 128, Haskell 132, F# 135, Lua 140, Scala 144, OCaml 153, PHP 164, JavaScript 181, Java 187, Rust 199, Go 207, C# 211, C++ 264, C 285. Ruby is third, close to Clojure and Julia, and uses about 36 percent fewer tokens than JavaScript.</desc>
+  <style>
+    .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #fafafa; }
+    .m { fill: #a3a3ad; }
+    .s { font-size: 13px; }
+    .x { font-size: 11px; }
+    .h { font-size: 16px; font-weight: 600; }
+    .grid { stroke: #2b2b33; stroke-width: 1; }
+  </style>
+  <rect width="960" height="622" rx="6" fill="#0b0b0d"/>
+  <text class="t h" x="24" y="34">Average tokens per task (lower is better)</text>
+  <text class="t m s" x="24" y="56">Same Rosetta Code tasks in each language, counted with a GPT-4 tokenizer.</text>
+  <rect x="710" y="24" width="12" height="12" rx="2" fill="#8a7fa8"/><text class="t m s" x="728" y="35">dynamic</text>
+  <rect x="800" y="24" width="12" height="12" rx="2" fill="#3a3a44"/><text class="t m s" x="818" y="35">static</text>
+  <line class="grid" x1="130.0" y1="78" x2="130.0" y2="552"/>
+  <text class="t m x" x="130.0" y="570" text-anchor="middle">0</text>
+  <line class="grid" x1="250.0" y1="78" x2="250.0" y2="552"/>
+  <text class="t m x" x="250.0" y="570" text-anchor="middle">50</text>
+  <line class="grid" x1="370.0" y1="78" x2="370.0" y2="552"/>
+  <text class="t m x" x="370.0" y="570" text-anchor="middle">100</text>
+  <line class="grid" x1="490.0" y1="78" x2="490.0" y2="552"/>
+  <text class="t m x" x="490.0" y="570" text-anchor="middle">150</text>
+  <line class="grid" x1="610.0" y1="78" x2="610.0" y2="552"/>
+  <text class="t m x" x="610.0" y="570" text-anchor="middle">200</text>
+  <line class="grid" x1="730.0" y1="78" x2="730.0" y2="552"/>
+  <text class="t m x" x="730.0" y="570" text-anchor="middle">250</text>
+  <line class="grid" x1="850.0" y1="78" x2="850.0" y2="552"/>
+  <text class="t m x" x="850.0" y="570" text-anchor="middle">300</text>
+  <text class="t s" x="118" y="99" text-anchor="end">Clojure</text>
+  <rect x="130" y="87" width="261.6" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="399.6" y="99">109</text>
+  <text class="t s" x="118" y="125" text-anchor="end">Julia</text>
+  <rect x="130" y="113" width="261.6" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="399.6" y="125">109</text>
+  <text class="t s" x="118" y="151" text-anchor="end" font-weight="700">Ruby</text>
+  <rect x="130" y="139" width="278.4" height="18" rx="2" fill="#ddcbff"/>
+  <text class="t s" x="416.4" y="151" font-weight="700">116</text>
+  <text class="t s" x="118" y="177" text-anchor="end">Perl</text>
+  <rect x="130" y="165" width="285.6" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="423.6" y="177">119</text>
+  <text class="t s" x="118" y="203" text-anchor="end">Python</text>
+  <rect x="130" y="191" width="307.2" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="445.2" y="203">128</text>
+  <text class="t s" x="118" y="229" text-anchor="end">Haskell</text>
+  <rect x="130" y="217" width="316.8" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="454.8" y="229">132</text>
+  <text class="t s" x="118" y="255" text-anchor="end">F#</text>
+  <rect x="130" y="243" width="324.0" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="462.0" y="255">135</text>
+  <text class="t s" x="118" y="281" text-anchor="end">Lua</text>
+  <rect x="130" y="269" width="336.0" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="474.0" y="281">140</text>
+  <text class="t s" x="118" y="307" text-anchor="end">Scala</text>
+  <rect x="130" y="295" width="345.6" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="483.6" y="307">144</text>
+  <text class="t s" x="118" y="333" text-anchor="end">OCaml</text>
+  <rect x="130" y="321" width="367.2" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="505.2" y="333">153</text>
+  <text class="t s" x="118" y="359" text-anchor="end">PHP</text>
+  <rect x="130" y="347" width="393.6" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="531.6" y="359">164</text>
+  <text class="t s" x="118" y="385" text-anchor="end">JavaScript</text>
+  <rect x="130" y="373" width="434.4" height="18" rx="2" fill="#8a7fa8"/>
+  <text class="t m s" x="572.4" y="385">181</text>
+  <text class="t s" x="118" y="411" text-anchor="end">Java</text>
+  <rect x="130" y="399" width="448.8" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="586.8" y="411">187</text>
+  <text class="t s" x="118" y="437" text-anchor="end">Rust</text>
+  <rect x="130" y="425" width="477.6" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="615.6" y="437">199</text>
+  <text class="t s" x="118" y="463" text-anchor="end">Go</text>
+  <rect x="130" y="451" width="496.8" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="634.8" y="463">207</text>
+  <text class="t s" x="118" y="489" text-anchor="end">C#</text>
+  <rect x="130" y="477" width="506.4" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="644.4" y="489">211</text>
+  <text class="t s" x="118" y="515" text-anchor="end">C++</text>
+  <rect x="130" y="503" width="633.6" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="771.6" y="515">264</text>
+  <text class="t s" x="118" y="541" text-anchor="end">C</text>
+  <rect x="130" y="529" width="684.0" height="18" rx="2" fill="#3a3a44"/>
+  <text class="t m s" x="822.0" y="541">285</text>
+  <text class="t m s" x="24" y="604">Data: Martin Alderson, "Which programming languages are most token-efficient?". Values read off the published chart; approximate.</text>
+</svg>

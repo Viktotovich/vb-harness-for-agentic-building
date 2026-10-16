@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+  <title id="title">How a run works</title>
+  <desc id="desc">A request is planned into small tasks. Each task gathers context, is implemented by the model, applied as exact edits, checked by the project's gates with up to three fix rounds, reviewed, and committed. After all tasks, integration gates and a final review run, and a report is written. Model steps are purple; steps decided by code are outlined in green.</desc>
+  <style>
+    .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #fafafa; }
+    .m { fill: #a3a3ad; }
+    .s { font-size: 13px; }
+    .h { font-size: 15px; font-weight: 600; }
+    .model { fill: #5809e0; }
+    .code { fill: #16161a; stroke: #3ddc97; stroke-width: 1.5; }
+    .plain { fill: #16161a; stroke: #2b2b33; }
+    .arrow { stroke: #a3a3ad; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    .loop { stroke: #ddcbff; stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; marker-end: url(#l); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#a3a3ad"/></marker>
+    <marker id="l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ddcbff"/></marker>
+  </defs>
+  <rect width="960" height="430" rx="6" fill="#0b0b0d"/>
+  <text class="t h" x="24" y="34">How a run works</text>
+
+  <!-- request and plan -->
+  <rect class="plain" x="24" y="62" width="120" height="52" rx="4"/>
+  <text class="t s" x="84" y="84" text-anchor="middle">your request</text>
+  <text class="t s m" x="84" y="102" text-anchor="middle">plain text</text>
+  <path class="arrow" d="M144 88 H176"/>
+  <rect class="model" x="178" y="62" width="120" height="52" rx="4"/>
+  <text class="t s" x="238" y="84" text-anchor="middle">plan</text>
+  <text class="t s" x="238" y="102" text-anchor="middle" fill="#ddcbff">small tasks</text>
+  <path class="arrow" d="M298 88 H330"/>
+  <rect class="code" x="332" y="62" width="130" height="52" rx="4"/>
+  <text class="t s" x="397" y="84" text-anchor="middle">plan checks</text>
+  <text class="t s m" x="397" y="102" text-anchor="middle">files, size, proof</text>
+  <path class="loop" d="M397 62 C397 46 238 46 238 60"/>
+  <text class="t s m" x="318" y="44" text-anchor="middle">replan</text>
+
+  <!-- task loop -->
+  <rect x="24" y="140" width="912" height="160" rx="6" fill="none" stroke="#2b2b33" stroke-dasharray="6 5"/>
+  <text class="t s m" x="40" y="162">for each task, in dependency order</text>
+  <path class="arrow" d="M397 114 V140 H64 V176"/>
+
+  <rect class="code" x="40" y="178" width="110" height="52" rx="4"/>
+  <text class="t s" x="95" y="200" text-anchor="middle">gather</text>
+  <text class="t s m" x="95" y="218" text-anchor="middle">fit the context</text>
+  <path class="arrow" d="M150 204 H174"/>
+  <rect class="model" x="176" y="178" width="110" height="52" rx="4"/>
+  <text class="t s" x="231" y="200" text-anchor="middle">implement</text>
+  <text class="t s" x="231" y="218" text-anchor="middle" fill="#ddcbff">exact edits</text>
+  <path class="arrow" d="M286 204 H310"/>
+  <rect class="code" x="312" y="178" width="110" height="52" rx="4"/>
+  <text class="t s" x="367" y="200" text-anchor="middle">apply</text>
+  <text class="t s m" x="367" y="218" text-anchor="middle">match exactly</text>
+  <path class="arrow" d="M422 204 H446"/>
+  <rect class="code" x="448" y="178" width="110" height="52" rx="4"/>
+  <text class="t s" x="503" y="200" text-anchor="middle">gates</text>
+  <text class="t s m" x="503" y="218" text-anchor="middle">your checks</text>
+  <path class="arrow" d="M558 204 H582"/>
+  <rect class="model" x="584" y="178" width="110" height="52" rx="4"/>
+  <text class="t s" x="639" y="200" text-anchor="middle">review</text>
+  <text class="t s" x="639" y="218" text-anchor="middle" fill="#ddcbff">claims</text>
+  <path class="arrow" d="M694 204 H718"/>
+  <rect class="code" x="720" y="178" width="96" height="52" rx="4"/>
+  <text class="t s" x="768" y="200" text-anchor="middle">evidence</text>
+  <text class="t s m" x="768" y="218" text-anchor="middle">gate + test</text>
+  <path class="arrow" d="M816 204 H834"/>
+  <rect class="code" x="836" y="178" width="88" height="52" rx="4"/>
+  <text class="t s" x="880" y="200" text-anchor="middle">commit</text>
+  <text class="t s m" x="880" y="218" text-anchor="middle">on a branch</text>
+
+  <path class="loop" d="M503 230 C503 270 231 270 231 232"/>
+  <text class="t s" x="367" y="282" text-anchor="middle" fill="#ddcbff">new errors → fix round (up to 3)</text>
+  <path class="loop" d="M768 230 C768 262 880 262 880 234"/>
+  <text class="t s" x="824" y="282" text-anchor="middle" fill="#ddcbff">failing test → fix task</text>
+
+  <!-- after the tasks -->
+  <path class="arrow" d="M880 300 V330 H788"/>
+  <rect class="code" x="636" y="314" width="150" height="52" rx="4"/>
+  <text class="t s" x="711" y="336" text-anchor="middle">integration gates</text>
+  <text class="t s m" x="711" y="354" text-anchor="middle">vs. baseline</text>
+  <path class="arrow" d="M636 340 H612"/>
+  <rect class="model" x="480" y="314" width="130" height="52" rx="4"/>
+  <text class="t s" x="545" y="336" text-anchor="middle">final review</text>
+  <text class="t s" x="545" y="354" text-anchor="middle" fill="#ddcbff">whole branch</text>
+  <path class="arrow" d="M480 340 H456"/>
+  <rect class="plain" x="306" y="314" width="148" height="52" rx="4"/>
+  <text class="t s" x="380" y="336" text-anchor="middle">report.md</text>
+  <text class="t s m" x="380" y="354" text-anchor="middle">tasks, findings, why</text>
+
+  <!-- legend -->
+  <rect class="model" x="24" y="392" width="14" height="14" rx="2"/>
+  <text class="t s m" x="46" y="404">a model proposes</text>
+  <rect class="code" x="180" y="392" width="14" height="14" rx="2"/>
+  <text class="t s m" x="202" y="404">code decides</text>
+  <text class="t s m" x="936" y="404" text-anchor="end">your checkout is never changed: work happens in a worktree on harness/&lt;runId&gt;</text>
+</svg>

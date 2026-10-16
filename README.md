@@ -5,11 +5,9 @@ local model implement them one at a time, proves every change with your project'
 tests, and re-reviews what it built with an evidence gate. It is built around the weak spots of local models:
 hallucinated APIs and defects, wrong edits, broken JSON, and small context windows.
 
-[![A 26-second animated walkthrough of a run in the app](docs/media/demo-poster.png)](docs/media/demo.mp4)
+[![An animated walkthrough of a run: a request, the live progress card, rejected outputs and why, the evidence-gated review, and a claim confirmed by a failing test](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
-▶ [Watch the demo](docs/media/demo.mp4) (26 s, 60 fps). It is an animated illustration of a run in the app, not a
-screen recording: the request, the live progress card, the outputs the harness threw away and why, the evidence-gated
-review, and a claim confirmed by a failing test that becomes a fix task.
+*An animated illustration of a run in the app (not a screen recording). Click it for the full-size 60 fps video.*
 
 AstroJS is the first supported stack. Any OpenAI-compatible endpoint works: LM Studio, Ollama, llama.cpp's server,
 vLLM, or a hosted API.
@@ -31,17 +29,13 @@ vLLM, or a hosted API.
 - [Evaluation](#evaluation)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
+- [Why Ruby](#why-ruby)
 - [Development](#development)
 - [License](#license)
 
 ## How it works
 
-```
-request ──► plan ──► for each task:  gather ─► implement ─► apply ─► gates ─► fix ─► review ─► commit
-                                       ▲                                 │
-                                       └──────── diagnostics ◄───────────┘
-             then: integration gates ─► final review ─► report
-```
+![How a run works: a request is planned into small tasks; each task is gathered, implemented as exact edits, applied, checked by your gates with fix rounds, reviewed and committed; then integration gates, a final review and a report. Model steps are purple, steps decided by code are outlined in green.](docs/media/how-it-works.svg)
 
 1. **Intake.** The harness checks your repository is clean, creates a git worktree on a new branch
    `harness/<runId>`, detects the stack, and runs your checks once to record a **baseline**. Anything already
@@ -105,13 +99,19 @@ This starts the local app on `http://127.0.0.1:4567/` and, on first start, opens
    server, enter its OpenAI-compatible URL and, if it needs a key, the *name* of the environment variable that holds
    the key (never the key itself). Choose **Use** on a model: the harness probes it and tells you what it found, for
    example "16K context, JSON mode: yes, tools: no, thinking can be turned off".
+
+   ![Settings · providers: the app looks for LM Studio and Ollama on this machine; a custom OpenAI-compatible server at 127.0.0.1:8080 has been checked and offers one model to use](docs/media/app-connect-a-model.png)
 2. **Chat.** Chat mode is a planning conversation: work out what to build, compare approaches, sketch the steps.
    Ctrl+Enter (⌘+Enter on macOS) sends; Enter adds a line. Replies stream, and thinking text sits in a collapsed
    block. Chat changes no files.
+
+   ![A planning chat: asked about a Badge component for an Astro site, the local model replies with a plan, a sketch of the component and the decisions to make first](docs/media/app-chat.png)
 3. **Build.** Switch to Build, pick a project (or **+ Add project**), describe the feature, and send. A live card
    shows where the run is, how many model outputs were thrown away and why. If the planner asks a blocking
    question, the card turns purple: answer in the text box, one answer per line. When the run ends, **Show report**
    opens the report.
+
+   ![Build mode: the request, and a finished run card showing every stage done, task T1 committed, and 9 model outputs produced, 9 accepted and 0 rejected; below, the project picker shows astro-site with its branch, a clean tree and Astro 7.4.0](docs/media/app-build.png)
 
 The app only listens on `127.0.0.1`, refuses other host names, and needs a per-start token for every change.
 
@@ -161,6 +161,8 @@ In the app, Build mode works on **projects**:
 Clone and New Astro project download code, so the app first shows you the exact command and runs it only after you
 confirm. The app never lists folders on your disk.
 
+![The Add a project panel: link an existing folder by its full path, clone from a git URL into projects/, or create a new Astro project in projects/; above it, the selected project's status line](docs/media/app-projects.png)
+
 Every run works in its own worktree under `workspaces/<runId>` in the harness's home, on branch `harness/<runId>`.
 Folders listed in the stack's `dependencyDirs` (for Astro, `node_modules`) are mirrored into the worktree with hard
 links, so your project's tools can run there without reinstalling. The harness never writes to them, and every file it
@@ -182,12 +184,15 @@ Everything about a run is in `runs/<runId>/`:
 | `events.jsonl` | Every stage and every rejected output, with a reason code. `status` and the app are built from it. |
 | `plan.json`, `run.json` | The plan as run, and the run's state. |
 | `tasks/<id>/` | Per task: `state.json`, gate results per round, `review.json`, and `blocked.patch` if it was blocked. |
-| `records/` | One file per model request: role, profile, model id, tokens, time, outcome. Never a key. |
+| `records/` | One file per model request: role, profile, model id, tokens, time, outcome, and for a failed request the HTTP status and the server's error text (redacted). Never a key. |
 | `final_review.json` | The review of the whole run. |
 
 **Rejections** are the heart of the report: every output the harness threw away is counted by reason, such as
 "edit search text not found", "typecheck failed", "depends on code not shown" or "needs a value its type forbids".
-They show where a model struggles, and they are how you compare models.
+Replies that were discarded and retried with thinking off count too. Rejections show where a model struggles, and
+they are how you compare models.
+
+![A report in the app: the tasks table with T1 done and its commit, gates compared with the baseline, and empty Findings, Questions and Suspicious text sections](docs/media/app-report.png)
 
 **Findings** in the report are only claims confirmed by a failing test. Everything else the review raised is under
 **Questions**, clearly marked as unconfirmed.
@@ -258,6 +263,8 @@ Practical advice:
 
 ## Safety model
 
+![Safety model: model output passes six layers before it reaches your repository — fenced untrusted text, exact edits to declared files only, a path guard, your gates deciding done, findings that need a failing test, and a separate worktree and branch with no pushes, no installs and git hooks off. The local app listens on 127.0.0.1 only.](docs/media/safety-model.svg)
+
 The harness assumes the model can be wrong or manipulated, and limits what it can do:
 
 - **Edits stay in the worktree.** Every path is resolved and checked before a read or write: no `..`, no absolute
@@ -315,6 +322,30 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 - Review evidence uses a local docs checkout only; online docs are not fetched.
 - Gates run your tools on your machine: a gate is as trustworthy as the command you configure.
 - `harness probe`, `cleanup` and `push` are not implemented yet; use `git` directly to push a branch.
+
+## Why Ruby
+
+![Average tokens per Rosetta Code task by language: Ruby is third at about 116, next to Clojure and Julia at 109, and well ahead of JavaScript at 181, Java at 187 and C at 285](docs/media/token-efficiency.svg)
+
+*Chart redrawn from the data in Martin Alderson's
+[Which programming languages are most token-efficient?](https://martinalderson.com/posts/which-programming-languages-are-most-token-efficient/)
+(values read off the published chart). The study counted tokens for the same Rosetta Code tasks in each language
+using a GPT-4 tokenizer. Its author calls it an illustrative comparison, not a rigorous study. TypeScript was left
+out for lack of tasks.*
+
+- **Fewer tokens.** Ruby is one of the most token-efficient mainstream languages. In the chart above it needs about
+  a third fewer tokens than JavaScript for the same task. A harness built for small context windows benefits twice:
+  models read and write less code, and contributors' agents spend less context on the harness itself.
+- **Contributing with local models.** Fewer tokens and zero dependencies mean a local model on modest hardware can
+  read, change and test this codebase. Contributing doesn't require a large hosted model.
+- **Easy to read.** Human contributors can catch up quickly without much effort. TypeScript and its types would have
+  been the stronger choice for people alone. This is an agent-first harness, though, so it is written in a language
+  that is friendlier to agents and still easy for people.
+- **Easy to review.** Ruby is easy to skim when you approve a pull request, read code or leave review comments. That
+  matters for a project that expects many outside contributions.
+- **A bit of history.** Ruby and Ruby on Rails are what first pulled the author towards AdonisJS and deeper
+  TypeScript work. There was never time to learn Ruby properly back then, but its influence stuck. This project is
+  the chance to build in it.
 
 ## Development
 
