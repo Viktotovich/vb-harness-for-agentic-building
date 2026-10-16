@@ -84,7 +84,7 @@ module Harness
         private
 
         def json(path)
-          JSON.parse(File.read(path, encoding: "UTF-8"))
+          State.read_json(path)
         rescue Errno::ENOENT, JSON::ParserError
           nil
         end

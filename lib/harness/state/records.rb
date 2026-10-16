@@ -48,8 +48,50 @@ module Harness
     def self.write_json(path, data)
       FileUtils.mkdir_p(File.dirname(path))
       tmp = "#{path}.tmp"
-      File.write(tmp, "#{JSON.pretty_generate(data)}\n", encoding: "UTF-8")
-      File.rename(tmp, path)
+      sharing_safe { File.write(tmp, "#{JSON.pretty_generate(data)}\n", encoding: "UTF-8") }
+      sharing_safe { File.rename(tmp, path) }
+    end
+
+    # Read a JSON file that another thread may be replacing with write_json. On Windows the file can look missing
+    # for a moment mid-rename; that is retried while the rename is visibly under way, a missing file raises at once.
+    # @param path [String]
+    # @param sleeper [#call] (seconds)
+    # @return [Object]
+    # @raise [Errno::ENOENT, JSON::ParserError, SystemCallError]
+    def self.read_json(path, sleeper: ->(s) { sleep(s) })
+      attempts = 0
+      begin
+        JSON.parse(sharing_safe(sleeper: sleeper) { File.read(path, encoding: "UTF-8") })
+      rescue Errno::ENOENT
+        attempts += 1
+        raise if attempts > SHARING_RETRIES || !(File.exist?("#{path}.tmp") || File.exist?(path))
+
+        sleeper.call(SHARING_PAUSE)
+        retry
+      end
+    end
+
+    SHARING_RETRIES = 100
+    SHARING_PAUSE = 0.01
+
+    # On Windows a rename over a file fails while another thread has it open, and opening it fails while the rename
+    # is under way: both raise EACCES for a moment (the UI's event stream reads run.json while the run rewrites it).
+    # Retry briefly; a lasting EACCES (a real permission problem) still raises.
+    # @param sleeper [#call] (seconds)
+    # @yieldreturn [Object]
+    # @return [Object] the block's value
+    # @raise [Errno::EACCES] when it lasts past the retries
+    def self.sharing_safe(sleeper: ->(s) { sleep(s) })
+      attempts = 0
+      begin
+        yield
+      rescue Errno::EACCES
+        attempts += 1
+        raise if attempts > SHARING_RETRIES
+
+        sleeper.call(SHARING_PAUSE)
+        retry
+      end
     end
   end
 end

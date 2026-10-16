@@ -73,7 +73,7 @@ module Harness
 
       # @return [Hash] run.json, or {} when there is none yet
       def read_run
-        JSON.parse(File.read(File.join(@dir, "run.json"), encoding: "UTF-8"))
+        State.read_json(File.join(@dir, "run.json"))
       rescue Errno::ENOENT
         {}
       end
@@ -97,7 +97,7 @@ module Harness
       # @param id [String]
       # @return [Hash, nil]
       def read_task_state(id)
-        JSON.parse(File.read(File.join(task_dir(id), "state.json"), encoding: "UTF-8"))
+        State.read_json(File.join(task_dir(id), "state.json"))
       rescue Errno::ENOENT
         nil
       end

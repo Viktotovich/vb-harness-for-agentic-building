@@ -116,7 +116,7 @@ module Harness
       # The plan's tasks as the progress view needs them (titles are planner output; the page shows them as text).
       # @return [Array<Hash>]
       def tasks(store)
-        plan = JSON.parse(File.read(store.plan_path, encoding: "UTF-8"))
+        plan = State.read_json(store.plan_path)
         Array(plan["tasks"]).map { |t| { "id" => t["id"], "title" => t["title"], "dependsOn" => Array(t["dependsOn"]) } }
       rescue Errno::ENOENT, JSON::ParserError
         []
