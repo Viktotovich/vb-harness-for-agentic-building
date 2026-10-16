@@ -126,7 +126,8 @@ module Harness
     # @return [Plan::Planner::Result]
     def plan_with_model(setup, client, request, answers)
       Plan::Planner.new(client: client, config: @config, events: setup.events, cache_dir: @cache_dir)
-                   .call(request: request, root: setup.worktree.root, stack: setup.stack, answers: answers)
+                   .call(request: request, root: setup.worktree.root, stack: setup.stack, answers: answers,
+                         unavailable: Plan::Checks.unavailable(setup.baseline))
     end
 
     # A plan from a file (or edited after --plan-only) is checked like a planner's, without replanning.
@@ -136,7 +137,9 @@ module Harness
       budget = Task::Gather.budget(client: client, config: @config, role: :implementer, system: impl_system,
                                    schema: Task::EditSet::SCHEMA)
       issues = Plan::Checks.run(plan, root: setup.worktree.root, max_files: @config.limits.max_files_per_task,
-                                      protected: setup.stack.protected_paths, gates: setup.stack.gates.keys, budget: budget)
+                                      protected: setup.stack.protected_paths, gates: setup.stack.gates.keys, budget: budget,
+                                      unavailable: Plan::Checks.unavailable(setup.baseline),
+                                      test_gates: Plan::Checks.test_gates(setup.stack))
       issues.each do |i|
         setup.events.emit(stage: "plan.check", kind: "rejected", task: i.task, reason: i.reason, detail: i.message[0, 300])
       end

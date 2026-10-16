@@ -36,6 +36,10 @@ module Harness
     # committing -> done | blocked. State is persisted after every transition. Only gates mark a task done (I7).
     class Loop
       DIAGNOSTIC_CONTEXT = 5
+      # "Cannot find module '../x'" (tsc, astro check), "Could not resolve "../x"" and "Failed to resolve import "../x"" (bundlers)
+      MISSING_MODULE = /(?:Cannot find module|Could not resolve|Failed to resolve import)\s+["'\x60]([^"'\x60]+)["'\x60]/
+      MAX_PATH_HINTS = 5
+      MAX_REQUEST_CHARS = 6000
       REVIEW_CONTEXT = 10
 
       # Ends the task as blocked.
@@ -143,8 +147,9 @@ module Harness
       def implement
         step("implementing")
         system = Prompts.render("implement_system", rules: rules)
-        bundle = gather(system)
-        user = Prompts.render("implement_user", task: task_text, sections: bundle.sections)
+        request = request_text
+        bundle = gather(system, reserved: [request].compact)
+        user = Prompts.render("implement_user", task: task_text, request: request, sections: bundle.sections)
         @implement_messages = Model::Messages.new(system: system, user: user)
         ask(:implementer, "task.implement", @implement_messages, "implement")
       end
@@ -227,7 +232,7 @@ module Harness
           raise Blocked.new("gate.skipped:#{skipped[0].name}", skipped[1].current.reason.to_s) if skipped
 
           diagnostics = trimmed_diagnostics(failing)
-          key = diagnostics.map { |d| [d.file, d.code, d.message] }.sort
+          key = diagnostics.map { |d| [d.file.to_s, d.code.to_s, d.message.to_s] }.sort
           if key == previous
             emit("task.fix", "rejected", reason: "fix.same_errors_twice", detail: "#{key.size} diagnostics unchanged")
             raise Blocked.new("fix.same_errors_twice", "the fix left the same #{key.size} problems")
@@ -305,8 +310,9 @@ module Harness
         system = Prompts.render("fix_system", rules: rules)
         shown = Untrusted.fence(render_diagnostics(diagnostics))
         diff = Untrusted.fence(@ctx.worktree.patch)
-        bundle = gather(system, reserved: [shown, diff])
-        user = Prompts.render("fix_user", task: task_text, diagnostics: shown, diff: diff, sections: bundle.sections)
+        request = request_text
+        bundle = gather(system, reserved: [shown, diff, request].compact)
+        user = Prompts.render("fix_user", task: task_text, request: request, diagnostics: shown, diff: diff, sections: bundle.sections)
         messages = Model::Messages.new(system: system, user: user)
         apply(ask(:fixer, "task.fix", messages, "fix#{@fix_rounds}"), :fixer, messages)
       end
@@ -316,8 +322,20 @@ module Harness
       def render_diagnostics(diagnostics)
         diagnostics.map do |d|
           head = [d.file && "#{d.file}#{d.line ? ":#{d.line}" : ''}#{d.col ? ":#{d.col}" : ''}", d.severity, d.code].compact.join(" ")
-          "#{head}: #{d.message}#{source_excerpt(d)}"
+          "#{head}: #{d.message}#{source_excerpt(d)}#{path_hint(d)}"
         end.join("\n\n")
+      end
+
+      # A model that guessed a wrong import path rarely finds the right one from the error alone (a live run spent
+      # three fix rounds on "../components/Layout.astro"), so name the files that have the module's base name.
+      # @return [String]
+      def path_hint(d)
+        spec = d.message[MISSING_MODULE, 1]
+        return "" if spec.nil? || @ctx.map.nil?
+
+        base = File.basename(spec, ".*")
+        found = @ctx.map.paths.select { |p| File.basename(p, ".*") == base }.first(MAX_PATH_HINTS)
+        found.empty? ? "" : "\nFiles named #{base} in this repository: #{found.join(', ')}"
       end
 
       # @return [String]
@@ -383,6 +401,17 @@ module Harness
       # @return [String] the task as planned, fenced (planner output is model output, I9)
       def task_text
         Untrusted.fence(@task.prompt_text)
+      end
+
+      # The feature request the plan came from. A planner summarising a task drops details (a live run lost every
+      # colour value of a theme), so the implementer and fixer see the request itself for exact values, names and text.
+      # @return [String, nil] fenced, cut at MAX_REQUEST_CHARS; nil when the run has no request.md
+      def request_text
+        text = @ctx.store.read_request.to_s.strip
+        return nil if text.empty?
+
+        text = "#{text[0, MAX_REQUEST_CHARS]}\n[request cut at #{MAX_REQUEST_CHARS} characters]" if text.size > MAX_REQUEST_CHARS
+        Untrusted.fence(text)
       end
 
       # @param reserved [Array<String>] text the prompt sends besides the bundle

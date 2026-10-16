@@ -133,6 +133,22 @@ module Harness
         s
       end
 
+      # A run whose thread raised would otherwise stay "running" forever: record the error and mark it failed.
+      # @param id [String]
+      # @param message [String]
+      # @return [void]
+      def crashed(id, message)
+        store = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
+        return unless store.exist?
+        return if FINISHED.include?(store.read_run["status"])
+
+        State::Events.new(path: store.events_path, run_id: id)
+                     .emit(stage: "report", kind: "rejected", reason: "harness.crashed", detail: message)
+        store.update_run({ "status" => "failed", "exitCode" => 1, "error" => message })
+      rescue StandardError
+        nil
+      end
+
       # @return [void]
       def background(id)
         @mutex.synchronize do
@@ -143,6 +159,7 @@ module Harness
             yield
           rescue StandardError => e
             job[:error] = e.message[0, 500]
+            crashed(id, job[:error])
           end
           @jobs[id] = job
         end

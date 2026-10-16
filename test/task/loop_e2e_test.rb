@@ -115,6 +115,24 @@ class LoopE2ETest < Minitest::Test
                  "a moved line with the same file, code and message is the same problem"
   end
 
+  def test_diagnostics_with_and_without_a_code_can_be_fixed
+    run_plan([F.task("T1", "Double the price", modify: [PRICE])],
+             { "T1 implement" => F.replace(PRICE, "  return n;", "  return n; // BROKEN SYNTAX"),
+               "T1 fix" => F.replace(PRICE, "  return n; // BROKEN SYNTAX", "  return n * 2;") })
+    t1 = @result.outcome.tasks.first
+    assert_equal ["done", 1], [t1.status, t1.fix_rounds], "comparing diagnostics must not fail on a missing code"
+  end
+
+  def test_a_module_that_cannot_be_found_comes_with_the_files_of_that_name
+    run_plan([F.task("T1", "Double the price", modify: [PRICE])],
+             { "T1 implement" => F.replace(PRICE, "  return n;", "  return n; // BROKEN IMPORT"),
+               "T1 fix" => F.replace(PRICE, "  return n; // BROKEN IMPORT", "  return n * 2;") })
+    assert_equal "done", @result.outcome.tasks.first.status
+    fix_user = @result.server.chat_bodies.find { |b| b["messages"].first["content"].start_with?("You fix") }["messages"].last["content"]
+    assert_includes fix_user, "Cannot find module '../wrong/tax'"
+    assert_includes fix_user, "Files named tax in this repository: #{TAX}"
+  end
+
   def test_rejected_edits_get_one_retry
     run_plan([F.task("T1", "Double the price", modify: [PRICE])],
              { "T1 implement" => F.replace(PRICE, "return n ;", "return n * 2;"),

@@ -11,12 +11,15 @@ module TestSupport
   module RunFixture
     TYPECHECK = <<~RUBY
       bad = Dir.glob("src/**/*.ts").sort.flat_map do |f|
-        File.readlines(f).each_with_index.filter_map do |line, i|
-          next unless line.include?("BROKEN")
+        File.readlines(f).each_with_index.flat_map do |line, i|
+          next [] unless line.include?("BROKEN")
 
           tag = line[/BROKEN (\\d+)/, 1]
           msg = tag ? "Value \#{tag} is not a number." : "Type 'string' is not assignable to type 'number'."
-          "\#{f}:\#{i + 1}:3 - error ts(2322): \#{msg}"
+          out = ["\#{f}:\#{i + 1}:3 - error ts(2322): \#{msg}"]
+          out << "\#{f}:\#{i + 1}:1 - error expected a closing tag" if line.include?("SYNTAX") # no code, like astro's own
+          out << "\#{f}:\#{i + 1}:1 - error ts(2307): Cannot find module '../wrong/tax' or its corresponding type declarations." if line.include?("IMPORT")
+          out
         end
       end
       puts bad
@@ -32,7 +35,7 @@ module TestSupport
     }.freeze
 
     # @return [Harness::Config]
-    def self.config(base_url)
+    def self.config(base_url, extra_gates: {})
       ruby = RbConfig.ruby
       Harness::Config.parse({
                               "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
@@ -42,7 +45,7 @@ module TestSupport
                                 "gates" => {
                                   "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check", "costRank" => 3 },
                                   "build" => { "argv" => [ruby, "-e", "exit 0"], "when" => "integration", "costRank" => 8 }
-                                },
+                                }.merge(extra_gates),
                                 "alwaysGates" => ["typecheck"],
                                 "protectedPaths" => [".env*", "tools/**"]
                               } }
@@ -129,10 +132,10 @@ module TestSupport
 
     # A Pipeline over a fresh fixture repo and a fake model.
     # @return [Setup]
-    def self.pipeline(tmp, replies, files: FILES)
+    def self.pipeline(tmp, replies, files: FILES, extra_gates: {})
       repo, env = TestSupport.repo(tmp, files)
       server = server(replies)
-      config = config(server.base_url)
+      config = config(server.base_url, extra_gates: extra_gates)
       home = File.join(tmp, "home")
       pipeline = Harness::Pipeline.new(config: config, home: home, env: ENV.to_h.merge(env),
                                        client_factory: ->(store) { client(config, store) })

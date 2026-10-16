@@ -9,6 +9,11 @@ The checks reported these problems:
 The change so far (a diff against the last commit):
 <%= diff %>
 
+<% if request -%>
+The whole feature request this task is one part of. Take exact values, names and text from it; build only this task's part:
+<%= request %>
+
+<% end -%>
 Context:
 <% sections.each do |section| -%>
 <%= section %>

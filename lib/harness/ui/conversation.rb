@@ -18,6 +18,7 @@ module Harness
     class Conversation
       SUMMARY_TOKENS = 600
       LIST_TIMEOUT = 3
+      RETRY_NOTICE = "The model ran out of room while thinking; asking again with thinking off."
 
       # @param config [Config]
       # @param chats [Chats]
@@ -81,13 +82,30 @@ module Harness
         text = +""
         thinking = +""
         messages = fit(chat, profile)
-        finish = @stream.call(profile: profile, model: model, messages: messages, max_tokens: profile.max_output_tokens,
-                              stop: -> { job[:stop] || sse.closed? }) do |piece|
-          (piece.kind == "text" ? text : thinking) << piece.text
-          sse.event(piece.kind, { "text" => piece.text })
+        reply = lambda do |off|
+          @stream.call(profile: profile, model: model, messages: messages, max_tokens: profile.max_output_tokens,
+                       thinking_off: off, stop: -> { job[:stop] || sse.closed? }) do |piece|
+            (piece.kind == "text" ? text : thinking) << piece.text
+            sse.event(piece.kind, { "text" => piece.text })
+          end
         end
+        finish = reply.call(nil)
+        retried = false
+        control = out_of_room?(finish, text) ? @probe.call(profile).thinking_control : "none"
+        if control != "none"
+          # Like the model client: a reply that spent its whole allowance thinking is asked again once, thinking off.
+          retried = true
+          sse.event("notice", { "text" => RETRY_NOTICE })
+          finish = reply.call(control)
+        end
+        if out_of_room?(finish, text)
+          return sse.event("error", { "error" => "The model used its whole output allowance (#{profile.max_output_tokens} tokens) " \
+                                                 "on thinking and gave no answer#{retried ? ', even with thinking off' : ''}. Raise " \
+                                                 "maxOutputTokens for this profile, or ask a narrower question." })
+        end
+
         @chats.append(chat["id"], { "role" => "assistant", "content" => text, "thinking" => thinking.empty? ? nil : thinking,
-                                    "model" => "#{profile.name} · #{model}", "finish" => finish })
+                                    "model" => "#{profile.name} · #{model}", "finish" => finish, "retried" => retried || nil }.compact)
         sse.event("done", { "finish" => finish })
       rescue ModelUnavailableError, ConfigError => e
         sse.event("error", { "error" => e.message })
@@ -96,6 +114,11 @@ module Harness
       end
 
       private
+
+      # @return [Boolean] the reply ended at the output limit with no answer text
+      def out_of_room?(finish, text)
+        finish == "length" && text.strip.empty?
+      end
 
       # @return [Array(Model::Profile, String)]
       def choice(chat)

@@ -60,18 +60,23 @@ module Harness
       # @param root [String] worktree root
       # @param stack [Gates::Stack]
       # @param answers [Array<Array(String, String)>] [question, answer] pairs from harness answer
+      # @param unavailable [Hash{String=>String}] gates the baseline could not run here, with why; never offered
       # @return [Result]
       # @raise [ModelOutputError, ModelUnavailableError, ContextOverflowError]
-      def call(request:, root:, stack:, answers: [])
+      def call(request:, root:, stack:, answers: [], unavailable: {})
         @events.emit(stage: "plan", kind: "stage_started")
-        system = Prompts.render("planner_system", max_files: @config.limits.max_files_per_task, gates: stack.gates.keys.join(", "))
+        test_gates = Checks.test_gates(stack)
+        system = Prompts.render("planner_system", max_files: @config.limits.max_files_per_task,
+                                                  gates: (stack.gates.keys - unavailable.keys).join(", "),
+                                                  tests: test_gates.empty? || !(test_gates - unavailable.keys).empty?)
         user = first_prompt(system, request, root, stack, answers)
         check_budget = implementer_budget
         rounds = 0
         loop do
           plan = ask(system, user, rounds)
           issues = Checks.run(plan, root: root, max_files: @config.limits.max_files_per_task, protected: stack.protected_paths,
-                                    gates: stack.gates.keys, budget: check_budget)
+                                    gates: stack.gates.keys, budget: check_budget, unavailable: unavailable,
+                                    test_gates: test_gates)
           report(issues)
           return finish(plan, rounds, issues) if issues.empty? || rounds >= @config.limits.max_replan_rounds
 

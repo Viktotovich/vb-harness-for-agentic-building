@@ -59,6 +59,16 @@ class PipelineTest < Minitest::Test
     assert_equal "Make the price double.", store(r).read_request
   end
 
+  # A live run: the planner summarised a theme task as "the required CSS custom properties" and the implementer,
+  # seeing only the task, invented every colour. The implementer now sees the request itself.
+  def test_the_implementer_sees_the_whole_request_for_exact_values
+    fixture({ "plan" => F.plan_reply([t1]), "T1 implement" => GOOD })
+    @fx.pipeline.start(repo: @fx.repo, request: "Make the price double. The factor is exactly 2.")
+    user = bodies("You make one small").first["messages"].last["content"]
+    assert_match(/Take exact values, names and text from it.*\n<untrusted-data id="\h+">\nMake the price double\. The factor is exactly 2\./,
+                 user, "the request is shown, fenced, before the context")
+  end
+
   def test_a_discarded_planner_reply_is_counted_as_a_plan_rejection
     truncated = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
     fixture({ "plan" => [truncated, F.plan_reply([t1])], "T1 implement" => GOOD })
@@ -71,6 +81,26 @@ class PipelineTest < Minitest::Test
     fold = Harness::State::Events.fold(events)
     assert_equal 1, fold["reasons"]["model.truncated"]
     assert_equal 1, fold["stages"]["plan"]["rejected"]
+  end
+
+  # A live run: the planner proved a task with a gate whose tool the repository lacks, so the task was blocked at
+  # its gates. Now the planner is not offered that gate, and a plan that names it is sent back.
+  def test_a_gate_the_baseline_could_not_run_is_not_offered_and_is_sent_back
+    unit = { "unit" => { "argv" => ["harness-test-no-such-tool-#{Process.pid}"], "scope" => "tests", "costRank" => 4 } }
+    on_unit = t1(acceptance: [{ "kind" => "gate", "gate" => "unit" }])
+    @fx = F.pipeline(@tmp, { "plan" => [F.plan_reply([on_unit]), F.plan_reply([t1])], "T1 implement" => GOOD }, extra_gates: unit)
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal [0, "done"], [r.exit_code, r.status]
+    system = bodies("You plan").first["messages"].first["content"]
+    assert_match(/Gates: typecheck, build\./, system, "unit is not offered: its baseline was skipped")
+    assert_includes system, 'never "test"', "unit was the only test gate, so the planner is told not to plan tests"
+    events = Harness::State::Events.read(store(r).events_path)
+    refused = events.find { |e| e["reason"] == "plan.gate_unavailable" }
+    assert refused, "the plan naming unit was refused"
+    assert_match(/the unit gate cannot run in this repository \(command not found/, refused["detail"])
+    skipped = events.find { |e| e["stage"] == "integration" && e["subject"] == "unit" }
+    assert_equal "skipped", skipped["kind"], "a test gate that could not run at intake either does not fail the run"
+    assert_match(/could not run at baseline either: command not found/, skipped["detail"])
   end
 
   def test_failed_checks_are_fed_back_and_the_plan_is_corrected

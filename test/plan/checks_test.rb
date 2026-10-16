@@ -26,9 +26,10 @@ class ChecksTest < Minitest::Test
     { "id" => id, "title" => "Task #{id}", "intent" => "Do it.", "files" => files, "dependsOn" => depends, "acceptance" => acceptance }
   end
 
-  def issues(*tasks, budget: nil)
+  def issues(*tasks, budget: nil, unavailable: {}, test_gates: [])
     plan = Harness::Plan::PlanParser.parse({ "tasks" => tasks })
-    C.run(plan, root: @root, max_files: 3, protected: [".env*"], gates: %w[typecheck lint], budget: budget)
+    C.run(plan, root: @root, max_files: 3, protected: [".env*"], gates: %w[typecheck lint], budget: budget,
+                unavailable: unavailable, test_gates: test_gates)
   end
 
   def only(list)
@@ -46,7 +47,7 @@ class ChecksTest < Minitest::Test
     assert_equal "plan.no_changes", i.reason
     assert_match(/T1 creates and modifies no files\. Every task must change something: fold the inspection into the task that writes/, i.message)
     assert_equal "task changes no files", Harness::State::Reasons.text("plan.no_changes")
-    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck"), "Do not plan tasks that only inspect"
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true), "Do not plan tasks that only inspect"
   end
 
   # Shakedown bug 2: a test the task writes is one of its files, and its exact path reaches the implementer.
@@ -75,9 +76,47 @@ class ChecksTest < Minitest::Test
 
   def test_missing_path
     i = only(issues(task("T1", files: { "modify" => ["src/nope.ts"] })))
-    assert_equal ["plan.missing_path", "T1: src/nope.ts does not exist (files.modify); only existing files can be modified or read"],
+    assert_equal ["plan.missing_path", "T1: src/nope.ts does not exist (files.modify) and no task it depends on creates it; " \
+                                       "add the task that creates it to dependsOn, or list only existing files"],
                  [i.reason, i.message]
     assert_equal "plan.missing_path", only(issues(task("T1", files: { "modify" => ["src/a.ts"], "read" => ["src/gone.ts"] }))).reason
+  end
+
+  # A live run: T1 created a stylesheet and later tasks read it; the check refused files that did not exist yet.
+  def test_a_file_an_earlier_task_creates_can_be_read_or_modified
+    t1 = task("T1", files: { "create" => ["src/styles/global.css"] })
+    t2 = task("T2", files: { "create" => ["src/Header.astro"], "read" => ["src/styles/global.css"] }, depends: ["T1"])
+    t3 = task("T3", files: { "modify" => ["src/styles/global.css", "src/Header.astro"] }, depends: ["T2"])
+    assert_empty issues(t1, t2, t3, budget: 10_000), "dependencies count transitively: T3 needs T2, which needs T1"
+    stray = task("T4", files: { "create" => ["src/x.ts"], "read" => ["src/styles/global.css"] })
+    i = only(issues(t1, stray))
+    assert_equal ["plan.missing_path", "T4"], [i.reason, i.task], "without dependsOn the file may not exist yet when T4 runs"
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true),
+                    "files that a task in \"dependsOn\" creates"
+  end
+
+  # A live run: the planner proved a stylesheet task with the unit gate, whose tool the repository does not have;
+  # the task was blocked at its gates and every task after it was skipped. The plan check now says so up front.
+  def test_a_gate_the_baseline_could_not_run_is_refused
+    missing = { "lint" => "tool not installed: canceled due to missing packages" }
+    i = only(issues(task("T1", acceptance: [{ "kind" => "gate", "gate" => "lint" }]), unavailable: missing))
+    assert_equal "plan.gate_unavailable", i.reason
+    assert_equal "T1: the lint gate cannot run in this repository (tool not installed: canceled due to missing packages); " \
+                 "use one of typecheck", i.message
+    assert_equal "plan names a gate that cannot run in this repository", Harness::State::Reasons.text("plan.gate_unavailable")
+    test_item = { "kind" => "test", "path" => "src/a.ts", "write" => false, "describe" => "a is 1" }
+    i = only(issues(task("T2", acceptance: [test_item]), unavailable: missing, test_gates: ["lint"]))
+    assert_match(/T2: tests cannot run in this repository \(lint: tool not installed/, i.message)
+    assert_empty issues(task("T3", acceptance: [test_item]), test_gates: ["lint"]), "tests are fine when their gate runs"
+    no_tests = 'use "gate" and "assert" items only, never "test"'
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false), no_tests
+    refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true), no_tests
+  end
+
+  def test_unavailable_gates_come_from_the_baseline
+    result = ->(status, reason) { Harness::Gates::Result.new(gate: "g", status: status, exit_code: nil, diagnostics: [], reason: reason, ms: 0, argv: []) }
+    baseline = { "unit" => result.call("skipped", "tool not installed"), "build" => result.call("passed", nil) }
+    assert_equal({ "unit" => "tool not installed" }, C.unavailable(baseline))
   end
 
   def test_path_exists

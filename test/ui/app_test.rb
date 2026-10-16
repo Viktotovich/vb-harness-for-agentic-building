@@ -99,6 +99,55 @@ class UIAppTest < Minitest::Test
     assert_equal %w[system user], body["messages"].map { |m| m["role"] }
   end
 
+  def length_reply(*pieces)
+    lines = pieces.map { |delta| "data: #{JSON.generate({ 'choices' => [{ 'delta' => delta }] })}
+
+" }
+    [200, "#{lines.join}data: #{JSON.generate({ 'choices' => [{ 'delta' => {}, 'finish_reason' => 'length' }] })}
+
+data: [DONE]
+
+"]
+  end
+
+  def thinking_config(control)
+    cfg = RR.raw_config(@model.base_url)
+    cfg["profiles"]["default"]["thinking"] = { "control" => control, "effort" => "low", "budgetTokens" => nil }
+    cfg
+  end
+
+  def test_a_reply_that_only_thought_is_asked_again_with_thinking_off
+    @model = Fake.new do |body, _n|
+      if body["chat_template_kwargs"] then sse_reply({ "content" => "Plan: three tasks." })
+      else length_reply({ "reasoning_content" => "Let me think at length..." })
+      end
+    end
+    start(config: thinking_config("chat_template_kwargs"))
+    id = post("/api/chats", {}).json["id"]
+    stream = post("/api/chats/#{id}/send", { "text" => "Plan it", "mode" => "chat" }).json["stream"]
+    events = get("/api/streams/#{stream}").events
+    assert_includes events.map(&:first), "notice"
+    assert_equal ["done", { "finish" => "stop" }], events.last
+    first, second = @model.chat_bodies.select { |b| b["stream"] }.last(2)
+    assert_nil first["chat_template_kwargs"]
+    assert_equal({ "enable_thinking" => false }, second["chat_template_kwargs"])
+    saved = get("/api/chats/#{id}").json["messages"].last
+    assert_equal ["Plan: three tasks.", true], saved.values_at("content", "retried")
+    assert_equal "Let me think at length...", saved["thinking"]
+  end
+
+  def test_a_reply_that_never_answers_is_an_error_not_an_empty_message
+    @model = Fake.new { |_body, _n| length_reply({ "reasoning_content" => "Still thinking..." }) }
+    start(config: thinking_config("none"))
+    id = post("/api/chats", {}).json["id"]
+    stream = post("/api/chats/#{id}/send", { "text" => "Plan it", "mode" => "chat" }).json["stream"]
+    events = get("/api/streams/#{stream}").events
+    refute_includes events.map(&:first), "notice", "with no way to turn thinking off there is nothing to retry"
+    assert_equal "error", events.last.first
+    assert_match(/whole output allowance .* on thinking and gave no answer/, events.last.last["error"])
+    assert_equal %w[user], get("/api/chats/#{id}").json["messages"].map { |m| m["role"] }, "no empty reply is saved"
+  end
+
   def test_old_messages_become_a_summary_when_the_context_is_small
     @model = Fake.new do |body, _n|
       if body["messages"].first["content"].start_with?("You summarize")

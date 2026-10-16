@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require "set"
 require_relative "../errors"
 require_relative "../repo/paths"
 require_relative "../task/gather"
@@ -21,15 +22,17 @@ module Harness
       # @param protected [Array<String>] protectedPaths
       # @param gates [Array<String>] gate names the stack defines
       # @param budget [Integer, nil] the implementer's token budget for the task and its files; nil skips the size check
+      # @param unavailable [Hash{String=>String}] gates the baseline could not run here, with why
+      # @param test_gates [Array<String>] gates that run a task's tests (scope "tests")
       # @return [Array<Issue>] empty when the plan passes
-      def self.run(plan, root:, max_files:, protected:, gates:, budget: nil)
+      def self.run(plan, root:, max_files:, protected:, gates:, budget: nil, unavailable: {}, test_gates: [])
         issues = cycle(plan)
         plan.tasks.each do |t|
-          path_issues = paths(t, root, protected)
+          path_issues = paths(t, root, protected, created_before(plan, t))
           issues.concat(writes_nothing(t))
           issues.concat(path_issues)
           issues.concat(files_count(t, max_files))
-          issues.concat(acceptance(t, gates))
+          issues.concat(acceptance(t, gates, unavailable, test_gates))
           issues.concat(size(t, root, protected, budget)) if budget && path_issues.empty?
         end
         issues
@@ -65,8 +68,38 @@ module Harness
                    message: "#{task.id} creates or modifies #{n} files; the limit is #{max_files} per task. Split it into smaller tasks")]
       end
 
+      # @param stack [Gates::Stack]
+      # @return [Array<String>] the gates that run a task's tests
+      def self.test_gates(stack)
+        stack.gates.values.select { |g| g.scope == "tests" }.map(&:name)
+      end
+
+      # Gates the baseline skipped (their tool is not installed, for example): no task can be proven with them.
+      # @param baseline [Hash{String=>Gates::Result}]
+      # @return [Hash{String=>String}] gate name => why
+      def self.unavailable(baseline)
+        baseline.select { |_, r| r.status == "skipped" }.to_h { |name, r| [name, r.reason.to_s[0, 120]] }
+      end
+
+      # Files created by the tasks a task depends on, directly or not: they exist by the time it runs.
+      # @return [Set<String>]
+      def self.created_before(plan, task)
+        by_id = plan.tasks.to_h { |t| [t.id, t] }
+        seen = {}
+        todo = task.depends_on.dup
+        until todo.empty?
+          id = todo.shift
+          next if seen[id] || !by_id.key?(id)
+
+          seen[id] = true
+          todo.concat(by_id[id].depends_on)
+        end
+        seen.keys.flat_map { |id| by_id[id].files.create }.to_set
+      end
+
+      # @param earlier [Set<String>] files an earlier task creates (see created_before)
       # @return [Array<Issue>]
-      def self.paths(task, root, protected)
+      def self.paths(task, root, protected, earlier)
         listed = { "create" => task.files.create, "modify" => task.files.modify, "read" => task.files.read }
         listed.flat_map do |kind, list|
           list.filter_map do |rel|
@@ -75,9 +108,10 @@ module Harness
             if kind == "create" && File.exist?(full)
               Issue.new(task: task.id, reason: "plan.path_exists",
                         message: "#{task.id}: #{rel} already exists (files.create); list it under files.modify instead")
-            elsif kind != "create" && !exists
+            elsif kind != "create" && !exists && !earlier.include?(rel)
               Issue.new(task: task.id, reason: "plan.missing_path",
-                        message: "#{task.id}: #{rel} does not exist (files.#{kind}); only existing files can be modified or read")
+                        message: "#{task.id}: #{rel} does not exist (files.#{kind}) and no task it depends on creates it; " \
+                                 "add the task that creates it to dependsOn, or list only existing files")
             end
           rescue PathError => e
             why = e.reason == Repo::Paths::PROTECTED ? "is a protected path" : "is outside the repository"
@@ -87,8 +121,9 @@ module Harness
       end
 
       # @return [Array<Issue>]
-      def self.acceptance(task, gates)
+      def self.acceptance(task, gates, unavailable, test_gates)
         provable = task.acceptance.select { |a| %w[gate test].include?(a.kind) }
+        runnable = gates - unavailable.keys
         issues = []
         if provable.empty?
           issues << Issue.new(task: task.id, reason: "plan.no_acceptance",
@@ -96,7 +131,17 @@ module Harness
         end
         task.acceptance.select { |a| a.kind == "gate" && !gates.include?(a.gate) }.each do |a|
           issues << Issue.new(task: task.id, reason: "plan.unknown_gate",
-                              message: "#{task.id}: there is no gate named #{a.gate}; use one of #{gates.join(', ')}")
+                              message: "#{task.id}: there is no gate named #{a.gate}; use one of #{runnable.join(', ')}")
+        end
+        task.acceptance.select { |a| a.kind == "gate" && unavailable.key?(a.gate) }.each do |a|
+          issues << Issue.new(task: task.id, reason: "plan.gate_unavailable",
+                              message: "#{task.id}: the #{a.gate} gate cannot run in this repository (#{unavailable[a.gate]}); " \
+                                       "use one of #{runnable.join(', ')}")
+        end
+        if task.acceptance.any? { |a| a.kind == "test" } && !test_gates.empty? && (test_gates - unavailable.keys).empty?
+          issues << Issue.new(task: task.id, reason: "plan.gate_unavailable",
+                              message: "#{task.id}: tests cannot run in this repository (#{test_gates.join(', ')}: " \
+                                       "#{unavailable[test_gates.first]}); prove the task with one of #{runnable.join(', ')}")
         end
         issues
       end
@@ -109,7 +154,7 @@ module Harness
       rescue TaskTooLargeError => e
         [Issue.new(task: task.id, reason: "plan.too_large_for_context", message: e.message)]
       end
-      private_class_method :cycle, :writes_nothing, :files_count, :paths, :acceptance, :size
+      private_class_method :cycle, :writes_nothing, :files_count, :created_before, :paths, :acceptance, :size
     end
   end
 end

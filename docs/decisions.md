@@ -379,3 +379,60 @@ records showed the lost reply. Now the client calls `on_discard` for every reply
 (redacted with the log's token patterns, first 300 characters), and log lines carry the run id and the task id.
 
 The app's report view renders Markdown tables; before, they showed as raw `|` text.
+
+## Chat retries a reply that only thought
+
+A chat reply can spend its whole output allowance on thinking and end with `finish_reason=length` and no text. The
+app showed an empty message. Now, when a reply ends that way and the profile's probe found a thinking control, the
+chat sends a `notice` event ("asking again with thinking off") and asks once more with thinking off. A message
+saved after a retry is marked `retried`, and the app shows a short note on it. If the second reply is also empty,
+the chat sends an `error` that names the output allowance and saves nothing, so an empty message never enters the
+history.
+
+## Plan checks: files from dependencies, gates that cannot run
+
+Two plan-check gaps showed up in a live Astro run:
+
+- **Files a dependency creates.** A task that read or modified a file created by an earlier task was refused as
+  `plan.missing_path`, so a correct plan ("T1 creates global.css, T2 imports it") could never pass. A task may now
+  read or modify any file that a task in its transitive `dependsOn` creates. The planner prompt says so, and the
+  refusal names the fix: add the creating task to `dependsOn`.
+- **Gates the baseline skipped.** The planner was offered every configured gate, including one the baseline could
+  not run (a test runner that was not installed). It chose that gate, the gate was "unavailable" for the task, the
+  task blocked, and every dependent task was skipped. The planner prompt now lists only gates the baseline could
+  run. `plan.gate_unavailable` refuses a plan that names a skipped gate, or that adds `test` items when every gate
+  with scope `tests` was skipped. The refusal names the reason and the gates that can run.
+
+## A crashed run is marked failed
+
+The same live run hit a Ruby error in the fix loop: `astro check` reported one diagnostic with a code and three
+without one, and sorting `[file, code, message]` keys compared `nil` with a string. The fix compares the fields as
+strings. The crash also showed a second gap: the app's build thread kept the error in memory, but `run.json` stayed
+`running` forever, so the build card spun and nothing said why. Now a build thread that raises appends a
+`harness.crashed` event with the error text and marks the run `failed` (exit code 1). `harness resume` can continue
+it from the last committed task.
+
+## A gate missing at intake does not fail integration
+
+Integration reruns the test gates. If a test runner is not installed, that gate is skipped at intake and again at
+integration, and the run used to end `failed` even when every task was done. A gate that was skipped at both points
+says nothing about the run's changes, so integration now records it as `skipped` ("could not run at baseline
+either"), not as a rejection, and it does not fail the run. The report still lists it in the gates table. A gate
+that ran at intake and is skipped at integration still fails the run.
+
+## Implementers see the request; fixers see where a missing file is
+
+The same run's code compiled, but the theme was wrong: the planner shortened the stylesheet task to "the required
+CSS custom properties", and the implementer, which saw only the task, invented every colour. Gates prove code
+compiles, not that it matches the request. Three changes, none tied to a model:
+
+- **The request goes to the implementer and the fixer.** Fenced as data after the task, with "take exact values,
+  names and text from it; build only this task's part". It is reserved in the context budget like the diff, and
+  cut at 6,000 characters so a long request cannot crowd out the files.
+- **The planner keeps exact values.** Its prompt says to copy colours, sizes, wording and names into the intent of
+  the task that needs them, and that a task using names another task defines (CSS variables, a component, a type)
+  depends on that task and reads its file.
+- **A module that cannot be found comes with the files of that name.** T8 spent three fix rounds guessing
+  `../components/Layout.astro` for a file at `src/layouts/Layout.astro`. When a diagnostic reads "Cannot find module
+  'x'" (or a bundler's "Could not resolve" / "Failed to resolve import"), the fixer is shown up to five repository
+  files with the same base name.

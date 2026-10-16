@@ -257,6 +257,9 @@ module Harness
         cmp = Gates::Baseline.compare(@setup.runner.run(g), @setup.baseline[g.name])
         if cmp.ok?
           events.emit(stage: "integration", kind: "accepted", subject: g.name, detail: cmp.verdict, ms: cmp.current.ms)
+        elsif skipped_at_baseline?(cmp)
+          events.emit(stage: "integration", kind: "skipped", subject: g.name,
+                      detail: "could not run at baseline either: #{cmp.current.reason}"[0, 300], ms: cmp.current.ms)
         else
           kind = { "skipped" => "skipped", "timeout" => "timeout" }.fetch(cmp.current.status, "failed")
           events.emit(stage: "integration", kind: "rejected", subject: g.name, reason: "gate.#{kind}:#{g.name}",
@@ -270,7 +273,8 @@ module Harness
 
     # @return [Outcome]
     def finish(outcomes, integration, stopped)
-      green = outcomes.values.all? { |o| o.status == "done" } && integration.all? { |c| c.ok? || !blocking?(c.gate) }
+      green = outcomes.values.all? { |o| o.status == "done" } &&
+              integration.all? { |c| c.ok? || !blocking?(c.gate) || skipped_at_baseline?(c) }
       code = if stopped then 2
              elsif green then 0
              else 1
@@ -283,6 +287,13 @@ module Harness
       @setup.events.emit(stage: "report", kind: "stage_finished", detail: File.basename(path))
       Outcome.new(run_id: @setup.store.run_id, tasks: outcomes.values, integration: integration, exit_code: code,
                   branch: @setup.worktree.branch, worktree: @setup.worktree.root)
+    end
+
+    # A gate whose tool is missing now and was missing at intake says nothing about this run's changes.
+    # @param cmp [Gates::Baseline::Comparison]
+    # @return [Boolean]
+    def skipped_at_baseline?(cmp)
+      cmp.verdict == "skipped" && @setup.baseline[cmp.gate]&.status == "skipped"
     end
 
     # @return [Boolean]

@@ -34,13 +34,15 @@ module Harness
       # @param messages [Array<Hash>] chat messages
       # @param max_tokens [Integer]
       # @param stop [#call] returns true when the user pressed Stop
+      # @param thinking_off [String, nil] a probed thinking control to turn thinking off with, or nil to leave it
       # @yieldparam piece [Piece]
       # @return [String] why it ended: "stop", "length", "stopped" (by the user) or another finish reason
       # @raise [ModelUnavailableError] when the server cannot be reached or answers with an error
-      def call(profile:, model:, messages:, max_tokens:, stop: -> { false }, &on_piece)
+      def call(profile:, model:, messages:, max_tokens:, stop: -> { false }, thinking_off: nil, &on_piece)
         uri = URI("#{profile.base_url}/chat/completions")
         body = { "model" => model, "messages" => messages, "stream" => true, "max_tokens" => max_tokens }
         body["temperature"] = profile.temperature unless profile.temperature.nil?
+        body = Wire.thinking_off(body, thinking_off) if thinking_off
         req = Net::HTTP::Post.new(uri)
         req["Content-Type"] = "application/json"
         Probe.headers(profile, @env).each { |k, v| req[k] = v }
