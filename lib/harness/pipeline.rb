@@ -132,7 +132,7 @@ module Harness
     # A plan from a file (or edited after --plan-only) is checked like a planner's, without replanning.
     # @return [Plan::Planner::Result]
     def check_given(setup, client, plan)
-      impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: ""))
+      impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: []))
       budget = Task::Gather.budget(client: client, config: @config, role: :implementer, system: impl_system,
                                    schema: Task::EditSet::SCHEMA)
       issues = Plan::Checks.run(plan, root: setup.worktree.root, max_files: @config.limits.max_files_per_task,

@@ -26,6 +26,7 @@ module Harness
         issues = cycle(plan)
         plan.tasks.each do |t|
           path_issues = paths(t, root, protected)
+          issues.concat(writes_nothing(t))
           issues.concat(path_issues)
           issues.concat(files_count(t, max_files))
           issues.concat(acceptance(t, gates))
@@ -42,6 +43,17 @@ module Harness
         ids = plan.tasks.reject { |t| t.depends_on.empty? }.map(&:id)
         [Issue.new(task: nil, reason: "plan.cycle",
                    message: "tasks #{ids.join(', ')} depend on each other in a cycle; remove a dependency so they can run in order")]
+      end
+
+      # A task that only inspects or analyses has nothing a gate can prove; its reading belongs to the task that
+      # makes the change.
+      # @return [Array<Issue>]
+      def self.writes_nothing(task)
+        return [] unless (task.files.create + task.files.modify).empty?
+
+        [Issue.new(task: task.id, reason: "plan.no_changes",
+                   message: "#{task.id} creates and modifies no files. Every task must change something: fold the inspection " \
+                            "into the task that writes (list what it reads under files.read) and remove #{task.id}")]
       end
 
       # @return [Array<Issue>]
@@ -97,7 +109,7 @@ module Harness
       rescue TaskTooLargeError => e
         [Issue.new(task: task.id, reason: "plan.too_large_for_context", message: e.message)]
       end
-      private_class_method :cycle, :files_count, :paths, :acceptance, :size
+      private_class_method :cycle, :writes_nothing, :files_count, :paths, :acceptance, :size
     end
   end
 end

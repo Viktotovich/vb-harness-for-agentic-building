@@ -378,7 +378,7 @@ module Harness
 
       # @return [String]
       def rules
-        Prompts.render("edit_rules", files: @task.writable.join(", "))
+        Prompts.render("edit_rules", files: @task.writable.join(", "), tests: @task.test_paths)
       end
 
       # @return [String] the task as planned, fenced (planner output is model output, I9)

@@ -10,6 +10,8 @@ Questions: {"text": "...", "blocking": true}
 
 Rules:
 - A task creates or modifies at most <%= max_files %> files. Prefer one component, function or page per task.
+- Every task creates or modifies at least one file. Do not plan tasks that only inspect, analyse or verify: put the files to look at under "read" of the task that makes the change.
+- A test the task writes ({"kind": "test", "write": true}) counts as one of its files; give its exact path.
 - "modify" and "read" list only files from the file list; "create" lists only files that do not exist yet.
 - Every task has at least one acceptance item of kind "gate" or "test". Gates: <%= gates %>.
 - "dependsOn" lists the ids of earlier tasks a task needs.

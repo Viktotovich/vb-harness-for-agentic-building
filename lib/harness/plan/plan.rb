@@ -33,7 +33,7 @@ module Harness
 
       # @return [Array<String>] every path the task may write
       def writable
-        (files.create + files.modify + test_paths).uniq
+        (files.create - test_paths + files.modify + test_paths).uniq
       end
 
       # @return [String] the task as a model sees it (callers fence it: plans are model output, I9)
@@ -110,13 +110,18 @@ module Harness
         Parse.known_keys!(files, %w[create modify read], "#{path}.files")
         acceptance = h["acceptance"]
         Parse.fail!("#{path}.acceptance", "array", acceptance) unless acceptance.is_a?(Array)
+        lists = %w[create modify read].to_h { |k| [k.to_sym, Parse.strings!(files.fetch(k, []), "#{path}.files.#{k}").dup] }
+        items = acceptance.each_with_index.map { |a, i| parse_acceptance(a, "#{path}.acceptance[#{i}]") }.freeze
+        # A test the task writes is one of its files: added to files.create unless the plan modifies it, so the
+        # edit rules, the checks and the file count all see it.
+        items.select { |a| a.kind == "test" && a.write }.each do |a|
+          lists[:create] << a.path unless lists[:create].include?(a.path) || lists[:modify].include?(a.path)
+        end
         Task.new(
           id: id, title: Parse.str!(h["title"], "#{path}.title"), intent: Parse.str!(h["intent"], "#{path}.intent"),
-          files: Files.new(**%w[create modify read].to_h do |k|
-            [k.to_sym, Parse.strings!(files.fetch(k, []), "#{path}.files.#{k}").dup.freeze]
-          end),
+          files: Files.new(**lists.transform_values(&:freeze)),
           depends_on: Parse.strings!(h.fetch("dependsOn", []), "#{path}.dependsOn").dup.freeze,
-          acceptance: acceptance.each_with_index.map { |a, i| parse_acceptance(a, "#{path}.acceptance[#{i}]") }.freeze
+          acceptance: items
         )
       end
 
