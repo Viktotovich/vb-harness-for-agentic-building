@@ -71,6 +71,7 @@ require_relative "harness/ui/server"
 require_relative "harness/ui/chats"
 require_relative "harness/ui/conversation"
 require_relative "harness/ui/builds"
+require_relative "harness/projects"
 require_relative "harness/ui/app"
 require_relative "harness/cli"
 

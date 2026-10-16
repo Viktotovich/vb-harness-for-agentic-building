@@ -13,7 +13,8 @@ module Harness
                        :max_review_fix_tasks, :whole_file_rewrite_max_bytes, :max_gate_output_bytes)
 
   # Validated config.json. stacks maps a stack name to a Gates::Stack.
-  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run) do
+  # projects: folders linked in the app (name => absolute path); they live only in the local config.json.
+  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
     # @raise [ArgumentError] on an unknown role
@@ -34,7 +35,8 @@ module Harness
       "wholeFileRewriteMaxBytes" => [:whole_file_rewrite_max_bytes, 4096],
       "maxGateOutputBytes" => [:max_gate_output_bytes, 204_800]
     }.freeze
-    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun] + LIMIT_DEFAULTS.keys).freeze
+    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects] + LIMIT_DEFAULTS.keys).freeze
+    PROJECT_NAME = /\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
     # Read and validate a config file.
     # @param path [String]
@@ -65,8 +67,22 @@ module Harness
         stack: Parse.str!(h.fetch("stack", "auto"), "stack"),
         stacks: Parse.hash!(h.fetch("stacks", {}), "stacks").to_h { |name, s| [name, Gates::Stack.parse(name, s)] }.freeze,
         gate_env_allow: Parse.strings!(h.fetch("gateEnvAllow", []), "gateEnvAllow").dup.freeze,
-        dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun")
+        dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun"),
+        projects: parse_projects(h.fetch("projects", []))
       )
+    end
+
+    # @return [Hash{String=>String}] name => absolute path
+    # @raise [ParseError]
+    def self.parse_projects(raw)
+      Parse.fail!("projects", "array", raw) unless raw.is_a?(Array)
+      raw.each_with_index.to_h do |p, i|
+        h = Parse.hash!(p, "projects[#{i}]")
+        Parse.known_keys!(h, %w[name path], "projects[#{i}]")
+        name = Parse.str!(h["name"], "projects[#{i}].name")
+        Parse.fail!("projects[#{i}].name", "a short name of letters, digits, . _ -", name) unless name.match?(PROJECT_NAME)
+        [name, Parse.str!(h["path"], "projects[#{i}].path")]
+      end.freeze
     end
 
     # @return [Limits]
@@ -101,6 +117,6 @@ module Harness
       out["model"] = env["HARNESS_#{key}_MODEL"] if env["HARNESS_#{key}_MODEL"]
       out
     end
-    private_class_method :parse_limits, :parse_profiles, :apply_env
+    private_class_method :parse_projects, :parse_limits, :parse_profiles, :apply_env
   end
 end

@@ -10,7 +10,8 @@ require_relative "../exec"
 module Harness
   module Repo
     # The only way the harness runs git: argv through Harness::Exec, checked against the allowlist in
-    # DESIGN.md 9.2. Nothing here can push, fetch, merge or touch a remote (I4).
+    # DESIGN.md 9.2. Nothing here can push, fetch, pull, merge or write to a remote (I4); the one download is the
+    # confirmed shallow clone of a new project.
     class Git
       # Each rule: first words of the argv, and a check on the rest.
       ALLOWED = [
@@ -23,8 +24,14 @@ module Harness
         [%w[checkout -- .], ->(rest) { rest.empty? }],
         [%w[clean -fd], ->(rest) { rest.empty? }],
         [%w[rev-parse], ->(_rest) { true }],
-        [%w[log], ->(_rest) { true }]
+        [%w[log], ->(_rest) { true }],
+        # For the app's project picker (docs/decisions.md): a shallow https clone into projects/<name> (a download,
+        # after the user confirms it), and a new repository for a new project. Nothing here writes to a remote.
+        [%w[clone --depth 1 --], ->(rest) { rest.size == 2 && rest[0].match?(CLONE_URL) && rest[1].match?(CLONE_DEST) }],
+        [%w[init -q -b main], ->(rest) { rest.empty? }]
       ].freeze
+      CLONE_URL = %r{\Ahttps://[A-Za-z0-9.-]+(?::\d{1,5})?/[A-Za-z0-9._~%/+-]+\z}
+      CLONE_DEST = %r{\Aprojects/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z}
       # Remote-touching options that no allowed subcommand may carry.
       FORBIDDEN_ARGS = /\A--(?:exec|upload-pack|receive-pack|output|ext-diff|textconv)\b/
 

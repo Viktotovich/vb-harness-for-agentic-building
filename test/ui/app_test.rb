@@ -130,8 +130,12 @@ class UIAppTest < Minitest::Test
     repo, git_env = TestSupport.repo(@tmp, RR::FILES)
     start(config: RR.raw_config(@model.base_url), env: ENV.to_h.merge(git_env))
     id = post("/api/chats", {}).json["id"]
-    assert_equal 400, post("/api/chats/#{id}/send", { "text" => "Double it", "mode" => "build", "repo" => File.join(@tmp, "nope") }).status
-    run = post("/api/chats/#{id}/send", { "text" => "Double the price.", "mode" => "build", "repo" => repo }).json["run"]
+    assert_equal 404, post("/api/chats/#{id}/send", { "text" => "Double it", "mode" => "build", "project" => "nope" }).status
+    linked = post("/api/projects/link", { "path" => repo }).json
+    assert_equal ["repo", true, true, "main", "astro"], linked.values_at("name", "linked", "clean", "branch", "stack")
+    sent = post("/api/chats/#{id}/send", { "text" => "Double the price.", "mode" => "build", "project" => "repo" })
+    run = sent.json["run"]
+    assert run, sent.body
     assert_match(/\Ar\d{8}-\d{6}-\h{4}\z/, run)
     first = get("/api/runs/#{run}/events?after=0").events
     waiting = first.select { |e, _| e == "run" }.last[1]
@@ -156,6 +160,8 @@ class UIAppTest < Minitest::Test
     assert_includes report.body, "## Findings"
     chat = get("/api/chats/#{id}").json
     assert_equal [["user", "build"], ["build", nil]], chat["messages"].map { |m| [m["role"], m["mode"]] }
+    assert_equal "repo", chat["messages"].last["project"]
+    refute(chat["messages"].any? { |m| m.key?("repo") }, "chats name the project, never its absolute path")
     assert_equal 404, get("/api/runs/..%2F..%2Fsecret/report").status
   end
 

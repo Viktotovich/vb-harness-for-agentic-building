@@ -148,16 +148,41 @@ class GuardrailsTest < Minitest::Test
 
   # --- I4: no push, remote write, merge or gh call in any code path ---
 
-  # Processes start in four places only (docs/decisions.md, M8): the git wrapper, the gate runner, the fixed
-  # provider subcommands (DESIGN.md 11.2) and the first-start browser opener (11.1).
-  def test_i4_only_git_gates_providers_and_the_browser_start_processes
+  # Processes start in five places only (docs/decisions.md, M8 and the project picker): the git wrapper, the gate
+  # runner, the fixed provider subcommands (DESIGN.md 11.2), the first-start browser opener (11.1) and the
+  # confirmed "new Astro project" command (11.3).
+  def test_i4_only_known_places_start_processes
     sites = Dir.glob("lib/**/*.rb", base: ROOT).flat_map do |rel|
       read(rel).lines.each_with_index.select { |l, _| l.include?("Exec.run(") }.map { |_, i| "#{rel}:#{i + 1}" }
     end
-    assert_equal %w[lib/harness/cli/ui_command.rb lib/harness/gates/runner.rb lib/harness/providers/actions.rb lib/harness/repo/git.rb],
+    assert_equal %w[lib/harness/cli/ui_command.rb lib/harness/gates/runner.rb lib/harness/projects.rb lib/harness/providers/actions.rb
+                    lib/harness/repo/git.rb],
                  sites.map { |s| s.split(":").first }.uniq.sort, "unexpected process call sites:\n#{sites.join("\n")}"
-    assert_equal 1, sites.count { |s| s.start_with?("lib/harness/providers/actions.rb") }
-    assert_equal 1, sites.count { |s| s.start_with?("lib/harness/cli/ui_command.rb") }
+    %w[lib/harness/providers/actions.rb lib/harness/cli/ui_command.rb lib/harness/projects.rb].each do |file|
+      assert_equal 1, sites.count { |s| s.start_with?("#{file}:") }, file
+    end
+    assert_includes read("lib/harness/projects.rb"), "Exec.run(CREATE_ASTRO.call(name)", "the only command there is the fixed create command"
+  end
+
+  # The project picker may download one way: a shallow https clone into projects/<name>, after confirmation.
+  def test_i4_the_only_clone_is_a_shallow_https_clone_into_projects
+    git = Harness::Repo::Git
+    assert git.allowed?(["clone", "--depth", "1", "--", "https://github.com/owner/repo.git", "projects/repo"])
+    [
+      ["clone", "--depth", "1", "--", "git@github.com:owner/repo.git", "projects/repo"],
+      ["clone", "--depth", "1", "--", "http://example.com/repo.git", "projects/repo"],
+      ["clone", "--depth", "1", "--", "file:///etc/repo", "projects/repo"],
+      ["clone", "--depth", "1", "--", "ext::sh -c touch% /tmp/x", "projects/repo"],
+      ["clone", "--depth", "1", "--", "https://example.com/r.git", "../outside"],
+      ["clone", "--depth", "1", "--", "https://example.com/r.git", "/abs/path"],
+      ["clone", "--depth", "1", "--", "https://example.com/r.git", "projects/repo", "extra"],
+      ["clone", "--depth", "1", "--upload-pack=x", "--", "https://example.com/r.git", "projects/repo"],
+      ["clone", "https://example.com/r.git", "projects/repo"],
+      ["clone", "--depth", "1", "--", "https://example.com/r.git --config=x", "projects/repo"]
+    ].each { |argv| refute git.allowed?(argv), argv.inspect }
+    assert git.allowed?(%w[init -q -b main])
+    refute git.allowed?(%w[init --bare])
+    refute git.allowed?(["init", "-q", "-b", "main", "--template=/tmp/x"])
   end
 
   def test_i4_provider_actions_are_a_fixed_list_with_no_remote_writes

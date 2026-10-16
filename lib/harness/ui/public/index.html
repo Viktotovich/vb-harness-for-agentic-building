@@ -38,11 +38,16 @@
             <button type="button" data-mode="chat" class="active" role="radio" aria-checked="true">Chat</button>
             <button type="button" data-mode="build" role="radio" aria-checked="false">Build</button>
           </div>
-          <label class="repo">repo <input id="repo" type="text" placeholder="/path/to/repo" spellcheck="false"></label>
+          <div id="project-box" class="project-box">
+            <label class="project">Project <select id="project-picker" aria-label="Project"></select></label>
+            <button id="project-add" class="btn ghost small" type="button">+ Add project</button>
+          </div>
           <span class="spacer"></span>
           <button id="stop" class="btn" type="button" hidden>Stop</button>
           <button id="send" class="btn primary" type="button">Send ▶</button>
         </div>
+        <div id="project-status" class="project-status" aria-live="polite" hidden></div>
+        <div id="project-panel" class="project-panel" hidden></div>
         <div class="hint">Enter adds a line · Ctrl+Enter (⌘+Enter) sends</div>
       </footer>
     </main>

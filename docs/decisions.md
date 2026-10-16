@@ -334,3 +334,26 @@ GPU, and runs in a few minutes on a laptop.
 - **Model-backed checks** (evals, live runs against a model server) stay manual, as before.
 
 This departs from DESIGN.md 16, which describes a CI workflow.
+
+## Projects and workspaces in the app
+
+- **Workspaces:** every run's worktree is `<home>/workspaces/<runId>` (home is the folder of `config.json`), never
+  next to or inside the user's repository. `workspaces/` and `projects/` are git-ignored.
+- **The project picker** replaces the free-text repository path in Build mode. Projects are folders under
+  `<home>/projects/`, plus folders linked once by pasting their path; linked folders are stored by name in
+  `config.json` (`"projects": [{"name", "path"}]`). Labels are names; paths are shown short (`projects/<name>`,
+  `~/...`, middle cut when long). Under the picker a line shows the short path, git, branch, clean or dirty, and
+  the detected stack and version, or a precise error.
+- **No folder browser:** the server never lists directories. A pasted path is validated (absolute, a folder, the
+  top of a git repository, not part of the harness itself) and described, nothing more.
+- **Downloads need confirmation:** "Clone from a git URL" (a shallow https clone into `projects/<name>`) and "New
+  Astro project" (`npm create astro@latest <name> -- --template minimal --install --no-git --yes`, then `git init`
+  and a first commit) first answer 409 with the exact command; they run only when the page sends
+  `"confirm": true` after the user accepted a dialog showing it. The git allowlist gains exactly these two shapes,
+  `clone --depth 1 -- <https URL> projects/<name>` and `init -q -b main`, and the I4 tests pin them. The create
+  command is a fifth process site, also pinned.
+- **Chat mode** is a planning conversation: the system prompt asks the model to understand the goal, discuss
+  approaches and trade-offs, sketch small steps, and suggest a request for Build mode; it never claims to change
+  files.
+- **Layout:** the main column is `minmax(0, 1fr)` and the top bar and composer wrap, so nothing runs past the right
+  edge at narrow widths.

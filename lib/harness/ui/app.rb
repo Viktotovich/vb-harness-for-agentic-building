@@ -8,6 +8,7 @@ require_relative "../errors"
 require_relative "../model/http"
 require_relative "../model/probe"
 require_relative "../model/stream"
+require_relative "../projects"
 require_relative "../providers/actions"
 require_relative "../providers/detect"
 require_relative "../providers/setup"
@@ -55,7 +56,7 @@ module Harness
       # @return [Response]
       def call(req)
         route(req)
-      rescue ConfigError, ParseError => e
+      rescue ConfigError, ParseError, GitError => e
         Response.error(e.is_a?(ConfigError) && e.message.start_with?("no ") ? 404 : 400, e.message)
       rescue ModelUnavailableError => e
         Response.error(503, e.message)
@@ -70,7 +71,8 @@ module Harness
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
         ["GET", %r{\A/api/runs/([\w-]+)/events\z}, :run_events], ["GET", %r{\A/api/runs/([\w-]+)/report\z}, :run_report],
         ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["GET", %r{\A/api/providers\z}, :providers],
-        ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post]
+        ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
+        ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
       ].freeze
 
       # @return [Response]
@@ -107,7 +109,41 @@ module Harness
           Response.json({ "ok" => true })
         when :providers then Response.json(Providers::Detect.local(http: @http, env: @env, clis: @clis, urls: @urls).map(&:to_json_hash))
         when :provider_post then provider_post(args[0], body(req))
+        when :projects then Response.json(projects!.list.map { |p| project_json(p) })
+        when :project_post then project_post(args[0], body(req))
         end
+      end
+
+      # @return [Hash] a project for the picker: its name, a short path and its status, never a raw absolute path
+      def project_json(project)
+        s = projects!.status(project.path, name: project.name)
+        s.to_json_hash.merge("linked" => project.linked)
+      end
+
+      # Clone and create download and install code: they run only with "confirm": true, which the page sends after
+      # the user accepted a dialog showing the exact command. Without it the answer is that command (409).
+      # @return [Response]
+      def project_post(what, data)
+        case what
+        when "validate" then Response.json(projects!.status(data["path"]).to_json_hash)
+        when "link" then Response.json(project_json(projects!.link(data["path"])))
+        when "unlink"
+          projects!.unlink(data["name"].to_s)
+          load_config
+          Response.json({ "ok" => true })
+        when "clone", "create"
+          plan = what == "clone" ? projects!.clone_plan(data["url"], data["name"]) : projects!.create_plan(data["name"].to_s)
+          return Response.json({ "confirm" => plan.to_h.transform_keys(&:to_s) }, status: 409) unless data["confirm"] == true
+
+          project = what == "clone" ? projects!.clone(data["url"], data["name"]) : projects!.create_astro(data["name"].to_s)
+          load_config
+          Response.json(project_json(project))
+        end
+      end
+
+      # @return [Projects]
+      def projects!
+        @projects || raise(ConfigError, "set up a model provider first (Settings)")
       end
 
       # @return [Response]
@@ -163,10 +199,13 @@ module Harness
         config!
         @chats.get(id)
         if mode == "build"
-          repo = data["repo"].to_s.strip
-          run = @builds.start(request: text, repo: repo)
+          project = projects!.find(data["project"].to_s)
+          status = projects!.status(project.path, name: project.name)
+          raise ParseError, "#{project.name}: #{status.error}" if status.error
+
+          run = @builds.start(request: text, repo: project.path)
           @chats.append(id, { "role" => "user", "content" => text, "mode" => "build" })
-          @chats.append(id, { "role" => "build", "runId" => run, "repo" => repo })
+          @chats.append(id, { "role" => "build", "runId" => run, "project" => project.name })
           Response.json({ "run" => run })
         else
           @chats.append(id, { "role" => "user", "content" => text, "mode" => "chat" })
@@ -242,6 +281,7 @@ module Harness
       def load_config
         @config = File.file?(@config_path) ? Config.load(@config_path, env: @env) : nil
         @probe = Model::Probe.new(http: @http, cache_dir: File.join(@home, ".cache"), env: @env)
+        @projects = @config && Projects.new(home: @home, config_path: @config_path, config: @config, env: @env)
         @conversation = @config && Conversation.new(config: @config, chats: @chats, probe: @probe, stream: Model::Stream.new(env: @env),
                                                     http: @http, env: @env)
       end
