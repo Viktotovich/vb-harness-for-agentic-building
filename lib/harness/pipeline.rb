@@ -43,9 +43,10 @@ module Harness
     # @param plan_hash [Hash, nil] a plan in its JSON form (--from-plan)
     # @param plan_only [Boolean] stop after planning
     # @param run_id [String, nil] a new run id chosen by the caller (the app shows it before intake ends)
+    # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
     # @return [Result]
     # @raise [GitError, ConfigError, ParseError, ModelOutputError, ModelUnavailableError]
-    def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil)
+    def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil)
       raise ArgumentError, "give a request or a plan" if request.nil? == plan_hash.nil?
 
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
@@ -56,9 +57,9 @@ module Harness
         store.update_run({ "planOnly" => plan_only })
         if request
           store.write_request(request)
-          planned(store, setup, client, plan_with_model(setup, client, request, []))
+          planned(store, setup, client, plan_with_model(setup, client, request, []), stop: stop)
         else
-          planned(store, setup, client, check_given(setup, client, Plan::PlanParser.parse(plan_hash)))
+          planned(store, setup, client, check_given(setup, client, Plan::PlanParser.parse(plan_hash)), stop: stop)
         end
       end
     end
@@ -66,9 +67,10 @@ module Harness
     # Record answers to the blocking questions, replan with them, and continue.
     # @param run_id [String]
     # @param answers [Array<String>] one per blocking question, in order
+    # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
     # @return [Result]
     # @raise [ConfigError] when the run is not waiting, or the number of answers is wrong
-    def answer(run_id, answers)
+    def answer(run_id, answers, stop: nil)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
@@ -83,7 +85,7 @@ module Harness
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = Run.observe(@client_factory.call(store), setup.events)
-        planned(store, setup, client, plan_with_model(setup, client, request_of(store), pairs))
+        planned(store, setup, client, plan_with_model(setup, client, request_of(store), pairs), stop: stop)
       end
     end
 
@@ -96,9 +98,10 @@ module Harness
 
     # Continue a stopped or crashed run where it left off.
     # @param run_id [String]
+    # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
     # @return [Result]
     # @raise [ConfigError] when the run is unknown, waiting for answers, or locked by another process
-    def resume(run_id)
+    def resume(run_id, stop: nil)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
@@ -108,16 +111,16 @@ module Harness
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = Run.observe(@client_factory.call(store), setup.events)
         if status == "planning" || !File.file?(store.plan_path)
-          next planned(store, setup, client, plan_with_model(setup, client, request_of(store), Array(run["answers"])))
+          next planned(store, setup, client, plan_with_model(setup, client, request_of(store), Array(run["answers"])), stop: stop)
         end
 
         plan = Plan::PlanParser.parse(JSON.parse(File.read(store.plan_path, encoding: "UTF-8")))
         if %w[planned plan_rejected].include?(status)
           store.update_run({ "planOnly" => false })
-          next planned(store, setup, client, check_given(setup, client, plan))
+          next planned(store, setup, client, check_given(setup, client, plan), stop: stop)
         end
 
-        execute(store, setup, client, plan, resume: true)
+        execute(store, setup, client, plan, resume: true, stop: stop)
       end
     end
 
@@ -148,7 +151,7 @@ module Harness
 
     # After planning: stop on problems, on blocking questions or for --plan-only; otherwise run the tasks.
     # @return [Result]
-    def planned(store, setup, client, result)
+    def planned(store, setup, client, result, stop: nil)
       State.write_json(store.plan_path, result.plan.to_json_hash)
       unless result.issues.empty?
         store.update_run({ "status" => "plan_rejected", "exitCode" => 1 })
@@ -169,12 +172,13 @@ module Harness
                           plan_path: store.plan_path)
       end
 
-      execute(store, setup, client, result.plan, resume: false)
+      execute(store, setup, client, result.plan, resume: false, stop: stop)
     end
 
     # @return [Result]
-    def execute(store, setup, client, plan, resume:)
-      outcome = Run.new(config: @config, client: client, setup: setup, cache_dir: @cache_dir).execute(plan, resume: resume)
+    def execute(store, setup, client, plan, resume:, stop: nil)
+      outcome = Run.new(config: @config, client: client, setup: setup, cache_dir: @cache_dir, stop: stop)
+                   .execute(plan, resume: resume)
       Result.new(run_id: store.run_id, status: store.read_run["status"], exit_code: outcome.exit_code, outcome: outcome,
                  questions: [], issues: [], plan_path: store.plan_path)
     end

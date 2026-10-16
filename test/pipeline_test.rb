@@ -243,6 +243,40 @@ class PipelineTest < Minitest::Test
     assert_equal 1, bodies("You make").size
   end
 
+  # --- stopping ---
+
+  def test_a_stop_ends_the_run_stopped_between_tasks_and_resume_continues_it
+    t2 = F.task("T2", "Raise the tax", modify: ["src/lib/tax.ts"])
+    fixture({ "plan" => F.plan_reply([t1, t2]), "T1 implement" => GOOD,
+              "T2 implement" => F.replace("src/lib/tax.ts", "0.2", "0.25") })
+    asked = 0
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Double the price and raise the tax.", stop: -> { (asked += 1) > 1 })
+    assert_equal [2, "stopped"], [r.exit_code, r.status]
+    assert_equal({ "T1" => "done", "T2" => "skipped" }, r.outcome.tasks.to_h { |t| [t.id, t.status] })
+    assert_match(/stopped by the user/, store(r).read_task_state("T2")["reason"])
+    assert_equal ["stopped", 2], store(r).read_run.values_at("status", "exitCode")
+    assert_equal DOUBLED, worktree_file(r, PRICE), "the committed task stays"
+    assert_equal 1, bodies("You make").size, "T2 never ran"
+
+    out = @fx.pipeline.resume(r.run_id)
+    assert_equal [0, "done"], [out.exit_code, out.status]
+    assert_equal({ "T1" => "done", "T2" => "done" }, out.outcome.tasks.to_h { |t| [t.id, t.status] })
+    assert_equal "export const rate = 0.25;
+", worktree_file(out, "src/lib/tax.ts")
+    assert_equal 2, bodies("You make").size, "resume runs only the stopped task"
+  end
+
+  def test_a_stop_after_the_last_task_skips_integration_until_resume
+    fixture({ "plan" => F.plan_reply([t1]), "T1 implement" => GOOD })
+    asked = 0
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.", stop: -> { (asked += 1) > 1 })
+    assert_equal [2, "stopped", "done"], [r.exit_code, r.status, r.outcome.tasks.first.status]
+    assert_empty r.outcome.integration
+    out = @fx.pipeline.resume(r.run_id)
+    assert_equal [0, "done"], [out.exit_code, out.status]
+    refute_empty out.outcome.integration
+  end
+
   # --- one process per run ---
 
   def test_a_run_in_use_cannot_be_resumed

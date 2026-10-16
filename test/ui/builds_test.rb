@@ -46,6 +46,21 @@ class UIBuildsTest < Minitest::Test
     def closed? = false
   end
 
+  # A pipeline that runs until it is asked to stop, then ends like Run#execute does.
+  class StoppablePipeline
+    def initialize(runs_dir)
+      @runs_dir = runs_dir
+    end
+
+    def start(run_id:, stop:, **)
+      store = Harness::State::RunStore.new(runs_dir: @runs_dir, run_id: run_id)
+      store.write_run({ "status" => "running" })
+      deadline = Time.now + 5
+      sleep 0.01 until stop.call || Time.now > deadline
+      store.update_run({ "status" => stop.call ? "stopped" : "done", "exitCode" => stop.call ? 2 : 0 })
+    end
+  end
+
   def setup
     @tmp = Dir.mktmpdir("harness-builds-")
     @runs = File.join(@tmp, "runs")
@@ -84,5 +99,21 @@ class UIBuildsTest < Minitest::Test
     assert_equal ["end", { "status" => "done" }], sse.sent.last.first(2)
     assert_equal({ "status" => "done", "exitCode" => 0 }, store.read_run.slice("status", "exitCode"), "the writer never crashed")
     refute(sse.sent.any? { |name, _| name == "failed" })
+  end
+
+  def test_stop_asks_a_running_build_to_stop_and_it_ends_stopped
+    builds = Harness::UI::Builds.new(runs_dir: @runs, pipeline: -> { StoppablePipeline.new(@runs) })
+    id = builds.start(request: "build it", repo: @tmp)
+    store = Harness::State::RunStore.new(runs_dir: @runs, run_id: id)
+    deadline = Time.now + 5
+    sleep 0.01 until store.read_run["status"] == "running" || Time.now > deadline
+
+    assert builds.stop(id), "a running build is asked to stop"
+    sleep 0.01 while builds.running?(id) && Time.now < deadline
+    assert_equal ["stopped", 2], store.read_run.values_at("status", "exitCode")
+    refute builds.stop(id), "a finished build has nothing to stop"
+    err = assert_raises(Harness::ConfigError) { builds.stop("r20260101-000000-abcd") }
+    assert_match(/\Ano run/, err.message)
+    assert_raises(Harness::ConfigError) { builds.stop("../escape") }
   end
 end

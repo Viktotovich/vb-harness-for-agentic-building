@@ -88,9 +88,11 @@ module Harness
     # @param setup [Setup]
     # @param review [Boolean] run the review (DESIGN.md 8) on every task and on the whole run
     # @param cache_dir [String, nil] the context map's cache (.cache/); nil disables it
-    def initialize(config:, client:, setup:, review: true, cache_dir: nil)
+    # @param stop [#call, nil] -> Boolean, asked between tasks: true ends the run "stopped" so resume can continue it
+    def initialize(config:, client:, setup:, review: true, cache_dir: nil, stop: nil)
       @config = config
       @setup = setup
+      @stop = stop || -> { false }
       self.class.observe(client, setup.events) if client.respond_to?(:on_discard) && client.on_discard.nil?
       map = Repo::Map.new(root: setup.worktree.root, cache_dir: cache_dir, protected: setup.stack.protected_paths)
       @reviewer = if review
@@ -143,7 +145,8 @@ module Harness
     end
 
     # Run every task in dependency order. Dependants of a task that is not done are skipped; independent
-    # tasks continue. A model outage stops the queue.
+    # tasks continue. A model outage stops the queue, and so does a stop request: it is checked before each task,
+    # before integration and before the final review, never in the middle of a task, so committed work stays.
     # @param plan [Plan::Plan]
     # @param resume [Boolean] continue each task from its saved state instead of starting fresh
     # @return [Outcome]
@@ -151,11 +154,12 @@ module Harness
       State.write_json(@setup.store.plan_path, plan.to_json_hash)
       @setup.store.update_run({ "status" => "running" })
       outcomes = {}
-      stopped = false
+      halt = nil # why the queue stopped, or nil
       queue = plan.ordered
       while (task = queue.shift)
-        if stopped
-          outcomes[task.id] = skip(task, "the model server is unavailable")
+        halt ||= STOPPED_BY_USER if @stop.call
+        if halt
+          outcomes[task.id] = skip(task, halt)
           next
         end
         missing = task.depends_on.find { |d| outcomes[d]&.status != "done" }
@@ -169,15 +173,19 @@ module Harness
         @setup.worktree.revert! if resume && %w[pending skipped].include?(saved&.fetch("state", nil) || "pending") && @setup.worktree.dirty?
         seed(task)
         outcomes[task.id] = run_task(task, done, saved)
-        stopped = outcomes[task.id].reason == "model.unavailable"
+        halt = "the model server is unavailable" if outcomes[task.id].reason == "model.unavailable"
         follow = outcomes[task.id].status == "done" ? add_follow_ups(plan, task) : []
         plan = plan.with(tasks: plan.tasks + follow) unless follow.empty?
         queue.unshift(*follow)
       end
-      integration = stopped ? [] : run_integration
-      final_review(integration) unless stopped
-      finish(outcomes, integration, stopped)
+      halt ||= STOPPED_BY_USER if @stop.call
+      integration = halt ? [] : run_integration
+      halt ||= STOPPED_BY_USER if @stop.call
+      final_review(integration) unless halt
+      finish(outcomes, halt ? [] : integration, !halt.nil?)
     end
+
+    STOPPED_BY_USER = "stopped by the user; harness resume continues the run"
 
     private
 

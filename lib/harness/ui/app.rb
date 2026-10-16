@@ -70,7 +70,8 @@ module Harness
         ["POST", %r{\A/api/chats/([\w-]+)/(rename|delete|model|send)\z}, :chat_action],
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
         ["GET", %r{\A/api/runs/([\w-]+)/events\z}, :run_events], ["GET", %r{\A/api/runs/([\w-]+)/report\z}, :run_report],
-        ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["GET", %r{\A/api/providers\z}, :providers],
+        ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["POST", %r{\A/api/runs/([\w-]+)/stop\z}, :run_stop],
+        ["GET", %r{\A/api/providers\z}, :providers],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
         ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
       ].freeze
@@ -107,6 +108,7 @@ module Harness
         when :run_answer
           @builds.answer(args[0], body(req)["answers"])
           Response.json({ "ok" => true })
+        when :run_stop then Response.json({ "stopping" => @builds.stop(args[0]) })
         when :providers then Response.json(Providers::Detect.local(http: @http, env: @env, clis: @clis, urls: @urls).map(&:to_json_hash))
         when :provider_post then provider_post(args[0], body(req))
         when :projects then Response.json(projects!.list.map { |p| project_json(p) })

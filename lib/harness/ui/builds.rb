@@ -41,7 +41,7 @@ module Harness
         raise ParseError, "the repository #{repo.to_s[0, 200]} is not a folder" unless repo.is_a?(String) && File.directory?(repo)
 
         id = State::RunStore.new_run_id
-        background(id) { @pipeline.call.start(repo: repo, request: request, run_id: id) }
+        background(id) { |stop| @pipeline.call.start(repo: repo, request: request, run_id: id, stop: stop) }
         id
       end
 
@@ -57,7 +57,22 @@ module Harness
         raise ConfigError, "run #{id} is not waiting for answers" if questions.empty?
         raise ConfigError, "#{questions.size} questions need #{questions.size} answers" unless answers.size == questions.size
 
-        background(id) { @pipeline.call.answer(id, answers) }
+        background(id) { |stop| @pipeline.call.answer(id, answers, stop: stop) }
+      end
+
+      # Ask a run going in this process to stop at its next safe point (between tasks, see Run#execute). It then
+      # ends "stopped" with its committed tasks kept, and harness resume continues it.
+      # @param id [String]
+      # @return [Boolean] whether a running build was asked to stop
+      # @raise [ConfigError] when there is no such run
+      def stop(id)
+        store(id)
+        @mutex.synchronize do
+          job = @jobs[id]
+          next false unless job&.fetch(:thread)&.alive?
+
+          job[:stop] = true
+        end
       end
 
       # @param id [String]
@@ -67,7 +82,8 @@ module Harness
         Report::Render.markdown(store(id))
       end
 
-      # Replay events after seq, then follow the log until the run stops changing.
+      # Replay events after seq, then follow the log until the run stops changing. The "run" event also says
+      # whether a stop was asked for and the run has not reached its safe point yet ("stopping").
       # @param id [String]
       # @param after [Integer]
       # @param sse [SSE]
@@ -79,6 +95,7 @@ module Harness
         seq = after
         status = nil
         shown = nil
+        stopping = false
         idle = 0.0
         until sse.closed?
           fresh = State::Events.read(store.events_path, after: seq)
@@ -88,12 +105,14 @@ module Harness
           end
           run = store.read_run
           plan = tasks(store)
-          if run["status"] != status || plan != shown
+          job = @mutex.synchronize { @jobs[id] }
+          asked = job ? @mutex.synchronize { job[:stop] } : false
+          if run["status"] != status || plan != shown || asked != stopping
             status = run["status"]
             shown = plan
-            sse.event("run", run.slice("status", "questions", "exitCode", "branch").merge("tasks" => plan))
+            stopping = asked
+            sse.event("run", run.slice("status", "questions", "exitCode", "branch").merge("tasks" => plan, "stopping" => asked))
           end
-          job = @mutex.synchronize { @jobs[id] }
           sse.event("failed", { "error" => job[:error] }) if job && job[:error] && !job[:reported] && (job[:reported] = true)
           running = job && job[:thread].alive?
           break sse.event("end", { "status" => status }) if !running && (FINISHED.include?(status) || WAITING.include?(status) || job&.fetch(:error, nil))
@@ -149,14 +168,16 @@ module Harness
         nil
       end
 
+      # Run the block in a thread; it gets a stop check (-> Boolean) to pass to the pipeline.
       # @return [void]
       def background(id)
         @mutex.synchronize do
           raise ConfigError, "run #{id} is busy" if @jobs[id]&.fetch(:thread)&.alive?
 
-          job = { error: nil, reported: false }
+          job = { error: nil, reported: false, stop: false }
+          stop = -> { @mutex.synchronize { job[:stop] } }
           job[:thread] = Thread.new do
-            yield
+            yield stop
           rescue StandardError => e
             job[:error] = e.message[0, 500]
             crashed(id, job[:error])

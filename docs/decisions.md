@@ -454,3 +454,15 @@ it was before any edit, while its retried edits were applied after the accepted 
 the task was blocked. Now the edit rules say that edits to one file apply in order and must not overlap, and
 that a small file can be rewritten whole instead. When a retry is needed, it includes each file with refused edits
 as the accepted edits left it (fenced, up to 12,000 characters in all), and says to copy the search text from that.
+
+## A build can be stopped from the app
+
+During a long live run the only way to stop a build was to kill the app, which left `run.json` saying `running`
+until a resume. The Stop button now also shows while the open chat's build is running, and sends
+`POST /api/runs/:id/stop` (token and same-origin, like every POST). That only sets a flag on the run's thread; the
+run checks it at safe points: before each task, before integration and before the final review. It never cuts a
+task short, so the task in progress still commits or blocks as usual, and a stop can take as long as that task.
+The remaining tasks are recorded as skipped ("stopped by the user"), the run ends `stopped` with exit code 2 (as a
+model outage does), and the report is written. `harness resume RUN_ID` runs the skipped tasks, then integration
+and the final review; committed tasks keep their outcome. The card shows "Stopping after the current task…" until
+then, and "stopped" with the resume command after.

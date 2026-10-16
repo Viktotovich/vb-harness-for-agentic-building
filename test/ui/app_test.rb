@@ -9,6 +9,7 @@ require_relative "../test_helper"
 require_relative "../support/review_run"
 require_relative "../support/ui_client"
 require "json"
+require "timeout"
 require "tmpdir"
 
 class UIAppTest < Minitest::Test
@@ -212,6 +213,60 @@ data: [DONE]
     assert_equal "repo", chat["messages"].last["project"]
     refute(chat["messages"].any? { |m| m.key?("repo") }, "chats name the project, never its absolute path")
     assert_equal 404, get("/api/runs/..%2F..%2Fsecret/report").status
+  end
+
+  def test_a_running_build_is_stopped_from_the_app_and_resume_continues_it
+    t1 = F.task("T1", "Double the price", modify: ["src/lib/price.ts"])
+    t2 = F.task("T2", "Raise the tax", modify: ["src/lib/tax.ts"])
+    reached = Queue.new
+    go = Queue.new
+    held = false
+    # T1's first model call waits until the test has asked the run to stop, so the stop lands mid-task.
+    @model = Fake.new do |body, _n|
+      system = body["messages"].first["content"]
+      user = body["messages"].last["content"]
+      if system.start_with?("You plan") then F.plan_reply([t1, t2])
+      elsif system.start_with?("You summarize") then Fake.ok("A source file.")
+      elsif F::REVIEW_ROLES.any? { |opening, _| system.start_with?(opening) } then F::NO_FINDINGS
+      elsif user[/^(T\d+): /, 1] == "T1"
+        unless held
+          held = true
+          reached << true
+          go.pop
+        end
+        F.replace("src/lib/price.ts", "  return n;", "  return n * 2;")
+      else F.replace("src/lib/tax.ts", "0.2", "0.25")
+      end
+    end
+    repo, git_env = TestSupport.repo(@tmp, RR::FILES)
+    env = ENV.to_h.merge(git_env)
+    start(config: RR.raw_config(@model.base_url), env: env)
+    id = post("/api/chats", {}).json["id"]
+    post("/api/projects/link", { "path" => repo })
+    run = post("/api/chats/#{id}/send", { "text" => "Double the price, raise the tax.", "mode" => "build", "project" => "repo" }).json["run"]
+    assert run
+    Timeout.timeout(20) { reached.pop }
+
+    assert_equal 403, C.request(@port, "POST", "/api/runs/#{run}/stop", body: {}).status, "a stop needs the token"
+    assert_equal 404, post("/api/runs/r20260101-000000-abcd/stop").status
+    assert_equal({ "stopping" => true }, post("/api/runs/#{run}/stop").json)
+    go << true
+    events = get("/api/runs/#{run}/events?after=0").events
+    assert_equal ["end", { "status" => "stopped" }], events.last
+    assert(events.any? { |e, d| e == "run" && d["stopping"] == true }, "the page learns a stop is pending")
+    skipped = events.find { |e, d| e == "event" && d["task"] == "T2" && d["kind"] == "skipped" }
+    assert_match(/stopped by the user/, skipped[1]["detail"])
+    store = Harness::State::RunStore.new(runs_dir: File.join(@home, "runs"), run_id: run)
+    assert_equal ["stopped", 2], store.read_run.values_at("status", "exitCode")
+    assert_equal "done", store.read_task_state("T1")["state"], "the task in progress finished and was committed"
+    assert_equal({ "stopping" => false }, post("/api/runs/#{run}/stop").json, "a stopped build has nothing to stop")
+
+    config = Harness::Config.load(File.join(@home, "config.json"), env: env)
+    pipeline = Harness::Pipeline.new(config: config, home: @home, env: env, client_factory: ->(s) { F.client(config, s) })
+    out = pipeline.resume(run)
+    assert_equal [0, "done"], [out.exit_code, out.status]
+    assert_equal "export const rate = 0.25;
+", File.read(File.join(store.read_run["worktree"], "src/lib/tax.ts"))
   end
 
   def test_provider_onboarding_with_fake_servers_and_tools
