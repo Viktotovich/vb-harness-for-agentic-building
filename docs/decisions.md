@@ -368,3 +368,14 @@ a task: a pattern match catches common phrasings, misses reworded ones and can f
 doc, a test fixture), so blocking on it would be both unreliable and easy to trip. The protection against planted
 instructions remains structural: the nonce fence (I9), edits limited to declared files (I2), and gates deciding
 done (I7).
+
+## Discarded replies are rejections
+
+A live run showed a gap: the planner's first reply (thinking on) ran out of output room, the server returned 502,
+and the client retried with thinking off. The run succeeded, but its events showed 0 rejections; only the request
+records showed the lost reply. Now the client calls `on_discard` for every reply it throws away and retries, and
+`Run.observe` turns that into a `rejected` event under the role's stage with the reason code (for example
+`model.truncated`), so the report counts it. Records also keep the HTTP status and the server's error text
+(redacted with the log's token patterns, first 300 characters), and log lines carry the run id and the task id.
+
+The app's report view renders Markdown tables; before, they showed as raw `|` text.

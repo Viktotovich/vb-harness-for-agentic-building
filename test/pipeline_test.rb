@@ -59,6 +59,20 @@ class PipelineTest < Minitest::Test
     assert_equal "Make the price double.", store(r).read_request
   end
 
+  def test_a_discarded_planner_reply_is_counted_as_a_plan_rejection
+    truncated = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
+    fixture({ "plan" => [truncated, F.plan_reply([t1])], "T1 implement" => GOOD })
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal [0, "done"], [r.exit_code, r.status]
+    events = Harness::State::Events.read(store(r).events_path)
+    rejected = events.select { |e| e["kind"] == "rejected" }
+    assert_equal [["plan", "model.truncated", "plan0"]], rejected.map { |e| e.values_at("stage", "reason", "subject") }
+    assert_match(/retried with thinking off/, rejected.first["detail"])
+    fold = Harness::State::Events.fold(events)
+    assert_equal 1, fold["reasons"]["model.truncated"]
+    assert_equal 1, fold["stages"]["plan"]["rejected"]
+  end
+
   def test_failed_checks_are_fed_back_and_the_plan_is_corrected
     bad = t1(files: { "modify" => ["src/lib/missing.ts"] })
     fixture({ "plan" => [F.plan_reply([bad]), F.plan_reply([t1])], "T1 implement" => GOOD })

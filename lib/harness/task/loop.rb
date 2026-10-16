@@ -154,7 +154,6 @@ module Harness
       def ask(role, stage, messages, label)
         emit(stage, "stage_started")
         c = @ctx.client.complete(role, messages, label: "#{@task.id}.#{label}", parser: EditSet.method(:parse), schema: EditSet::SCHEMA)
-        emit(stage, "retried", detail: "retried once with thinking off") if c.retried_without_thinking
         emit(stage, "accepted", subject: "#{c.value.all.size} edits", model: c.model, profile: c.profile,
                                 tokens: { "in" => c.usage[:in], "out" => c.usage[:out] }, ms: c.ms)
         emit(stage, "stage_finished")

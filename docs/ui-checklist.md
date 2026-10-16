@@ -36,7 +36,7 @@ before a release, with a model server running, and note the browser and date.
 - [ ] A blocking question turns the card's border purple; answering in the text box continues the run.
 - [ ] A blocked task shows its reason and patch path.
 - [ ] Reloading the page during a run replays the card without gaps or duplicates.
-- [ ] A finished run collapses to one line and expands on click; "Show report" renders the report.
+- [ ] A finished run collapses to one line and expands on click; "Show report" renders the report, with its tables as tables (not raw `|` text).
 
 ## Look
 

@@ -10,7 +10,7 @@ module Harness
     # Writes runs/<runId>/records/<n>-<role>-<label>.json, one file per model attempt (DESIGN.md 10.1).
     # Records hold metadata only: never API keys or headers (I12).
     class Records
-      FIELDS = %i[role label profile model prompt_hash usage ms finish_reason outcome error_class].freeze
+      FIELDS = %i[role label profile model prompt_hash usage ms finish_reason outcome error_class status error].freeze
 
       # @param dir [String] the records directory
       def initialize(dir)

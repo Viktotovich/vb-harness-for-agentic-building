@@ -279,11 +279,58 @@ class ClientTest < Minitest::Test
     files = Dir.glob(File.join(@dir, "records", "*.json")).sort
     assert_equal 2, files.size
     first = JSON.parse(File.read(files.first))
-    assert_equal %w[error_class finish_reason label model ms outcome profile prompt_hash role usage], first.keys.sort
+    assert_equal %w[error error_class finish_reason label model ms outcome profile prompt_hash role status usage], first.keys.sort
     assert_equal "model.truncated", first["outcome"]
     assert_equal "ok", JSON.parse(File.read(files.last))["outcome"]
     assert_match(/\A\h{64}\z/, first["prompt_hash"])
     assert_match(/action=model\.check outcome=ok/, File.read(Dir.glob(File.join(@dir, "logs", "*.log")).first))
+  end
+
+  def test_a_failed_request_records_the_status_and_the_server_error
+    srv = server([INCOMPLETE, Fake.ok("{}")])
+    ask(client(srv))
+    first, last = Dir.glob(File.join(@dir, "records", "*.json")).sort.map { |f| JSON.parse(File.read(f)) }
+    assert_equal 502, first["status"]
+    assert_includes first["error"], "structured output was incomplete"
+    assert_nil last["error"]
+  end
+
+  def test_a_key_echoed_in_a_server_error_is_redacted_from_the_record
+    fake_key = "sk-#{'a' * 24}"
+    srv = server([Fake.error(500, "bad key #{fake_key}")])
+    assert_raises(Harness::ModelUnavailableError) { ask(client(srv)) }
+    Dir.glob(File.join(@dir, "{records,logs}", "*")).each { |f| refute_includes File.read(f), fake_key }
+  end
+
+  def test_log_lines_name_the_run_and_the_task
+    srv = server([Fake.ok("{}")])
+    c = Harness::Model::Client.new(config: TestSupport.config(srv.base_url),
+                                   probe: ->(_) { Harness::Model::Probe::Result.new(**TestSupport::CAPS) },
+                                   http: Harness::Model::Http.new, log: Harness::Log.new(dir: File.join(@dir, "logs")),
+                                   env: {}, run_id: "r20260101-000000-0001")
+    c.complete(:implementer, msgs, label: "T2R1.fix1", parser: ->(v) { v }, schema: { "type" => "object" })
+    assert_match(/run=r20260101-000000-0001 task=T2R1 action=model\.T2R1\.fix1 outcome=ok/,
+                 File.read(Dir.glob(File.join(@dir, "logs", "*.log")).first))
+  end
+
+  def test_a_discarded_reply_is_reported_before_the_retry
+    srv = server([INCOMPLETE, Fake.ok("{}")])
+    c = client(srv)
+    seen = []
+    c.on_discard = ->(**info) { seen << info.merge(calls: srv.chat_bodies.size) }
+    ask(c)
+    assert_equal 1, seen.size
+    assert_equal [:reviewer, "check", "model.truncated", 1], seen.first.values_at(:role, :label, :reason, :calls)
+    assert_match(/retried with thinking off/, seen.first[:message])
+  end
+
+  def test_a_good_reply_reports_no_discard
+    srv = server([Fake.ok("{}")])
+    c = client(srv)
+    seen = []
+    c.on_discard = ->(**info) { seen << info }
+    ask(c)
+    assert_empty seen
   end
 
   # --- split and retry ---

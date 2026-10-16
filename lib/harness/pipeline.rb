@@ -52,7 +52,7 @@ module Harness
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
-        client = @client_factory.call(store)
+        client = Run.observe(@client_factory.call(store), setup.events)
         store.update_run({ "planOnly" => plan_only })
         if request
           store.write_request(request)
@@ -82,7 +82,7 @@ module Harness
         pairs = Array(run["answers"]) + questions.zip(answers)
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
-        client = @client_factory.call(store)
+        client = Run.observe(@client_factory.call(store), setup.events)
         planned(store, setup, client, plan_with_model(setup, client, request_of(store), pairs))
       end
     end
@@ -106,7 +106,7 @@ module Harness
         return waiting_result(store, run) if status == "waiting"
 
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
-        client = @client_factory.call(store)
+        client = Run.observe(@client_factory.call(store), setup.events)
         if status == "planning" || !File.file?(store.plan_path)
           next planned(store, setup, client, plan_with_model(setup, client, request_of(store), Array(run["answers"])))
         end

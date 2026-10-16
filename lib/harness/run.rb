@@ -91,6 +91,7 @@ module Harness
     def initialize(config:, client:, setup:, review: true, cache_dir: nil)
       @config = config
       @setup = setup
+      self.class.observe(client, setup.events) if client.respond_to?(:on_discard) && client.on_discard.nil?
       map = Repo::Map.new(root: setup.worktree.root, cache_dir: cache_dir, protected: setup.stack.protected_paths)
       @reviewer = if review
                     Review::Reviewer.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
@@ -100,6 +101,24 @@ module Harness
       @ctx = Task::Context.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
                                runner: setup.runner, baseline: setup.baseline, events: setup.events, store: setup.store,
                                reviewer: @reviewer, map: map, summarizer: Task::Summarizer.new(client: client, config: config))
+    end
+
+    # The stage each role's discarded replies are counted under (DESIGN.md 10.3).
+    DISCARD_STAGE = { planner: "plan", implementer: "task.implement", fixer: "task.fix", reviewer: "review.discover",
+                      verifier: "review.verify", summarizer: "map" }.freeze
+
+    # Connect a client's discarded replies to the run's event log, so the report counts them.
+    # @param client [Model::Client]
+    # @param events [State::Events]
+    # @return [Model::Client]
+    def self.observe(client, events)
+      return client unless client.respond_to?(:on_discard=)
+
+      client.on_discard = lambda do |role:, label:, reason:, message:|
+        events.emit(stage: DISCARD_STAGE.fetch(role, "plan"), kind: "rejected", task: label[Model::Client::TASK_LABEL, 1],
+                    subject: label, reason: reason, detail: message[0, 300])
+      end
+      client
     end
 
     # Reattach to a run started earlier (resume and answer): its worktree, stack, baseline and event log.

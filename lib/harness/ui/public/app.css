@@ -146,6 +146,10 @@ details.thinking div { white-space: pre-wrap; padding: 6px 0 0 12px; border-left
 .reason-items td { color: var(--text-muted); white-space: pre-wrap; }
 .question { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: var(--radius); }
 .report { white-space: normal; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.table-wrap { overflow-x: auto; margin: 8px 0; max-width: 100%; }
+.table-wrap table { border-collapse: collapse; font-size: 13px; }
+.table-wrap th, .table-wrap td { padding: 4px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.table-wrap th { background: var(--surface-hover); font-weight: 600; }
 
 /* composer */
 .composer { border-top: 1px solid var(--border); padding: 14px 24px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }

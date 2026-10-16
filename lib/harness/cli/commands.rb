@@ -90,7 +90,7 @@ module Harness
         log = Log.new(dir: File.join(home, "logs"), echo: err)
         factory = lambda do |store|
           Model::Client.new(config: config, http: http, env: env, probe: probe, log: log,
-                            records: State::Records.new(store.records_dir))
+                            records: State::Records.new(store.records_dir), run_id: store.run_id)
         end
         Pipeline.new(config: config, home: home, env: env, client_factory: factory)
       end

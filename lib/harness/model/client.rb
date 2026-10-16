@@ -38,6 +38,8 @@ module Harness
       Good = Data.define(:text, :value, :tool_calls)
       Bad = Data.define(:reason, :message)
       Call = Data.define(:role, :label, :profile, :caps)
+      # A label that starts with a task id ("T1.implement", "T1R1.fix2") names that task in log lines.
+      TASK_LABEL = /\A(T\d+(?:R\d+)?)\./
 
       # @param config [Config]
       # @param probe [Probe, #call] returns a Probe::Result for a profile
@@ -48,8 +50,10 @@ module Harness
       # @param sleeper [#call] waits n seconds between retries
       # @param backoff [Array<Numeric>] seconds before the 2nd, 3rd... try
       # @param clock [#call] monotonic seconds
+      # @param run_id [String, nil] written into log lines
       def initialize(config:, probe:, http:, records: nil, log: nil, env: ENV, sleeper: ->(s) { sleep(s) },
-                     backoff: [1, 2], clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                     backoff: [1, 2], clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, run_id: nil)
+        @run_id = run_id
         @config = config
         @probe = probe
         @http = http
@@ -61,6 +65,11 @@ module Harness
         @clock = clock
         @caps = {}
       end
+
+      # Called with (role:, label:, reason:, message:) for every reply the client throws away and retries, so the
+      # run's event log counts it (DESIGN.md 10.3). Final failures are raised and the caller records them.
+      # @return [#call, nil]
+      attr_accessor :on_discard
 
       # @param role [Symbol] one of ROLES
       # @return [Probe::Result] the probed capabilities of the role's profile (probed once per client)
@@ -90,6 +99,7 @@ module Harness
         usage = { in: 0, out: 0 }
         outcome = attempt(call, body, usage, json, parser, native)
         retried = outcome.is_a?(Bad)
+        @on_discard&.call(role: role, label: label, reason: outcome.reason, message: "#{outcome.message[0, 200]}; retried with thinking off") if retried
         outcome = attempt(call, Wire.thinking_off(body, caps.thinking_control), usage, json, parser, native) if retried
         raise ModelOutputError.new("#{label}: #{outcome.message}", reason: outcome.reason) if outcome.is_a?(Bad)
 
@@ -300,13 +310,14 @@ module Harness
         ms = ms_since(started)
         u = res&.json.is_a?(Hash) && res.json["usage"].is_a?(Hash) ? res.json["usage"] : {}
         finish = res&.json.is_a?(Hash) ? res.json.dig("choices", 0, "finish_reason") : nil
+        error = res && !res.ok? ? Log.redact(res.error_text).gsub(/\s+/, " ")[0, 300] : nil
         @records&.write(role: call.role.to_s, label: call.label, profile: call.profile.name, model: call.caps.model_id,
                         prompt_hash: Sha256.hex(JSON.generate(body["messages"])),
                         usage: { "in" => u["prompt_tokens"], "out" => u["completion_tokens"] }, ms: ms,
-                        finish_reason: finish, outcome: outcome, error_class: error_class)
-        @log&.write(action: "model.#{call.label}", outcome: outcome,
+                        finish_reason: finish, outcome: outcome, error_class: error_class, status: res&.status, error: error)
+        @log&.write(action: "model.#{call.label}", outcome: outcome, run: @run_id || "-", task: call.label[TASK_LABEL, 1] || "-",
                     detail: "role=#{call.role} profile=#{call.profile.name} model=#{call.caps.model_id} " \
-                            "status=#{res&.status || '-'} ms=#{ms}")
+                            "status=#{res&.status || '-'} ms=#{ms}#{error ? " error=#{error[0, 120]}" : ''}")
       end
 
       # @return [Integer]
