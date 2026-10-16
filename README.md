@@ -5,9 +5,9 @@ local model implement them one at a time, proves every change with your project'
 tests, and re-reviews what it built with an evidence gate. It is built around the weak spots of local models:
 hallucinated APIs and defects, wrong edits, broken JSON, and small context windows.
 
-[![An animated walkthrough of a run: a request, the live progress card, rejected outputs and why, the evidence-gated review, and a claim confirmed by a failing test](docs/media/demo-preview.webp)](docs/media/demo.mp4)
+[![An animated walkthrough of a run: a request, the live progress card, rejected outputs and why, the evidence-gated review, a claim confirmed by a failing test, and the finished Badge component rendered on the pricing page](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
-*An animated illustration of a run in the app (not a screen recording). Click it for the full-size 60 fps video.*
+*An animated illustration of a run in the app, ending with the component it built, rendered (not a screen recording). Click it for the 1080p, 60 fps video.*
 
 AstroJS is the first supported stack. Any OpenAI-compatible endpoint works: LM Studio, Ollama, llama.cpp's server,
 vLLM, or a hosted API.
