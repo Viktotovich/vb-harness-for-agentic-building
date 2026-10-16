@@ -12,29 +12,41 @@ module Harness
     # space) and copies otherwise; symlinks are recreated, or copied when that is not allowed. The user's folder
     # is only read. Nothing is installed (I10).
     module Mirror
+      # Tool caches inside a dependency folder: rebuilt by the tools themselves, and they change while tools run.
+      CACHES = %w[.vite .cache .astro .turbo].freeze
+
+      # What a mirror did: files mirrored, and files that could not be (gone, unreadable or a path too long).
+      Result = Data.define(:files, :skipped)
+
       # @param from [String] the folder in the user's repository
       # @param to [String] the same folder in the worktree
-      # @return [Integer, nil] files mirrored, or nil when there is nothing to mirror or the target exists
+      # @return [Result, nil] nil when there is nothing to mirror or the target exists
       def self.link(from, to)
         return nil unless File.directory?(from) && !File.symlink?(from)
         return nil if File.exist?(to)
 
         base = File.expand_path(from)
-        count = 0
+        files = 0
+        skipped = []
         Find.find(base) do |path|
           rel = path.delete_prefix(base).delete_prefix("/")
+          Find.prune if File.directory?(path) && CACHES.include?(File.basename(path)) && !rel.empty?
           dest = rel.empty? ? to : File.join(to, rel)
-          if File.symlink?(path)
-            relink(path, dest)
-            count += 1
-          elsif File.directory?(path)
-            FileUtils.mkdir_p(dest)
-          elsif File.file?(path)
-            hard_link(path, dest)
-            count += 1
+          begin
+            if File.symlink?(path)
+              relink(path, dest)
+              files += 1
+            elsif File.directory?(path)
+              FileUtils.mkdir_p(dest)
+            elsif File.file?(path)
+              hard_link(path, dest)
+              files += 1
+            end
+          rescue SystemCallError, IOError
+            skipped << rel
           end
         end
-        count
+        Result.new(files: files, skipped: skipped)
       end
 
       # @return [void]

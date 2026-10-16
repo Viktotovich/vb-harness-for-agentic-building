@@ -25,7 +25,11 @@ class MirrorTest < Minitest::Test
     File.write(File.join(from, "astro", "bin", "astro.mjs"), "run()")
     File.write(File.join(from, ".package-lock.json"), "{}")
     to = File.join(@tmp, "wt", "node_modules")
-    assert_equal 2, Harness::Repo::Mirror.link(from, to)
+    FileUtils.mkdir_p(File.join(from, ".vite", "deps"))
+    File.write(File.join(from, ".vite", "deps", "chunk.js"), "cache")
+    result = Harness::Repo::Mirror.link(from, to)
+    assert_equal [2, []], [result.files, result.skipped]
+    refute File.exist?(File.join(to, ".vite")), "tool caches are not mirrored: tools rebuild them and change them while running"
     assert_equal "run()", File.read(File.join(to, "astro", "bin", "astro.mjs"))
     assert_nil Harness::Repo::Mirror.link(from, to), "an existing folder is never overwritten"
     assert_nil Harness::Repo::Mirror.link(File.join(@tmp, "missing"), File.join(@tmp, "x"))

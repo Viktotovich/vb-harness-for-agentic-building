@@ -47,8 +47,11 @@ module Harness
       worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env, cache_dir: cache_dir))
       stack = detect_stack(config, worktree.root)
       stack.dependency_dirs.each do |dir|
-        n = Repo::Mirror.link(File.join(worktree.repo, dir), File.join(worktree.root, dir))
-        events.emit(stage: "intake", kind: "accepted", subject: dir, detail: "#{n} files linked into the worktree") if n
+        m = Repo::Mirror.link(File.join(worktree.repo, dir), File.join(worktree.root, dir))
+        next unless m
+
+        skipped = m.skipped.empty? ? "" : "; #{m.skipped.size} could not be linked (first: #{m.skipped.first})"
+        events.emit(stage: "intake", kind: "accepted", subject: dir, detail: "#{m.files} files linked into the worktree#{skipped}"[0, 300])
       end
       runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
       baseline = Gates::Baseline.run(runner, stack.gates)
