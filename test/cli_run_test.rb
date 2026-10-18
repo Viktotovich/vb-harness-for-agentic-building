@@ -85,6 +85,17 @@ class CliRunTest < Minitest::Test
     assert_match(/uncommitted changes/, err)
   end
 
+  def test_review_can_be_set_on_the_command_line
+    code, out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--review", "off", "--json")
+    assert_equal 0, code, err
+    assert_equal "done", JSON.parse(out)["status"]
+    reviews = @server.chat_bodies.count { |b| F::REVIEW_ROLES.any? { |o, _| b["messages"].first["content"].start_with?(o) } }
+    assert_equal 0, reviews, "--review off makes no review calls"
+    code, _out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--review", "some")
+    assert_equal 2, code
+    assert_match(/invalid argument: --review some/, err)
+  end
+
   # A field run: planning failed and --json printed nothing at all. It now prints the result with the reason.
   def test_a_planning_failure_prints_a_json_result_with_the_reason
     @server.stop

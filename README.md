@@ -146,6 +146,7 @@ Useful options:
 | `--config FILE` | every command | Use another config; runs and caches live next to it. |
 | `--json` | every command | Machine-readable output. |
 | `--plan-only` | `run` | Stop after planning; edit `runs/<id>/plan.json`, then `resume`. |
+| `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
 | `--port N`, `--[no-]open` | `ui` | The app's port, and whether to open the browser. |

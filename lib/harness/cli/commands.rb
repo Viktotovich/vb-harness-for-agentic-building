@@ -18,9 +18,9 @@ module Harness
     # harness run / answer / resume. Progress goes to stderr, the result to stdout (or --json).
     module Commands
       USAGE = {
-        "run" => "Usage: harness run --repo PATH (--request FILE | --from-plan FILE) [--plan-only] [--config FILE] [--json]",
-        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--config FILE] [--json]",
-        "resume" => "Usage: harness resume RUN_ID [--config FILE] [--json]"
+        "run" => "Usage: harness run --repo PATH (--request FILE | --from-plan FILE) [--plan-only] [--config FILE] [--review full|light|off] [--json]",
+        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--config FILE] [--review full|light|off] [--json]",
+        "resume" => "Usage: harness resume RUN_ID [--config FILE] [--review full|light|off] [--json]"
       }.freeze
 
       # @param name [String] run, answer or resume
@@ -32,7 +32,7 @@ module Harness
       # @return [Integer] exit code (DESIGN.md 5.5)
       def self.call(name, args, out:, err:, env:, input: $stdin)
         opts = parse(name, args)
-        pipeline = pipeline(opts[:config], env, err)
+        pipeline = pipeline(opts[:config], env, err, review: opts[:review])
         result = case name
                  when "run" then start(pipeline, opts)
                  when "answer" then pipeline.answer(opts[:run_id], answers(opts, pipeline.questions(opts[:run_id]), err, input))
@@ -52,6 +52,7 @@ module Harness
           o.banner = USAGE.fetch(name)
           o.on("--config FILE", "Config file (default config.json)") { |v| opts[:config] = v }
           o.on("--json", "Machine-readable output") { opts[:json] = true }
+          o.on("--review MODE", Config::REVIEW_MODES, "Review: #{Config::REVIEW_MODES.join(', ')} (overrides the config)") { |v| opts[:review] = v }
           if name == "run"
             o.on("--repo PATH", "Target git repository") { |v| opts[:repo] = v }
             o.on("--request FILE", "Feature request to plan") { |v| opts[:request] = v }
@@ -73,8 +74,9 @@ module Harness
       end
 
       # @return [Pipeline]
-      def self.pipeline(config_path, env, err)
+      def self.pipeline(config_path, env, err, review: nil)
         config = Config.load(config_path, env: env)
+        config = config.with(review: review) if review
         pipeline_for(config, File.dirname(File.expand_path(config_path)), env, err)
       end
 
