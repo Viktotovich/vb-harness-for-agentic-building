@@ -88,6 +88,17 @@ class RunnerTest < Minitest::Test
     assert(argvs.all? { |a| a.first(4) == ["npx", "--offline", "--no", "--"] }, "no default gate lets npx download")
   end
 
+  # Field reports: an application-control policy blocked Astro's native compiler, and prettier without its Astro
+  # plugin failed on every .astro file. Neither is the model's error, so the gate could not run; it did not fail.
+  def test_a_tool_the_system_blocks_or_that_cannot_parse_the_files_is_skipped
+    blocked = @runner.run(ruby_gate("warn 'Error: An Application Control policy has blocked this file. compiler.node'; exit 1"))
+    assert_equal ["skipped", "blocked by the system's policy: Error: An Application Control policy has blocked this file. compiler.node"],
+                 [blocked.status, blocked.reason]
+    parser = @runner.run(ruby_gate("warn '[error] No parser could be inferred for file \"src/a.astro\".'; exit 2"))
+    assert_equal "skipped", parser.status
+    assert_match(/\Athe tool cannot check these files: \[error\] No parser could be inferred/, parser.reason)
+  end
+
   def test_placeholders_expand_to_separate_arguments
     g = ruby_gate("print ARGV.join('|')", scope: "touched").then { |x| x.with(argv: x.argv + ["--", "{files}"]) }
     @runner.run(g, files: ["src/a b.ts", "-rf.ts"]).tap do |r|

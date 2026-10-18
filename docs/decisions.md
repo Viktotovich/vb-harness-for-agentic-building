@@ -544,3 +544,15 @@ the registry (the prompt was cancelled, so nothing was installed). The default g
 run `npx --offline --no -- <tool>`: an installed tool runs from `node_modules`, and a missing one fails at once
 with `ENOTCACHED`, without a download or a network request. The runner reads that error as "tool not installed",
 so the gate is skipped. Existing configs keep their own gates; `harness init` writes the new ones.
+
+## Gates that cannot run here, and advisory gates
+
+Two field reports. An application-control policy blocked Astro's native compiler binary, so its gates failed for a
+reason the model could not fix; and prettier without its Astro plugin failed with "No parser could be inferred" on
+every `.astro` file. The runner now reads output like "An Application Control policy has blocked" and "No parser
+could be inferred" as a gate that could not run here (`skipped`, with the reason), not as a failure of the code. As
+with a missing tool, it blocks a task only when the task names that gate.
+
+Also, a failing non-blocking gate (`format`, by default) never stopped a task but was counted as a rejected output
+on every task. It is now recorded as `skipped` with "advisory, not blocking" and the problems, so it shows in the
+events without inflating the rejection rate.

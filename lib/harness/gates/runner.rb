@@ -53,6 +53,14 @@ module Harness
         # npx --offline --no (the default gates): a package that is not installed fails here, with no network
         "npm error code ENOTCACHED", "cache mode is 'only-if-cached'"
       )
+      # Output that means the gate could not run here, though its tool is installed: the operating system's
+      # application-control policy blocked a binary (a field run's Astro compiler), or the tool cannot parse the
+      # touched file type (prettier without its Astro plugin). Neither is a problem in the model's code.
+      CANNOT_RUN = {
+        "blocked by the system's policy" => Regexp.union("Application Control policy has blocked", "blocked by group policy",
+                                                           "blocked by your organization"),
+        "the tool cannot check these files" => Regexp.union("No parser could be inferred")
+      }.freeze
 
       # @param root [String] worktree root
       # @param env [Hash{String=>String}] from Env.build
@@ -76,6 +84,8 @@ module Harness
         return result(gate, "timeout", r, [], "timed out after #{gate.timeout_sec}s") if r.timed_out
         return result(gate, "passed", r, [], nil) if r.success?
         return skipped(gate, "tool not installed: #{output[MISSING_TOOL]}", argv) if output.match?(MISSING_TOOL)
+
+        CANNOT_RUN.each { |why, pattern| return skipped(gate, "#{why}: #{output.lines.find { |l| l.match?(pattern) }.to_s.strip[0, 200]}", argv) if output.match?(pattern) }
 
         result(gate, "failed", r, Parsers.parse(gate.parser, output, root: @root), nil)
       rescue CommandNotFoundError => e

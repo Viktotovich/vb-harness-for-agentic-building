@@ -324,6 +324,10 @@ module Harness
           emit("task.gates", "accepted", subject: cmp.gate, detail: cmp.verdict, ms: cmp.current.ms)
         elsif harmless_skip?(gate, cmp)
           emit("task.gates", "skipped", subject: cmp.gate, detail: "could not run, not blocking: #{cmp.current.reason}"[0, 300])
+        elsif !gate.blocking
+          # An advisory gate (format, by default) never stops a task, so it is not counted as a rejected output.
+          emit("task.gates", "skipped", subject: cmp.gate,
+                                        detail: "advisory, not blocking: #{cmp.current.reason || "#{cmp.new_diagnostics.size} new problems"}"[0, 300])
         else
           kind = { "skipped" => "skipped", "timeout" => "timeout" }.fetch(cmp.current.status, "failed")
           emit("task.gates", "rejected", subject: cmp.gate, reason: "gate.#{kind}:#{cmp.gate}",

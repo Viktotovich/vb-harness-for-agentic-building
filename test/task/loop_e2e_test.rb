@@ -201,6 +201,19 @@ class LoopE2ETest < Minitest::Test
     assert(events.any? { |e| e["detail"] == "review is off (config: review)" })
   end
 
+  # A field report: the non-blocking format gate failed on every task and was counted as a rejection each time.
+  def test_a_failing_advisory_gate_is_recorded_but_not_counted_as_a_rejection
+    format = { "format" => { "argv" => [RbConfig.ruby, "-e", "warn 'style'; exit 1", "{files}"], "scope" => "touched",
+                             "blocking" => false, "costRank" => 1 } }
+    run_plan_with(format, ["format"], [F.task("T1", "Double the price", modify: [PRICE])],
+                  { "T1 implement" => F.replace(PRICE, "  return n;", "  return n * 2;") })
+    assert_equal "done", @result.outcome.tasks.first.status
+    fmt = events.select { |e| e["stage"] == "task.gates" && e["subject"] == "format" }
+    assert_equal ["skipped"], fmt.map { |e| e["kind"] }
+    assert_match(/\Aadvisory, not blocking: /, fmt.first["detail"])
+    refute(events.any? { |e| e["reason"] == "gate.failed:format" })
+  end
+
   def run_plan_with(gates, always, tasks, replies)
     @result = F.run(@tmp, { "tasks" => tasks }, replies, extra_gates: gates, always: always)
   end
