@@ -103,7 +103,7 @@ module Harness
         thinking = caps.thinking_control != "none" && @strikes[role] < THINKING_STRIKES
         body = Wire.thinking_off(body, caps.thinking_control) unless thinking
         started = @clock.call
-        usage = { in: 0, out: 0 }
+        usage = { in: 0, out: 0, thinking: 0 }
         outcome = attempt(call, body, usage, json, parser, native)
         retried = outcome.is_a?(Bad)
         strike(call, outcome.reason) if retried && thinking
@@ -309,22 +309,43 @@ module Harness
 
       # @return [void]
       def add_usage(usage, body, res)
-        u = res.json.is_a?(Hash) && res.json["usage"].is_a?(Hash) ? res.json["usage"] : {}
-        content = res.json.is_a?(Hash) ? res.json.dig("choices", 0, "message", "content") : nil
-        usage[:in] += u["prompt_tokens"].is_a?(Integer) ? u["prompt_tokens"] : Tokens.estimate_messages(body["messages"])
-        usage[:out] += u["completion_tokens"].is_a?(Integer) ? u["completion_tokens"] : Tokens.estimate(content.to_s)
+        u = usage_of(body, res)
+        usage[:in] += u[:in]
+        usage[:out] += u[:out]
+        usage[:thinking] += u[:thinking].to_i
+      end
+
+      # What one request cost. The server's own counts when it sends them; otherwise estimates. A reply cut off at
+      # the length limit generated its whole output allowance, so that is what it costs, even when the server sent
+      # no usage (a field report showed 59 tokens out for two cut-off replies that took nearly five minutes).
+      # Thinking tokens are counted when the server reports them (reasoning_tokens) or returns the reasoning text.
+      # @return [Hash] :in, :out, :thinking (nil when unknown)
+      def usage_of(body, res)
+        json = res.json.is_a?(Hash) ? res.json : {}
+        u = json["usage"].is_a?(Hash) ? json["usage"] : {}
+        msg = json.dig("choices", 0, "message").is_a?(Hash) ? json.dig("choices", 0, "message") : {}
+        cut = json.dig("choices", 0, "finish_reason") == "length" || (!res.ok? && res.error_text.to_s.match?(/incomplete|finish_reason=length/i))
+        out = if u["completion_tokens"].is_a?(Integer) then u["completion_tokens"]
+              elsif cut then body["max_tokens"].to_i
+              else Tokens.estimate(msg["content"].to_s)
+              end
+        reasoning = [msg["reasoning_content"], msg["reasoning"]].find { |r| r.is_a?(String) && !r.empty? }
+        thinking = u.dig("completion_tokens_details", "reasoning_tokens")
+        thinking = Tokens.estimate(reasoning) if !thinking.is_a?(Integer) && reasoning
+        { in: u["prompt_tokens"].is_a?(Integer) ? u["prompt_tokens"] : Tokens.estimate_messages(body["messages"]),
+          out: out, thinking: thinking.is_a?(Integer) ? thinking : nil }
       end
 
       # One record and one log line per request (step 6). Never includes headers or keys (I12).
       # @return [void]
       def record(call, body, res, started, outcome, error_class)
         ms = ms_since(started)
-        u = res&.json.is_a?(Hash) && res.json["usage"].is_a?(Hash) ? res.json["usage"] : {}
+        u = res ? usage_of(body, res) : {}
         finish = res&.json.is_a?(Hash) ? res.json.dig("choices", 0, "finish_reason") : nil
         error = res && !res.ok? ? Log.redact(res.error_text).gsub(/\s+/, " ")[0, 300] : nil
         @records&.write(role: call.role.to_s, label: call.label, profile: call.profile.name, model: call.caps.model_id,
                         prompt_hash: Sha256.hex(JSON.generate(body["messages"])),
-                        usage: { "in" => u["prompt_tokens"], "out" => u["completion_tokens"] }, ms: ms,
+                        usage: { "in" => u[:in], "out" => u[:out], "thinking" => u[:thinking] }, ms: ms,
                         finish_reason: finish, outcome: outcome, error_class: error_class, status: res&.status, error: error)
         @log&.write(action: "model.#{call.label}", outcome: outcome, run: @run_id || "-", task: call.label[TASK_LABEL, 1] || "-",
                     detail: "role=#{call.role} profile=#{call.profile.name} model=#{call.caps.model_id} " \

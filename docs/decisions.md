@@ -513,3 +513,13 @@ calls. Doubling the allowance did not help. Three changes, none tied to a model:
 - When a reply runs out of room and the retry with thinking off fails in another way, the error keeps the
   out-of-room reason and both messages, so the cause is not reported as a shape problem.
 - A task that creates files and is blocked that way says what to do: split the file, or raise `maxOutputTokens`.
+
+## Cut-off replies and thinking are counted
+
+A field report's Cost table showed 59 tokens out for two implementer calls that took nearly five minutes: both
+replies were cut off, the server sent no usage, and only the tiny answers were counted. Now a reply cut off at the
+length limit (`finish_reason=length`, or a server error saying the output was incomplete) counts its whole output
+allowance, since that is what the model generated. Thinking is counted separately when the server reports it
+(`completion_tokens_details.reasoning_tokens`) or estimated from the reasoning text it returns. Request records
+carry `usage.thinking`, and the report's Cost table has an "Of which thinking" column and a note on how the counts
+are made.

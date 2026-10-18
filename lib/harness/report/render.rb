@@ -222,11 +222,16 @@ module Harness
         rows = groups.sort.map do |(role, profile), recs|
           tin = recs.sum { |r| r.dig("usage", "in").to_i }
           tout = recs.sum { |r| r.dig("usage", "out").to_i }
-          "| #{role} | #{profile} | #{recs.size} | #{tin} | #{tout} | #{duration(recs.sum { |r| r['ms'].to_i })} |"
+          known = recs.map { |r| r.dig("usage", "thinking") }.compact
+          thinking = known.empty? ? "-" : known.sum.to_s
+          "| #{role} | #{profile} | #{recs.size} | #{tin} | #{tout} | #{thinking} | #{duration(recs.sum { |r| r['ms'].to_i })} |"
         end
         models = data.records.map { |r| r["model"] }.compact.uniq.sort
-        ["| Role | Profile | Calls | Tokens in | Tokens out | Time |", "| --- | --- | --- | --- | --- | --- |", *rows, "",
-         "Models: #{models.empty? ? 'unknown' : models.map { |m| code(line(m, 80)) }.join(', ')}"]
+        ["| Role | Profile | Calls | Tokens in | Tokens out | Of which thinking | Time |",
+         "| --- | --- | --- | --- | --- | --- | --- |", *rows, "",
+         "Models: #{models.empty? ? 'unknown' : models.map { |m| code(line(m, 80)) }.join(', ')}",
+         "", "Counts are the server's where it sends them, otherwise estimates. A reply cut off at the length limit " \
+             "counts its whole output allowance. Thinking shows - when the server does not report it."]
       end
 
       # @return [Array<Array(String, Hash)>] ["T1", review] pairs and ["the whole run", final review]

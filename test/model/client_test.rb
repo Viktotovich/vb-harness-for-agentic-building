@@ -85,7 +85,7 @@ class ClientTest < Minitest::Test
     out = ask(client(srv))
     refute out.retried_without_thinking
     assert_equal 1, srv.chat_bodies.size
-    assert_equal({ in: 10, out: 5 }, out.usage)
+    assert_equal({ in: 10, out: 5, thinking: 0 }, out.usage)
     assert_equal "test-model", out.model
     assert_equal "default", out.profile
   end
@@ -127,6 +127,21 @@ class ClientTest < Minitest::Test
     end
     assert_equal "model.truncated", err.reason
     assert_match(/did not fit in maxOutputTokens: .*the retry with thinking off then failed: edits: the reply contains no edits/, err.message)
+  end
+
+  # A field report: two cut-off implementer replies took nearly five minutes and the report showed 59 tokens out.
+  # A reply cut off at the length limit generated its whole allowance, and thinking is counted on its own.
+  def test_a_cut_off_reply_counts_its_whole_output_allowance_and_thinking_is_counted
+    srv = server([INCOMPLETE, Fake.ok('{"a": 1}', usage: { "prompt_tokens" => 10, "completion_tokens" => 40,
+                                                          "completion_tokens_details" => { "reasoning_tokens" => 30 } })])
+    out = ask(client(srv, profile: { "maxOutputTokens" => 800 }))
+    assert_equal 800 + 40, out.usage[:out], "the cut-off reply counts 800, the answer its own 40"
+    assert_equal 30, out.usage[:thinking]
+    records = Dir[File.join(@dir, "**", "*.json")].map { |f| JSON.parse(File.read(f)) }.select { |r| r["usage"] }
+    assert_equal [800, 40], records.map { |r| r.dig("usage", "out") }.sort.reverse
+    assert_equal [30], records.map { |r| r.dig("usage", "thinking") }.compact
+    text = Fake.ok('{"a": 1}', usage: {}, reasoning_content: "x" * 300)
+    assert_equal 100, ask(client(server([text]))).usage[:thinking], "reasoning text is estimated when not counted"
   end
 
   def test_inline_thinking_is_stripped_before_parsing

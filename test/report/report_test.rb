@@ -75,8 +75,9 @@ class ReportTest < Minitest::Test
     refute_includes findings, "overflow", "I8: an unconfirmed claim is never a finding"
     assert_includes section("Questions"), "Unconfirmed claim (T1, `src/lib/price.ts:2`, confirming test passes): Doubling may overflow"
     refute_match(/^## so fractional/, report, "model text cannot add headings")
-    assert_match(/\| reviewer \| default \| \d+ \| \d+ \| \d+ \|/, section("Cost"))
+    assert_match(/\| reviewer \| default \| \d+ \| \d+ \| \d+ \| (\d+|-) \|/, section("Cost"))
     assert_includes section("Cost"), "Models: `test-model`"
+    assert_includes section("Cost"), "A reply cut off at the length limit counts its whole output allowance"
     assert_match(/\| unit \| passed \| passed \(pass\) \|/, section("Gates against the baseline"))
   end
 
