@@ -35,12 +35,12 @@
       "packageManager": "auto",
       "dependencyDirs": ["node_modules"],
       "gates": {
-        "format": { "argv": ["npx", "prettier", "--check", "{files}"], "scope": "touched", "blocking": false, "costRank": 1 },
-        "lint": { "argv": ["npx", "eslint", "{files}"], "scope": "touched", "parser": "eslint", "costRank": 2 },
-        "typecheck": { "argv": ["npx", "astro", "check"], "scope": "project", "parser": "astro_check", "costRank": 3 },
-        "unit": { "argv": ["npx", "vitest", "run", "{tests}"], "scope": "tests", "parser": "vitest", "costRank": 4 },
-        "build": { "argv": ["npx", "astro", "build"], "scope": "project", "when": "integration", "costRank": 8 },
-        "e2e": { "argv": ["npx", "playwright", "test", "{tests}"], "scope": "tests", "when": "integration", "costRank": 9 }
+        "format": { "argv": ["npx", "--offline", "--no", "--", "prettier", "--check", "{files}"], "scope": "touched", "blocking": false, "costRank": 1 },
+        "lint": { "argv": ["npx", "--offline", "--no", "--", "eslint", "{files}"], "scope": "touched", "parser": "eslint", "costRank": 2 },
+        "typecheck": { "argv": ["npx", "--offline", "--no", "--", "astro", "check"], "scope": "project", "parser": "astro_check", "costRank": 3 },
+        "unit": { "argv": ["npx", "--offline", "--no", "--", "vitest", "run", "{tests}"], "scope": "tests", "parser": "vitest", "costRank": 4 },
+        "build": { "argv": ["npx", "--offline", "--no", "--", "astro", "build"], "scope": "project", "when": "integration", "costRank": 8 },
+        "e2e": { "argv": ["npx", "--offline", "--no", "--", "playwright", "test", "{tests}"], "scope": "tests", "when": "integration", "costRank": 9 }
       },
       "alwaysGates": ["lint", "typecheck"],
       "protectedPaths": [".git/**", ".husky/**", ".env*", "**/*.lock", "package-lock.json", "pnpm-lock.yaml", ".github/**"]

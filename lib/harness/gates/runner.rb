@@ -49,7 +49,9 @@ module Harness
       # Output that means the tool itself is missing, even though a launcher (npx, cmd) started.
       MISSING_TOOL = Regexp.union(
         "could not determine executable to run", "canceled due to missing packages", "npm error code E404",
-        "is not recognized as an internal or external command", "command not found"
+        "is not recognized as an internal or external command", "command not found",
+        # npx --offline --no (the default gates): a package that is not installed fails here, with no network
+        "npm error code ENOTCACHED", "cache mode is 'only-if-cached'"
       )
 
       # @param root [String] worktree root

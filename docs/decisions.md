@@ -536,3 +536,11 @@ refuted. Two changes:
   verifier checks them before each batch of claims and before the support and challenge steps of an accepted
   claim. Claims it stops on are recorded as abstained with the reason, and the report lists them under Questions
   as "Not verified", so none is silently dropped.
+
+## Default gates run npx offline
+
+A field report: with eslint and playwright missing, `npx eslint` and `npx playwright` asked npm to fetch them from
+the registry (the prompt was cancelled, so nothing was installed). The default gates in `config.example.json` now
+run `npx --offline --no -- <tool>`: an installed tool runs from `node_modules`, and a missing one fails at once
+with `ENOTCACHED`, without a download or a network request. The runner reads that error as "tool not installed",
+so the gate is skipped. Existing configs keep their own gates; `harness init` writes the new ones.

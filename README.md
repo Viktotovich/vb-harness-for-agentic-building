@@ -293,18 +293,20 @@ goes to stderr, and the exit code says how the run ended (see [Quick start: the 
 Use two profiles to plan and review with a larger model and implement with a faster one. `HARNESS_<PROFILE>_BASE_URL`
 and `HARNESS_<PROFILE>_MODEL` override a profile from the environment.
 
-**Stacks** say how to check a project. The Astro stack in the example:
+**Stacks** say how to check a project. The Astro stack in the example (each command runs as
+`npx --offline --no -- <tool>`, so a tool that is not installed fails at once and npx never downloads one):
 
 | Gate | Command | When | Blocking |
 | --- | --- | --- | --- |
-| `format` | `npx prettier --check {files}` | each task, touched files | no |
-| `lint` | `npx eslint {files}` | each task, touched files | yes |
-| `typecheck` | `npx astro check` | each task | yes |
-| `unit` | `npx vitest run {tests}` | tasks with tests | yes |
-| `build` | `npx astro build` | integration | yes |
-| `e2e` | `npx playwright test {tests}` | integration | yes |
+| `format` | `prettier --check {files}` | each task, touched files | no |
+| `lint` | `eslint {files}` | each task, touched files | yes |
+| `typecheck` | `astro check` | each task | yes |
+| `unit` | `vitest run {tests}` | tasks with tests | yes |
+| `build` | `astro build` | integration | yes |
+| `e2e` | `playwright test {tests}` | integration | yes |
 
-Gates are argv arrays, never shell strings. A gate whose tool is missing is reported as **skipped**, never as passed.
+Gates are argv arrays, never shell strings. A gate whose tool is missing is reported as **skipped**, never as passed;
+it blocks a task only when the task names it in its acceptance.
 Gates may not install packages, run `git` or `gh`, or use `npx --yes`. Other stack keys: `detect` (files that
 identify the stack), `alwaysGates`, `protectedPaths` (globs the model may never touch; `.git`, `.husky` and
 `node_modules` are always protected), `dependencyDirs`, and `docs.local` (a local checkout of the framework's docs,

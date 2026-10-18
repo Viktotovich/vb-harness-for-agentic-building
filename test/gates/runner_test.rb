@@ -76,6 +76,18 @@ class RunnerTest < Minitest::Test
     assert_match(/tool not installed/, r.reason)
   end
 
+  # The default gates run npx --offline --no: a tool that is not installed fails at once with ENOTCACHED (no
+  # download, no network), which is a missing tool, not a failure of the code.
+  def test_an_offline_npx_with_a_missing_package_is_skipped
+    msg = "npm error code ENOTCACHED\nnpm error request to https://registry.npmjs.org/eslint failed: cache mode is 'only-if-cached' but no cached response is available."
+    r = @runner.run(ruby_gate("warn #{msg.inspect}; exit 1"))
+    assert_equal "skipped", r.status
+    assert_match(/tool not installed: npm error code ENOTCACHED/, r.reason)
+    example = JSON.parse(File.read(File.expand_path("../../config.example.json", __dir__)))
+    argvs = example.dig("stacks", "astro", "gates").values.map { |g| g["argv"] }
+    assert(argvs.all? { |a| a.first(4) == ["npx", "--offline", "--no", "--"] }, "no default gate lets npx download")
+  end
+
   def test_placeholders_expand_to_separate_arguments
     g = ruby_gate("print ARGV.join('|')", scope: "touched").then { |x| x.with(argv: x.argv + ["--", "{files}"]) }
     @runner.run(g, files: ["src/a b.ts", "-rf.ts"]).tap do |r|
