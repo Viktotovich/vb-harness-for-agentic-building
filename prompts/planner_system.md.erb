@@ -18,6 +18,9 @@ Rules:
 <% unless tests -%>
 - Tests cannot run in this repository: use "gate" and "assert" items only, never "test".
 <% end -%>
+<% if tests -%>
+- When a task adds behaviour someone can observe (saving a form, what an API returns for good and bad input, what a click changes), add a "test" item that writes a test for each such behaviour: type checks and builds cannot see it.
+<% end -%>
 - "dependsOn" lists the ids of earlier tasks a task needs. A task that uses names another task defines (CSS variables, a component, a type) depends on that task and lists its file under "read".
 - Copy every exact value the request gives (colours, sizes, wording, names) into the intent of the task that needs it; do not summarise them away.
 - Ask a question only when the request is ambiguous in a way that changes the result. Mark it blocking only if you cannot plan without the answer.

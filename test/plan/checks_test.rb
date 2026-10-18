@@ -111,6 +111,11 @@ class ChecksTest < Minitest::Test
     no_tests = 'use "gate" and "assert" items only, never "test"'
     assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false, max_create_lines: 150), no_tests
     refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150), no_tests
+    # Field bugs that passed every gate: edits that never saved, a 500 on a malformed body. Behaviour gets a test.
+    behaviour = "add a \"test\" item that writes a test for each such behaviour"
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150), behaviour
+    refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false, max_create_lines: 150), behaviour
+    assert_includes Harness::Prompts.render("fix_system", rules: ""), "rewrite the whole file with one \"create\" edit"
   end
 
   # A field plan proved an .astro page with {"kind": "test", "path": "src/pages/admin/index.astro"}: the page itself

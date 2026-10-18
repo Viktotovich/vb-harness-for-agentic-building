@@ -600,3 +600,13 @@ A field planner asked a blocking question built on a false claim ("there is no v
 while vitest was installed: it only saw the file list, not what the project depends on. The planner's overview now
 includes the `dependencies` and `devDependencies` of the root `package.json` (name, version, and "(dev)"; at most
 80), fenced as repository data, with "plan only with these, never an install".
+
+## Syntax errors get a whole-file rewrite; observable behaviour gets a test
+
+Two field findings. An unclosed `{ ... .map(...) }` in an `.astro` page gave "Cannot find name 'post'" and
+"Unterminated regular expression literal", and search-and-replace fixes left the same errors. The fix prompt now
+says to rewrite a small file whole on syntax errors (an unterminated or unexpected token, an unclosed expression or
+tag) rather than guess search text. And two bugs passed type check, build and review: settings fields that never
+called `onChange`, so edits never saved, and a route that answered 500 to a malformed body. When tests can run, the
+planner is told to add a test item for each behaviour someone can observe (saving, what an API returns for good
+and bad input, what a click changes), since type checks and builds cannot see it.
