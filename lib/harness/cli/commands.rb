@@ -18,7 +18,7 @@ module Harness
     # harness run / answer / resume. Progress goes to stderr, the result to stdout (or --json).
     module Commands
       USAGE = {
-        "run" => "Usage: harness run --repo PATH (--request FILE | --from-plan FILE) [--plan-only] [--require-green-baseline] [--config FILE] [--review full|light|off] [--json]",
+        "run" => "Usage: harness run --repo PATH [--request FILE] [--from-plan FILE] [--plan-only] [--require-green-baseline] [--config FILE] [--review full|light|off] [--json]",
         "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--config FILE] [--review full|light|off] [--json]",
         "resume" => "Usage: harness resume RUN_ID [--config FILE] [--review full|light|off] [--json]"
       }.freeze
@@ -65,7 +65,7 @@ module Harness
         rest = parser.parse(args)
         if name == "run"
           raise OptionParser::MissingArgument, "--repo" unless opts[:repo]
-          raise OptionParser::InvalidArgument, "give exactly one of --request and --from-plan" if opts[:request].nil? == opts[:from_plan].nil?
+          raise OptionParser::InvalidArgument, "give --request, --from-plan, or both" if opts[:request].nil? && opts[:from_plan].nil?
         else
           raise OptionParser::MissingArgument, "RUN_ID" unless rest.size == 1
 
@@ -101,11 +101,8 @@ module Harness
 
       # @return [Pipeline::Result]
       def self.start(pipeline, opts)
-        if opts[:request]
-          pipeline.start(repo: opts[:repo], request: read(opts[:request]), plan_only: opts[:plan_only])
-        else
-          pipeline.start(repo: opts[:repo], plan_hash: read_json(opts[:from_plan]), plan_only: opts[:plan_only])
-        end
+        pipeline.start(repo: opts[:repo], request: opts[:request] && read(opts[:request]),
+                       plan_hash: opts[:from_plan] && read_json(opts[:from_plan]), plan_only: opts[:plan_only])
       end
 
       # @return [Array<String>]

@@ -50,7 +50,7 @@ module Harness
     # @return [Result]
     # @raise [GitError, ConfigError, ParseError, ModelOutputError, ModelUnavailableError]
     def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil)
-      raise ArgumentError, "give a request or a plan" if request.nil? == plan_hash.nil?
+      raise ArgumentError, "give a request, a plan, or both" if request.nil? && plan_hash.nil?
 
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
@@ -61,11 +61,13 @@ module Harness
 
         client = Run.observe(@client_factory.call(store), setup.events)
         store.update_run({ "planOnly" => plan_only })
-        if request
-          store.write_request(request)
-          plan_and_run(store, setup, client, request, [], stop: stop)
-        else
+        store.write_request(request) if request
+        if plan_hash
+          # A hand-written plan with its request: the plan is run as given, and the request is still the context
+          # the implementer, fixer and reviewers see for exact values (a field run lost it with --from-plan alone).
           planned(store, setup, client, check_given(setup, client, Plan::PlanParser.parse(plan_hash)), stop: stop)
+        else
+          plan_and_run(store, setup, client, request, [], stop: stop)
         end
       end
     end

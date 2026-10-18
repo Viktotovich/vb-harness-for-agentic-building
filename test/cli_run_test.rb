@@ -72,9 +72,9 @@ class CliRunTest < Minitest::Test
 
   def test_errors_exit_with_code_2
     assert_equal 2, cli("run", "--from-plan", @plan_path, "--config", @config_path)[0], "missing --repo"
-    code, _out, err = cli("run", "--repo", @repo, "--request", @plan_path, "--from-plan", @plan_path, "--config", @config_path)
+    code, _out, err = cli("run", "--repo", @repo, "--config", @config_path)
     assert_equal 2, code
-    assert_match(/exactly one of --request and --from-plan/, err)
+    assert_match(/give --request, --from-plan, or both/, err)
     assert_equal 2, cli("resume", "--config", @config_path)[0], "resume needs a RUN_ID"
     code, _out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", File.join(@home, "missing.json"))
     assert_equal 2, code
@@ -83,6 +83,20 @@ class CliRunTest < Minitest::Test
     code, _out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path)
     assert_equal 2, code
     assert_match(/uncommitted changes/, err)
+  end
+
+  # A field run had to choose: --from-plan lost the request, which the implementer and reviewers use for exact
+  # values. Both can be given; the plan runs as written and the request is kept.
+  def test_a_plan_and_its_request_can_be_given_together
+    request = File.join(@home, "request.md")
+    File.write(request, "Double the price. The factor is exactly 2.")
+    code, out, err = cli("run", "--repo", @repo, "--request", request, "--from-plan", @plan_path, "--config", @config_path, "--json")
+    assert_equal 0, code, err
+    run = JSON.parse(out)
+    assert_equal "done", run["status"]
+    assert_equal 0, @server.chat_bodies.count { |b| b["messages"].first["content"].start_with?("You plan") }, "the planner is not asked"
+    implement = @server.chat_bodies.find { |b| b["messages"].last["content"].include?("T1: Double the price") }
+    assert_includes implement["messages"].last["content"], "The factor is exactly 2."
   end
 
   def test_review_can_be_set_on_the_command_line

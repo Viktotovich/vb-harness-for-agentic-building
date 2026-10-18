@@ -616,3 +616,10 @@ and bad input, what a click changes), since type checks and builds cannot see it
 On Windows every line of a `blocked.patch` ended in CRLF, and `git apply` warned about trailing whitespace on each
 one. The patch itself was LF; Ruby's text-mode `File.write` added the CR. Task files given as text (patches,
 excerpts) are now written with `File.binwrite`, so they keep the line ends they have.
+
+## A hand-written plan can come with its request
+
+A field run worked around a failed planner by writing `plan.json` by hand, but `--from-plan` and `--request` were
+exclusive, so the run lost the request, which the implementer, fixer and reviewers use for exact values. Both can
+now be given: the plan runs as written (and is checked like a planner's), and the request is saved as
+`request.md` and shown as context. Giving neither is the only usage error. The README documents the plan format.

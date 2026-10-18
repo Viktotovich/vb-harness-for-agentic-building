@@ -148,9 +148,34 @@ Useful options:
 | `--plan-only` | `run` | Stop after planning; edit `runs/<id>/plan.json`, then `resume`. |
 | `--require-green-baseline` | `run` | Stop after intake when a blocking gate already fails (see `requireGreenBaseline`). |
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
-| `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote. |
+| `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote (format below). With `--request` too, the request is kept as context for the implementer and reviewers. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
 | `--port N`, `--[no-]open` | `ui` | The app's port, and whether to open the browser. |
+
+A plan for `--from-plan` is the JSON the planner writes (`runs/<id>/plan.json`), and it is checked the same way:
+
+```json
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Add the Badge component",
+      "intent": "1-3 sentences: what and why, with every exact value the task needs",
+      "files": { "create": ["src/components/Badge.astro"], "modify": [], "read": ["src/styles/global.css"] },
+      "dependsOn": [],
+      "acceptance": [
+        { "kind": "gate", "gate": "typecheck" },
+        { "kind": "test", "path": "tests/badge.test.ts", "write": true, "describe": "what the test asserts" },
+        { "kind": "assert", "text": "a property the review checks" }
+      ]
+    }
+  ],
+  "questions": []
+}
+```
+
+Each task creates or modifies at most `maxFilesPerTask` files and needs at least one `gate` or `test` item; a
+`test` path must be a test file. `read` and `modify` list existing files or files a task in `dependsOn` creates.
 
 Progress lines go to stderr; the result goes to stdout. Exit codes: `0` done, `1` the run failed (planning
 failed, a task was blocked, or something regressed), `2` a configuration or environment problem, `3` waiting for
