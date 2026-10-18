@@ -56,6 +56,9 @@ module Harness
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
+        red = Array(store.read_run["baselineFailing"])
+        next red_baseline_stop(store, red) if @config.require_green_baseline && !red.empty?
+
         client = Run.observe(@client_factory.call(store), setup.events)
         store.update_run({ "planOnly" => plan_only })
         if request
@@ -128,6 +131,15 @@ module Harness
     end
 
     private
+
+    # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red.
+    # @return [Result]
+    def red_baseline_stop(store, red)
+      message = "the baseline already fails: #{red.join(', ')} (requireGreenBaseline); fix it, or run without the setting"
+      store.update_run({ "status" => "failed", "exitCode" => 2, "error" => message })
+      Result.new(run_id: store.run_id, status: "failed", exit_code: 2, outcome: nil, questions: [], issues: [],
+                 plan_path: nil, error: message)
+    end
 
     # Plan with the model, then go on as planned. A planner that never produced a usable plan ends the run "failed"
     # with the reason, so status, the report and --json say what happened instead of leaving it "planning".

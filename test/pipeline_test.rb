@@ -91,6 +91,28 @@ class PipelineTest < Minitest::Test
     assert_equal ["failed", 1], store(r).read_run.values_at("status", "exitCode")
   end
 
+  # A field run planned and implemented on a red type check (a missing @types package). It is now said up front,
+  # in the events and the report header; with requireGreenBaseline the run stops before any model call.
+  def test_a_red_baseline_is_reported_and_can_stop_the_run
+    red = F::FILES.merge("src/lib/tax.ts" => "export const rate = 0.2; // BROKEN\n")
+    @fx = F.pipeline(@tmp, { "plan" => F.plan_reply([t1]), "T1 implement" => GOOD }, files: red)
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal "done", r.status, "tasks are judged on new problems only"
+    assert_equal ["typecheck"], store(r).read_run["baselineFailing"]
+    warn_event = Harness::State::Events.read(store(r).events_path).find { |e| e["stage"] == "intake" && e["reason"] == "gate.failed:typecheck" }
+    assert_match(/fails before the run \(1 problems\)/, warn_event["detail"])
+    assert_includes Harness::Report::Render.markdown(store(r)), "- **Baseline:** `typecheck` already failed before the run"
+
+    @fx.server.stop
+    FileUtils.rm_rf(@tmp)
+    @tmp = Dir.mktmpdir("harness-pipeline-")
+    @fx = F.pipeline(@tmp, { "plan" => F.plan_reply([t1]) }, files: red, top: { "requireGreenBaseline" => true })
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal ["failed", 2], [r.status, r.exit_code]
+    assert_match(/the baseline already fails: typecheck \(requireGreenBaseline\)/, r.error)
+    assert_empty @fx.server.chat_bodies, "no model call was made"
+  end
+
   def test_a_discarded_planner_reply_is_counted_as_a_plan_rejection
     truncated = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
     fixture({ "plan" => [truncated, F.plan_reply([t1])], "T1 implement" => GOOD })

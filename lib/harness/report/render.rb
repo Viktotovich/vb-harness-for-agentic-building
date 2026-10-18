@@ -109,6 +109,7 @@ module Harness
           "- Status: **#{r['status'] || 'unknown'}** (exit code #{r['exitCode'].nil? ? '-' : r['exitCode']})",
           "- Branch: #{code(r['branch'])} from #{code(r['baseSha'].to_s[0, 12])}, worktree #{code(r['worktree'])}",
           "- Stack: #{r['stack'] || '-'}",
+          *Array(r["baselineFailing"]).map { |g| "- **Baseline:** #{code(g)} already failed before the run; tasks were judged only on new problems" },
           "- Tasks: #{data.states.size} (#{counts.map { |k, v| "#{v} #{k}" }.join(', ')})",
           "- Model outputs: #{t['produced']} produced, #{t['accepted']} accepted, #{t['rejected']} rejected " \
           "(#{(t['rejectionRate'] * 100).round}% rejected)",

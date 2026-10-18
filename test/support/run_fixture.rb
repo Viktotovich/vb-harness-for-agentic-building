@@ -35,9 +35,9 @@ module TestSupport
     }.freeze
 
     # @return [Harness::Config]
-    def self.config(base_url, extra_gates: {}, always: [], review: "full")
+    def self.config(base_url, extra_gates: {}, always: [], review: "full", top: {})
       ruby = RbConfig.ruby
-      Harness::Config.parse({
+      Harness::Config.parse(top.merge({
                               "review" => review,
                               "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
                               "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
@@ -50,7 +50,7 @@ module TestSupport
                                 "alwaysGates" => ["typecheck"] + always,
                                 "protectedPaths" => [".env*", "tools/**"]
                               } }
-                            })
+                            }))
     end
 
     # A plan task in its JSON form.
@@ -133,10 +133,10 @@ module TestSupport
 
     # A Pipeline over a fresh fixture repo and a fake model.
     # @return [Setup]
-    def self.pipeline(tmp, replies, files: FILES, extra_gates: {})
+    def self.pipeline(tmp, replies, files: FILES, extra_gates: {}, top: {})
       repo, env = TestSupport.repo(tmp, files)
       server = server(replies)
-      config = config(server.base_url, extra_gates: extra_gates)
+      config = config(server.base_url, extra_gates: extra_gates, top: top)
       home = File.join(tmp, "home")
       pipeline = Harness::Pipeline.new(config: config, home: home, env: ENV.to_h.merge(env),
                                        client_factory: ->(store) { client(config, store) })

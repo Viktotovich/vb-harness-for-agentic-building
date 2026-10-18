@@ -17,7 +17,9 @@ module Harness
   # projects: folders linked in the app (name => absolute path); they live only in the local config.json.
   # review: "full" reviews every task and the whole run; "light" skips the per-task review of a small change whose
   # gates passed first time; "off" skips review.
-  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects, :review) do
+  # require_green_baseline: stop after intake when a blocking gate already fails, instead of only warning.
+  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects, :review,
+                       :require_green_baseline) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
     # @raise [ArgumentError] on an unknown role
@@ -41,7 +43,7 @@ module Harness
       "maxRefutedInARow" => [:max_refuted_in_a_row, 3]
     }.freeze
     REVIEW_MODES = %w[full light off].freeze
-    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review] + LIMIT_DEFAULTS.keys).freeze
+    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review requireGreenBaseline] + LIMIT_DEFAULTS.keys).freeze
     PROJECT_NAME = /\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
     # Read and validate a config file.
@@ -75,7 +77,8 @@ module Harness
         gate_env_allow: Parse.strings!(h.fetch("gateEnvAllow", []), "gateEnvAllow").dup.freeze,
         dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun"),
         projects: parse_projects(h.fetch("projects", [])),
-        review: Parse.enum!(h.fetch("review", "full"), "review", REVIEW_MODES)
+        review: Parse.enum!(h.fetch("review", "full"), "review", REVIEW_MODES),
+        require_green_baseline: Parse.bool!(h.fetch("requireGreenBaseline", false), "requireGreenBaseline")
       )
     end
 

@@ -58,5 +58,6 @@
   "maxVerifierCalls": 60,
   "maxRefutedInARow": 3,
   "review": "full",
+  "requireGreenBaseline": false,
   "dryRun": false
 }

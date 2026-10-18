@@ -146,6 +146,7 @@ Useful options:
 | `--config FILE` | every command | Use another config; runs and caches live next to it. |
 | `--json` | every command | Machine-readable output. |
 | `--plan-only` | `run` | Stop after planning; edit `runs/<id>/plan.json`, then `resume`. |
+| `--require-green-baseline` | `run` | Stop after intake when a blocking gate already fails (see `requireGreenBaseline`). |
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
@@ -321,6 +322,10 @@ review of a small change (80 changed lines or fewer) whose gates passed first ti
 `off` skips review. In every mode the verifier stops when the run has used `maxVerifierCalls`, or after
 `maxRefutedInARow` claims in a row were refuted by the code; the claims left are recorded as unverified
 questions, never dropped. Review is the most expensive stage with a small model, so `light` is a good start.
+
+**A red baseline.** When a blocking gate already fails before the run, intake says so (an event, and a line at the
+top of the report); tasks are still judged only on new problems. Set `requireGreenBaseline` to `true` to stop the
+run there instead, before any model call (exit code 2).
 
 `gateEnvAllow` lists extra environment variables your gates need; everything that looks like a secret is removed
 from the gates' environment otherwise.

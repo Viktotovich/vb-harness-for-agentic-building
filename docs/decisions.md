@@ -556,3 +556,12 @@ with a missing tool, it blocks a task only when the task names that gate.
 Also, a failing non-blocking gate (`format`, by default) never stopped a task but was counted as a rejected output
 on every task. It is now recorded as `skipped` with "advisory, not blocking" and the problems, so it shows in the
 events without inflating the rejection rate.
+
+## A red baseline is said up front, and can stop the run
+
+A field run's baseline type check failed (a missing `@types` package), and the run planned and implemented anyway,
+so every task's type check output was noisy and nothing said why. Now intake records each blocking gate that fails
+or times out before the run: an event (`gate.failed:<gate>`, "fails before the run (N problems)"), `run.json`'s
+`baselineFailing`, and a line at the top of the report. Tasks are still judged only on new problems. With
+`requireGreenBaseline` (or `harness run --require-green-baseline`) the run stops after intake, before any model
+call, with exit code 2 and the gates named.

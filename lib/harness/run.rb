@@ -31,6 +31,19 @@ module Harness
     # exit_code: 0 all done and integration green, 1 blocked or regressed, 2 environment problem.
     Outcome = Data.define(:run_id, :tasks, :integration, :exit_code, :branch, :worktree)
 
+    # Blocking gates that already fail before the run. Tasks are still judged only on new problems, but a field run
+    # planned and implemented on a red type check, so every task's gate output was noisy: say so up front.
+    # @return [Array<String>] the gates' names
+    def self.red_baseline(stack, baseline, events)
+      baseline.filter_map do |name, r|
+        next unless %w[failed timeout].include?(r.status) && stack.gates[name]&.blocking != false
+
+        events.emit(stage: "intake", kind: "rejected", subject: name, reason: "gate.#{r.status}:#{name}",
+                    detail: "fails before the run (#{r.diagnostics.size} problems): tasks are judged only on new problems, "                             "but fix the baseline first if you can")
+        name
+      end
+    end
+
     # Intake (DESIGN.md 5.1): clean repo, worktree, stack, baseline.
     # @param config [Config]
     # @param repo [String]
@@ -64,8 +77,9 @@ module Harness
 
         events.emit(stage: "intake", kind: "rejected", subject: r.gate, reason: "gate.skipped:#{r.gate}", detail: r.reason.to_s[0, 300])
       end
+      red = red_baseline(stack, baseline, events)
       store.update_run({ "status" => "planning", "repo" => worktree.repo, "worktree" => worktree.root, "branch" => worktree.branch,
-                        "baseSha" => worktree.base_sha, "stack" => stack.name })
+                        "baseSha" => worktree.base_sha, "stack" => stack.name, "baselineFailing" => red })
       events.emit(stage: "intake", kind: "stage_finished", detail: "stack #{stack.name}, base #{worktree.base_sha[0, 12]}")
       Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: baseline, events: events, store: store, env: env)
     end

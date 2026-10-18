@@ -18,7 +18,7 @@ module Harness
     # harness run / answer / resume. Progress goes to stderr, the result to stdout (or --json).
     module Commands
       USAGE = {
-        "run" => "Usage: harness run --repo PATH (--request FILE | --from-plan FILE) [--plan-only] [--config FILE] [--review full|light|off] [--json]",
+        "run" => "Usage: harness run --repo PATH (--request FILE | --from-plan FILE) [--plan-only] [--require-green-baseline] [--config FILE] [--review full|light|off] [--json]",
         "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--config FILE] [--review full|light|off] [--json]",
         "resume" => "Usage: harness resume RUN_ID [--config FILE] [--review full|light|off] [--json]"
       }.freeze
@@ -32,7 +32,7 @@ module Harness
       # @return [Integer] exit code (DESIGN.md 5.5)
       def self.call(name, args, out:, err:, env:, input: $stdin)
         opts = parse(name, args)
-        pipeline = pipeline(opts[:config], env, err, review: opts[:review])
+        pipeline = pipeline(opts[:config], env, err, review: opts[:review], green: opts[:green])
         result = case name
                  when "run" then start(pipeline, opts)
                  when "answer" then pipeline.answer(opts[:run_id], answers(opts, pipeline.questions(opts[:run_id]), err, input))
@@ -58,6 +58,7 @@ module Harness
             o.on("--request FILE", "Feature request to plan") { |v| opts[:request] = v }
             o.on("--from-plan FILE", "Run a saved or hand-written plan") { |v| opts[:from_plan] = v }
             o.on("--plan-only", "Stop after planning, so the plan can be edited") { opts[:plan_only] = true }
+            o.on("--require-green-baseline", "Stop when a blocking gate already fails before the run") { opts[:green] = true }
           end
           o.on("--answers FILE", "JSON array of answers, one per question") { |v| opts[:answers] = v } if name == "answer"
         end
@@ -74,9 +75,10 @@ module Harness
       end
 
       # @return [Pipeline]
-      def self.pipeline(config_path, env, err, review: nil)
+      def self.pipeline(config_path, env, err, review: nil, green: nil)
         config = Config.load(config_path, env: env)
         config = config.with(review: review) if review
+        config = config.with(require_green_baseline: true) if green
         pipeline_for(config, File.dirname(File.expand_path(config_path)), env, err)
       end
 
