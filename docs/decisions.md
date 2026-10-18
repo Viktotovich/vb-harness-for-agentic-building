@@ -493,3 +493,10 @@ the page itself as its test. The plan check accepted it, and the unit gate then 
 a test item whose path does not look like a test file (a `.test.`/`.spec.` or `_test`/`_spec` name, or a file under
 `tests/`, `test/`, `__tests__/`, `spec/` or `e2e/`) is refused as `plan.not_a_test_file`, and the planner prompt
 says to give a test file, never the file under test.
+
+## A task may create again a file it created itself
+
+A field run blocked a task on `edit.create_exists` twice: on a retry, the model created a file the same task had
+created in an earlier attempt. Edits now take the files this task has already created (kept in its state, so they
+survive a resume) and allow a whole-file create over those. Any other existing file is still refused unless it is
+small and listed in `files.modify`, so one task cannot overwrite a file another task created.

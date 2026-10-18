@@ -100,14 +100,15 @@ module Harness
       # @param create [Array<String>] the task's files.create (plus test paths it may write)
       # @param protected [Array<String>] protectedPaths globs
       # @param rewrite_max_bytes [Integer] wholeFileRewriteMaxBytes
+      # @param own [Array<String>] files this task already created in an earlier attempt; it may write them whole again
       # @return [Result] nothing is written unless every edit is accepted
-      def self.apply(root:, edit_set:, modify:, create:, protected: [], rewrite_max_bytes: 4096)
+      def self.apply(root:, edit_set:, modify:, create:, protected: [], rewrite_max_bytes: 4096, own: [])
         declared_modify = modify.filter_map { |p| declared_path(p) }
         declared = (declared_modify + create.filter_map { |p| declared_path(p) }).uniq
         files = {}       # rel => {full:, before: String|nil, after: String|nil, eol:}
         rejections = []
         edit_set.all.each do |edit|
-          rejection = stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes)
+          rejection = stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes, own.filter_map { |o| declared_path(o) })
           rejections << rejection if rejection
         end
         unless rejections.empty?
@@ -130,7 +131,7 @@ module Harness
 
       # Check one edit and apply it to the in-memory copy.
       # @return [Rejection, nil]
-      def self.stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes)
+      def self.stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes, own = [])
         rel = Repo::Paths.normalize(edit.path)
         full = Repo::Paths.resolve_in_worktree(root, rel, protected: protected)
         unless declared.include?(rel)
@@ -139,7 +140,7 @@ module Harness
         end
         f = files[rel] ||= load(full).merge(root: root, rel: rel, protected: protected)
         case edit.op
-        when "create" then stage_create(edit, rel, f, declared_modify, rewrite_max_bytes)
+        when "create" then stage_create(edit, rel, f, declared_modify, rewrite_max_bytes, own)
         when "replace" then stage_replace(edit, rel, f)
         else stage_delete(edit, rel, f)
         end
@@ -156,9 +157,12 @@ module Harness
         { full: full, before: before, after: before, eol: eol }
       end
 
+      # A file this task created in an earlier attempt may be written whole again (a field run blocked a task on
+      # create_exists for its own file). Any other existing file is refused unless it is small and in files.modify,
+      # so one task cannot overwrite a file another task created.
       # @return [Rejection, nil]
-      def self.stage_create(edit, rel, f, declared_modify, rewrite_max_bytes)
-        if f[:after]
+      def self.stage_create(edit, rel, f, declared_modify, rewrite_max_bytes, own = [])
+        if f[:after] && !own.include?(rel)
           small = f[:before].nil? || f[:before].bytesize < rewrite_max_bytes
           unless small && declared_modify.include?(rel)
             return Rejection.new(edit: edit, reason: "edit.create_exists",

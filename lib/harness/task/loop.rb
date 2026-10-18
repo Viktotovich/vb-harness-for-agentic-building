@@ -190,7 +190,7 @@ module Harness
         emit("task.apply", "stage_started")
         result = Edits.apply(root: @ctx.worktree.root, edit_set: edit_set, modify: @task.files.modify,
                              create: @task.files.create + @task.test_paths, protected: @ctx.stack.protected_paths,
-                             rewrite_max_bytes: @limits.whole_file_rewrite_max_bytes)
+                             rewrite_max_bytes: @limits.whole_file_rewrite_max_bytes, own: @created.to_a)
         result.rejections.each do |r|
           emit("task.apply", "rejected", subject: "#{r.edit.op} #{r.edit.path}"[0, 120], reason: r.reason, detail: r.message[0, 300])
         end

@@ -99,6 +99,10 @@ class EditsTest < Minitest::Test
     undeclared_modify = apply(set({ "op" => "create", "path" => "src/other.ts", "content" => "y" }),
                               modify: [], create: %w[src/other.ts])
     assert_equal "edit.create_exists", undeclared_modify.rejections.first.reason
+    own = T::Edits.apply(root: @root, edit_set: set({ "op" => "create", "path" => "src/other.ts", "content" => "again\n" }),
+                         modify: [], create: %w[src/other.ts], own: %w[src/other.ts])
+    assert own.ok?, "a file this task created in an earlier attempt may be created again"
+    assert_equal "again\n", read("src/other.ts")
   end
 
   def test_delete
