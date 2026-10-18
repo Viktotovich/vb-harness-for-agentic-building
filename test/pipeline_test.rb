@@ -91,6 +91,16 @@ class PipelineTest < Minitest::Test
     assert_equal ["failed", 1], store(r).read_run.values_at("status", "exitCode")
   end
 
+  # A field planner asked a blocking question built on a false claim, "no vitest dependency in package.json", while
+  # vitest was there. The planner now sees the installed packages.
+  def test_the_planner_sees_the_installed_packages
+    pkg = %({"name": "site", "dependencies": {"astro": "^7.3.2"}, "devDependencies": {"vitest": "^4.1.0"}}\n)
+    @fx = F.pipeline(@tmp, { "plan" => F.plan_reply([t1]), "T1 implement" => GOOD }, files: F::FILES.merge("package.json" => pkg))
+    @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    user = bodies("You plan").first["messages"].last["content"]
+    assert_match(/Installed packages \(from package\.json; plan only with these, never an install\):\n<untrusted-data id="\h+">\nastro \^7\.3\.2\nvitest \^4\.1\.0 \(dev\)/, user)
+  end
+
   # A field run planned and implemented on a red type check (a missing @types package). It is now said up front,
   # in the events and the report header; with requireGreenBaseline the run stops before any model call.
   def test_a_red_baseline_is_reported_and_can_stop_the_run

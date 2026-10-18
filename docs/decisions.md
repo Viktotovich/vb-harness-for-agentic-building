@@ -593,3 +593,10 @@ it is configuration: a stack's `fixHints` (a text to find in a diagnostic, and t
 fix prompt) and `reviewNotes` (facts and common mistakes, added to the reviewer's rules and the verifier's prompt
 as notes from the configuration). The example's Astro stack ships four hints and five notes; `lib/` stays
 stack- and model-neutral (I1).
+
+## The planner sees the installed packages
+
+A field planner asked a blocking question built on a false claim ("there is no vitest dependency in package.json")
+while vitest was installed: it only saw the file list, not what the project depends on. The planner's overview now
+includes the `dependencies` and `devDependencies` of the root `package.json` (name, version, and "(dev)"; at most
+80), fenced as repository data, with "plan only with these, never an install".
