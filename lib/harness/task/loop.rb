@@ -264,15 +264,32 @@ module Harness
         emit("task.gates", "stage_started")
         files = @touched.select { |rel| File.file?(File.join(@ctx.worktree.root, rel)) }.sort
         results = gate_list.map do |gate|
-          current = gate.is_a?(MissingGate) ? missing_gate(gate.name) : @ctx.runner.run(gate, files: files, tests: @task.test_paths)
-          cmp = Gates::Baseline.compare(current, @ctx.baseline[current.gate])
-          emit_gate(cmp)
+          base = @ctx.baseline[gate.name]
+          current = if gate.is_a?(MissingGate) then missing_gate(gate.name)
+                    elsif base&.status == "skipped" then base # its tool was missing at intake; running it again cannot help
+                    else @ctx.runner.run(gate, files: files, tests: @task.test_paths)
+                    end
+          cmp = Gates::Baseline.compare(current, base)
+          emit_gate(gate, cmp)
           [gate, cmp]
         end
         @last_gates = results.map { |_, c| c }
         @ctx.store.write_task_file(@task.id, "gates-#{@fix_rounds}.json", @last_gates.map { |c| c.current.to_json_hash })
         emit("task.gates", "stage_finished")
-        results.select { |gate, c| gate.blocking && !c.ok? }
+        results.select { |gate, c| gate.blocking && !c.ok? && !harmless_skip?(gate, c) }
+      end
+
+      # A gate that could not run (its tool is not installed) says nothing about this task when the task does not
+      # name it and it did not run at intake either: alwaysGates such as lint, or a gate the baseline also skipped.
+      # It is recorded and does not block, so the gates that did run still get their fix rounds. A gate the task
+      # names, one that ran at intake, and one the stack does not define still block.
+      # @return [Boolean]
+      def harmless_skip?(gate, cmp)
+        return false unless cmp.verdict == "skipped" && !gate.is_a?(MissingGate)
+        return false if @task.acceptance.any? { |a| a.kind == "gate" && a.gate == gate.name }
+
+        base = @ctx.baseline[gate.name]
+        base.nil? || base.status == "skipped"
       end
 
       # The task's gate acceptance items plus alwaysGates, plus the unit gate when tests are listed, cheapest first.
@@ -294,9 +311,11 @@ module Harness
       end
 
       # @return [void]
-      def emit_gate(cmp)
+      def emit_gate(gate, cmp)
         if cmp.ok?
           emit("task.gates", "accepted", subject: cmp.gate, detail: cmp.verdict, ms: cmp.current.ms)
+        elsif harmless_skip?(gate, cmp)
+          emit("task.gates", "skipped", subject: cmp.gate, detail: "could not run, not blocking: #{cmp.current.reason}"[0, 300])
         else
           kind = { "skipped" => "skipped", "timeout" => "timeout" }.fetch(cmp.current.status, "failed")
           emit("task.gates", "rejected", subject: cmp.gate, reason: "gate.#{kind}:#{cmp.gate}",

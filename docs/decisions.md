@@ -466,3 +466,13 @@ The remaining tasks are recorded as skipped ("stopped by the user"), the run end
 model outage does), and the report is written. `harness resume RUN_ID` runs the skipped tasks, then integration
 and the final review; committed tasks keep their outcome. The card shows "Stopping after the current task…" until
 then, and "stopped" with the resume command after.
+
+## A gate that cannot run blocks only when the task depends on it
+
+A field report: `lint` was in `alwaysGates`, eslint was not installed, and every task was blocked with "lint could
+not run" after zero fix rounds, so the model's real type error was never sent back. Touched-file gates such as lint
+and format are not in the baseline (they need the task's files), so the integration rule ("skipped at intake
+too") did not cover them. Now a skipped gate does not block when the task does not name it in its acceptance and it
+did not run at intake: it is recorded as a `skipped` event ("could not run, not blocking") and the gates that did
+run get their fix rounds. A gate the baseline skipped is not run again for each task. A gate the task names, one
+that ran at intake, and one the stack does not define still block.

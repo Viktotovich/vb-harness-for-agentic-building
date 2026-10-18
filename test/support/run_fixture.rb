@@ -35,7 +35,7 @@ module TestSupport
     }.freeze
 
     # @return [Harness::Config]
-    def self.config(base_url, extra_gates: {})
+    def self.config(base_url, extra_gates: {}, always: [])
       ruby = RbConfig.ruby
       Harness::Config.parse({
                               "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
@@ -46,7 +46,7 @@ module TestSupport
                                   "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check", "costRank" => 3 },
                                   "build" => { "argv" => [ruby, "-e", "exit 0"], "when" => "integration", "costRank" => 8 }
                                 }.merge(extra_gates),
-                                "alwaysGates" => ["typecheck"],
+                                "alwaysGates" => ["typecheck"] + always,
                                 "protectedPaths" => [".env*", "tools/**"]
                               } }
                             })
@@ -77,10 +77,10 @@ module TestSupport
     # Run a plan end to end. replies: { "T1 implement" => reply, "T1 fix" => reply, ... }, a reply may be an
     # Array consumed in order (the last repeats).
     # @return [Result]
-    def self.run(tmp, plan, replies, files: FILES)
+    def self.run(tmp, plan, replies, files: FILES, extra_gates: {}, always: [])
       repo, env = TestSupport.repo(tmp, files)
       server = server(replies)
-      config = config(server.base_url)
+      config = config(server.base_url, extra_gates: extra_gates, always: always)
       store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "r1")
       setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
       outcome = Harness::Run.new(config: config, client: client(config, store), setup: setup)

@@ -150,6 +150,24 @@ class LoopE2ETest < Minitest::Test
     assert_includes implement_system, "Several edits to one file apply in order"
   end
 
+  # A field report: lint was in alwaysGates but eslint was not installed, so every task was blocked with "lint could
+  # not run" and the model's real type error never got a fix round. A gate skipped at intake too does not block.
+  def test_a_gate_whose_tool_was_missing_at_intake_does_not_block_a_task
+    lint = { "lint" => { "argv" => ["harness-test-no-such-linter-#{Process.pid}", "{files}"], "scope" => "touched", "costRank" => 2 } }
+    run_plan_with(lint, ["lint"], [F.task("T1", "Double the price", modify: [PRICE])],
+                  { "T1 implement" => F.replace(PRICE, "  return n;", "  return n; // BROKEN"),
+                    "T1 fix" => F.replace(PRICE, "  return n; // BROKEN", "  return n * 2;") })
+    t1 = @result.outcome.tasks.first
+    assert_equal ["done", 1], [t1.status, t1.fix_rounds], "the type error got its fix round"
+    lint_events = events.select { |e| e["stage"] == "task.gates" && e["subject"] == "lint" }
+    assert_equal ["skipped"], lint_events.map { |e| e["kind"] }.uniq
+    assert_match(/could not run, not blocking: command not found/, lint_events.first["detail"])
+  end
+
+  def run_plan_with(gates, always, tasks, replies)
+    @result = F.run(@tmp, { "tasks" => tasks }, replies, extra_gates: gates, always: always)
+  end
+
   def test_rejected_edits_get_one_retry
     run_plan([F.task("T1", "Double the price", modify: [PRICE])],
              { "T1 implement" => F.replace(PRICE, "return n ;", "return n * 2;"),
