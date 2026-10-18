@@ -110,7 +110,9 @@ module Harness
         path = File.join(task_dir(id), name)
         if content.is_a?(String)
           FileUtils.mkdir_p(File.dirname(path))
-          File.write("#{path}.tmp", content, encoding: "UTF-8")
+          # Bytes as they are: text mode on Windows turned every "\n" of blocked.patch into "\r\n", and git apply
+          # then warned about trailing whitespace on every line.
+          File.binwrite("#{path}.tmp", content.encode(Encoding::UTF_8))
           File.rename("#{path}.tmp", path)
         else
           State.write_json(path, content)

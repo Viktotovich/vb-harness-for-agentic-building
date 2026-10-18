@@ -610,3 +610,9 @@ tag) rather than guess search text. And two bugs passed type check, build and re
 called `onChange`, so edits never saved, and a route that answered 500 to a malformed body. When tests can run, the
 planner is told to add a test item for each behaviour someone can observe (saving, what an API returns for good
 and bad input, what a click changes), since type checks and builds cannot see it.
+
+## Task files are written as bytes
+
+On Windows every line of a `blocked.patch` ended in CRLF, and `git apply` warned about trailing whitespace on each
+one. The patch itself was LF; Ruby's text-mode `File.write` added the CR. Task files given as text (patches,
+excerpts) are now written with `File.binwrite`, so they keep the line ends they have.

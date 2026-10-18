@@ -89,6 +89,8 @@ class LoopE2ETest < Minitest::Test
 
     patch = File.read(File.join(@result.store.task_dir("T1"), "blocked.patch"))
     assert_includes patch, "+  return n * 3; // BROKEN"
+    refute_includes File.binread(File.join(@result.store.task_dir("T1"), "blocked.patch")), "\r",
+                    "LF line ends, so git apply does not warn on every line (Windows wrote CRLF)"
     blocked = JSON.parse(File.read(File.join(@result.store.task_dir("T1"), "blocked.json")))
     assert_equal "fix.same_errors_twice", blocked["reason"]
     assert_equal F::FILES[PRICE], wt(PRICE), "the blocked task was reverted"
