@@ -365,8 +365,17 @@ module Harness
       def render_diagnostics(diagnostics)
         diagnostics.map do |d|
           head = [d.file && "#{d.file}#{d.line ? ":#{d.line}" : ''}#{d.col ? ":#{d.col}" : ''}", d.severity, d.code].compact.join(" ")
-          "#{head}: #{d.message}#{source_excerpt(d)}#{path_hint(d)}"
+          "#{head}: #{d.message}#{source_excerpt(d)}#{path_hint(d)}#{stack_hint(d)}"
         end.join("\n\n")
+      end
+
+      # The stack's fixHints whose text appears in the diagnostic (a field run's fixer could not repair
+      # "Cannot find name 'props'" in Astro frontmatter in two rounds; the hint is that props are Astro.props).
+      # @return [String]
+      def stack_hint(d)
+        hints = @ctx.stack.fix_hints.select { |h| d.message.include?(h["match"]) }.map { |h| "
+Hint: #{h['hint']}" }
+        hints.join
       end
 
       # A model that guessed a wrong import path rarely finds the right one from the error alone (a live run spent

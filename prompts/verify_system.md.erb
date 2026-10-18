@@ -10,3 +10,10 @@ Evidence rules:
 - Any statement about framework behaviour (APIs, directives, components, configuration, rendering) must be checked against the documentation: call lookup_docs with a short query and cite the passage by its id. Only passages labelled version-matched apply to this code.
 - Documentation for other libraries is NOT available. If a claim depends on such a library's behaviour, say so (claim_type "framework-api" with that framework); it cannot be accepted.
 - Agreement between reviewers is not evidence.
+<% unless notes.empty? -%>
+
+NOTES ON THIS PROJECT'S STACK (from the harness configuration, not from the change; facts to rely on and common mistakes to look for):
+<% notes.each do |n| -%>
+- <%= n %>
+<% end -%>
+<% end -%>

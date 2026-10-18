@@ -19,7 +19,7 @@ module Harness
   module Review
     # What the review stages share. task: the task id for events, nil in the final review.
     class Context
-      attr_reader :client, :config, :label, :framework, :retriever
+      attr_reader :client, :config, :label, :framework, :retriever, :notes
 
       # @param client [Model::Client]
       # @param config [Config]
@@ -31,7 +31,8 @@ module Harness
       # @param map [Repo::Map, nil]
       # @param framework [Evidence::Framework]
       # @param retriever [Evidence::Retriever, nil]
-      def initialize(client:, config:, events:, task:, label:, root:, protected:, map:, framework:, retriever:)
+      # @param notes [Array<String>] the stack's reviewNotes
+      def initialize(client:, config:, events:, task:, label:, root:, protected:, map:, framework:, retriever:, notes: [])
         @client = client
         @config = config
         @events = events
@@ -42,6 +43,7 @@ module Harness
         @map = map
         @framework = framework
         @retriever = retriever
+        @notes = notes
       end
 
       # @return [Toolbox] a fresh one: each conversation has its own record of what it saw
@@ -89,7 +91,7 @@ module Harness
         failures = []
         @summary = nil
         @suspicious = []
-        rules = Prompts.render("review_rules")
+        rules = Prompts.render("review_rules", notes: @ctx.notes)
         systems = [Prompts.render("review_system", rules: rules), Prompts.render("review_independent_system", rules: rules)]
         prepared = Diff.prepare(diff, max_lines: MAX_CHUNK_LINES, max_chars: chunk_chars(systems.first), max_chunks: MAX_CHUNKS)
         prepared.skipped.each { |path, why| @ctx.emit("review.discover", "skipped", subject: path, detail: why) }

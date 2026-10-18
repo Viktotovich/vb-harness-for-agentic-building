@@ -32,3 +32,10 @@ REVIEW RULES:
 - Every finding must have file, line and verbatim evidence from the diff. Findings without them are discarded automatically.
 - Severity "high" only for problems that will clearly break behaviour, lose data or open a security hole. Confidence "high" only when the diff alone proves the problem.
 - At most 8 findings; fewer good findings beat many weak ones. If nothing is wrong, return "findings": [].
+<% unless notes.empty? -%>
+
+NOTES ON THIS PROJECT'S STACK (from the harness configuration, not from the change; facts to rely on and common mistakes to look for):
+<% notes.each do |n| -%>
+- <%= n %>
+<% end -%>
+<% end -%>

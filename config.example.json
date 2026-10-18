@@ -43,7 +43,20 @@
         "e2e": { "argv": ["npx", "--offline", "--no", "--", "playwright", "test", "{tests}"], "scope": "tests", "when": "integration", "costRank": 9 }
       },
       "alwaysGates": ["lint", "typecheck"],
-      "protectedPaths": [".git/**", ".husky/**", ".env*", "**/*.lock", "package-lock.json", "pnpm-lock.yaml", ".github/**"]
+      "protectedPaths": [".git/**", ".husky/**", ".env*", "**/*.lock", "package-lock.json", "pnpm-lock.yaml", ".github/**"],
+      "fixHints": [
+        { "match": "Cannot find name 'props'", "hint": "In an .astro file, a component's props are Astro.props, for example: const { block } = Astro.props;" },
+        { "match": "Cannot find name 'params'", "hint": "In an .astro page, route parameters are Astro.params." },
+        { "match": "Unterminated regular expression literal", "hint": "In .astro markup this usually means an expression { ... } or a .map(...) block is not closed: every { needs its }, every ( its )." },
+        { "match": "Expected corresponding JSX closing tag", "hint": "An element opened inside an { ... } expression must also be closed inside it." }
+      ],
+      "reviewNotes": [
+        "Astro escapes {expression} output in markup; only set:html inserts raw HTML.",
+        "An .astro file's frontmatter (between the --- lines) runs on the server; browser code goes in a <script> tag.",
+        "Component props are Astro.props; a bare props is an undefined name.",
+        "A request body from request.json() can be any JSON value, including a number, a string or null: check it is an object before using in, Reflect.has or property access, or the route answers 500 instead of 400.",
+        "A form field or editor wired to a callback (such as onChange) must call it on every change, or the edit is never saved."
+      ]
     }
   },
   "gateEnvAllow": [],

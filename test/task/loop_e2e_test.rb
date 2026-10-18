@@ -214,6 +214,20 @@ class LoopE2ETest < Minitest::Test
     refute(events.any? { |e| e["reason"] == "gate.failed:format" })
   end
 
+  # A field run's fixer could not repair "Cannot find name 'props'" in two rounds. The stack's fixHints (config data)
+  # put the fix next to the diagnostic that matches.
+  def test_a_stack_fix_hint_appears_next_to_a_matching_diagnostic
+    hints = { "fixHints" => [{ "match" => "is not assignable to type 'number'", "hint" => "return a number, not a string" },
+                             { "match" => "never matches", "hint" => "not shown" }] }
+    @result = F.run(@tmp, { "tasks" => [F.task("T1", "Double the price", modify: [PRICE])] },
+                    { "T1 implement" => F.replace(PRICE, "  return n;", "  return n; // BROKEN"),
+                      "T1 fix" => F.replace(PRICE, "  return n; // BROKEN", "  return n * 2;") }, stack: hints)
+    assert_equal "done", @result.outcome.tasks.first.status
+    fix_user = @result.server.chat_bodies.find { |b| b["messages"].first["content"].start_with?("You fix") }["messages"].last["content"]
+    assert_includes fix_user, "Hint: return a number, not a string"
+    refute_includes fix_user, "not shown"
+  end
+
   def run_plan_with(gates, always, tasks, replies)
     @result = F.run(@tmp, { "tasks" => tasks }, replies, extra_gates: gates, always: always)
   end

@@ -312,6 +312,10 @@ Gates may not install packages, run `git` or `gh`, or use `npx --yes`. Other sta
 identify the stack), `alwaysGates`, `protectedPaths` (globs the model may never touch; `.git`, `.husky` and
 `node_modules` are always protected), `dependencyDirs`, and `docs.local` (a local checkout of the framework's docs,
 used by the review; without it, framework claims abstain instead of being confirmed).
+Two keys carry what a small model gets wrong about the stack, as plain data: `fixHints` (`{"match": text in a
+diagnostic, "hint": what to tell the fixer}`, shown next to a matching diagnostic) and `reviewNotes` (facts and
+pitfalls the reviewer and verifier are given). The example's Astro stack has a few, such as "props are
+`Astro.props`" and "`{expression}` output is escaped"; add your project's own.
 
 **Limits** (defaults): `maxFilesPerTask` 3, `maxFixRounds` 3, `maxReplanRounds` 2, `maxDiagnostics` 20,
 `maxLookups` 6, `maxReviewFixTasks` 2, `wholeFileRewriteMaxBytes` 4096, `maxGateOutputBytes` 204800,

@@ -35,7 +35,7 @@ module TestSupport
     }.freeze
 
     # @return [Harness::Config]
-    def self.config(base_url, extra_gates: {}, always: [], review: "full", top: {})
+    def self.config(base_url, extra_gates: {}, always: [], review: "full", top: {}, stack: {})
       ruby = RbConfig.ruby
       Harness::Config.parse(top.merge({
                               "review" => review,
@@ -49,7 +49,7 @@ module TestSupport
                                 }.merge(extra_gates),
                                 "alwaysGates" => ["typecheck"] + always,
                                 "protectedPaths" => [".env*", "tools/**"]
-                              } }
+                              }.merge(stack) }
                             }))
     end
 
@@ -78,10 +78,10 @@ module TestSupport
     # Run a plan end to end. replies: { "T1 implement" => reply, "T1 fix" => reply, ... }, a reply may be an
     # Array consumed in order (the last repeats).
     # @return [Result]
-    def self.run(tmp, plan, replies, files: FILES, extra_gates: {}, always: [], review: "full")
+    def self.run(tmp, plan, replies, files: FILES, extra_gates: {}, always: [], review: "full", stack: {})
       repo, env = TestSupport.repo(tmp, files)
       server = server(replies)
-      config = config(server.base_url, extra_gates: extra_gates, always: always, review: review)
+      config = config(server.base_url, extra_gates: extra_gates, always: always, review: review, stack: stack)
       store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "r1")
       setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
       outcome = Harness::Run.new(config: config, client: client(config, store), setup: setup)

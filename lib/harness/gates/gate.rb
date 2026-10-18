@@ -74,12 +74,14 @@ module Harness
 
     # A stack profile from config "stacks" (DESIGN.md 6). framework and docs stay raw hashes. dependency_dirs are
     # git-ignored folders (node_modules) mirrored from the repository into each worktree, so gates can run there.
+    # fix_hints: [{"match" => text in a diagnostic, "hint" => what the fixer is told}]; review_notes: facts and
+    # pitfalls of the stack for the reviewer and verifier. Both are config data, so lib/ stays stack-neutral.
     Stack = Data.define(:name, :detect, :framework, :docs, :package_manager, :gates, :always_gates, :protected_paths,
-                        :dependency_dirs)
+                        :dependency_dirs, :fix_hints, :review_notes)
 
     # Parsing for Stack.
     class Stack
-      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths dependencyDirs].freeze
+      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths dependencyDirs fixHints reviewNotes].freeze
 
       # @param name [String]
       # @param raw [Hash]
@@ -104,7 +106,21 @@ module Harness
             docs: Parse.hash!(h.fetch("docs", {}), "#{path}.docs"),
             package_manager: Parse.enum!(h.fetch("packageManager", "auto"), "#{path}.packageManager", %w[auto npm pnpm yarn]),
             gates: gates.freeze, always_gates: always.dup.freeze,
-            protected_paths: protected_paths(h, path), dependency_dirs: dependency_dirs(h, path))
+            protected_paths: protected_paths(h, path), dependency_dirs: dependency_dirs(h, path),
+            fix_hints: fix_hints(h, path), review_notes: Parse.strings!(h.fetch("reviewNotes", []), "#{path}.reviewNotes").dup.freeze)
+      end
+
+      # @return [Array<Hash{String=>String}>]
+      # @raise [ParseError]
+      def self.fix_hints(h, path)
+        raw = h.fetch("fixHints", [])
+        Parse.fail!("#{path}.fixHints", "array", raw) unless raw.is_a?(Array)
+        raw.each_with_index.map do |x, i|
+          hint = Parse.hash!(x, "#{path}.fixHints[#{i}]")
+          Parse.known_keys!(hint, %w[match hint], "#{path}.fixHints[#{i}]")
+          { "match" => Parse.str!(hint["match"], "#{path}.fixHints[#{i}].match"),
+            "hint" => Parse.str!(hint["hint"], "#{path}.fixHints[#{i}].hint") }.freeze
+        end.freeze
       end
 
       # The configured protectedPaths plus every dependencyDirs folder: mirrored files are hard links into the

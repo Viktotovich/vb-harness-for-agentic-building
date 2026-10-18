@@ -582,3 +582,14 @@ now tries repairs that cannot change what it means: a comma before a closing `}`
 text inside strings never touched. A cut-off reply is not completed and a missing quote is not guessed, since
 either could turn half an edit into an accepted one; those still fail, and the usual retry with thinking off
 follows. A repaired reply still goes through the same schema and parser checks.
+
+## Stack fix hints and review notes are config data
+
+A field run's fixer could not repair `Cannot find name 'props'` in Astro frontmatter (it should be `Astro.props`):
+three of six components were blocked after two identical fix rounds, while the same model got it right in the other
+three. Its review abstained on "raw interpolation" because it could not confirm that Astro escapes `{expr}`, and
+missed a route that crashed on a primitive JSON body. Knowledge like this is about the stack, not the harness, so
+it is configuration: a stack's `fixHints` (a text to find in a diagnostic, and the hint shown next to it in the
+fix prompt) and `reviewNotes` (facts and common mistakes, added to the reviewer's rules and the verifier's prompt
+as notes from the configuration). The example's Astro stack ships four hints and five notes; `lib/` stays
+stack- and model-neutral (I1).

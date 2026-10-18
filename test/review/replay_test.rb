@@ -130,6 +130,21 @@ class ReplayTest < Minitest::Test
     assert_match(/- Not verified \(T1, `src\/lib\/cache\.ts:4`, the run's verifier budget .*\): A publish can be served stale/, report)
   end
 
+  # A field review abstained on "raw interpolation" because it could not confirm Astro escapes {expr}. The stack's
+  # reviewNotes give the reviewer and the verifier such facts.
+  def test_stack_review_notes_reach_the_reviewer_and_the_verifier
+    raw = RR.raw_config(@server.base_url)
+    raw["stacks"]["astro"]["reviewNotes"] = ["Astro escapes {expression} output; only set:html inserts raw HTML."]
+    @config = Harness::Config.parse(raw)
+    @setup = @setup.with(stack: @config.stacks["astro"])
+    review_the_replay
+    systems = @server.chat_bodies.map { |b| [RR.stage(b["messages"].first["content"]), b["messages"].first["content"]] }
+    %w[review verify].each do |stage|
+      prompt = systems.find { |s, _| s == stage }&.last
+      assert_includes prompt.to_s, "- Astro escapes {expression} output; only set:html inserts raw HTML.", "#{stage} sees the notes"
+    end
+  end
+
   def test_the_verifier_stops_after_claims_in_a_row_are_refuted
     verifier = Harness::Review::Verifier.new(Struct.new(:config, :client).new(@config, Struct.new(:calls).new(Hash.new(0))))
     assert_nil verifier.send(:stop_reason, 2)

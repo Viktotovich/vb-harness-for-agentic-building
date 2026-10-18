@@ -96,7 +96,7 @@ module Harness
 
       # @return [Array<Array(Hash, String)>, String] per claim [verdict, code seen], or why the batch failed
       def verify_batch(batch)
-        system = Prompts.render("verify_system")
+        system = Prompts.render("verify_system", notes: @ctx.notes)
         claims = batch.each_with_index.map { |(_, f), i| claim_block(i + 1, f) }.join("\n\n")
         user = Prompts.render("verify_user", framework: @ctx.framework.line, count: batch.size,
                                              claims: Untrusted.fence(claims), prefetched: prefetch(batch))

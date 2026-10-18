@@ -96,7 +96,7 @@ module Harness
       # @return [Hash]
       def review(task_id, diff, subject, typecheck_passed, name)
         ctx = Context.new(client: @client, config: @config, events: @events, task: task_id, label: "#{name}.review",
-                          root: @worktree.root, protected: @stack.protected_paths, map: @map, framework: @framework,
+                          root: @worktree.root, protected: @stack.protected_paths, map: @map, framework: @framework, notes: @stack.review_notes,
                           retriever: @retriever)
         result = Pipeline.new(ctx).call(diff: diff, subject: subject, typecheck_passed: typecheck_passed)
         confirm = Confirm.new(ctx: ctx, stack: @stack, runner: @runner, baseline: @baseline, root: @worktree.root, name: name)
