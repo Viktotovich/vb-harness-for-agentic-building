@@ -38,8 +38,16 @@ module Harness
         @files = files.to_h { |f| [f.path, f] }
         @typecheck_passed = typecheck_passed
         out = []
+        refuted = 0
         queue = candidates.each_slice(BATCH).to_a
         while (batch = queue.shift)
+          if (why = stop_reason(refuted))
+            # A field run spent 68 verifier calls (48 minutes) on one task's review and found nothing. The claims
+            # left are not dropped: they are recorded as abstained, with the reason, and the report lists them.
+            @ctx.emit("review.verify", "skipped", detail: "#{why}; #{queue.flatten(1).size + batch.size} claims left unverified")
+            (batch + queue.flatten(1)).each { |id, f| out << conclude(id, f, nil, abstained(why)) }
+            break
+          end
           verdicts = verify_batch(batch)
           if verdicts.is_a?(String)
             if batch.size > 1
@@ -54,8 +62,11 @@ module Harness
             verdict, seen = verdicts[i]
             decision = Gate.decide(finding: f, verdict: verdict, seen: seen, evidence: ->(e) { @ctx.retriever&.get(e) },
                                    framework: @ctx.framework.name.to_s, typecheck_passed: typecheck_passed)
+            why = decision.outcome == "accept" ? stop_reason(refuted) : nil
+            decision = abstained(why) if why
             decision = support(id, f, verdict, decision) if decision.outcome == "accept"
             decision = challenge(id, f, decision) if decision.outcome == "accept"
+            refuted = decision.outcome == "reject" ? refuted + 1 : 0
             out << conclude(id, f, verdict, decision)
           end
         end
@@ -63,6 +74,25 @@ module Harness
       end
 
       private
+
+      # Why the review should stop verifying, or nil: the run's verifier budget is spent, or the last claims were
+      # all refuted, which says the discovery step is guessing.
+      # @return [String, nil]
+      def stop_reason(refuted)
+        limits = @ctx.config.limits
+        if @ctx.client.respond_to?(:calls) && @ctx.client.calls[:verifier] >= limits.max_verifier_calls
+          return "the run's verifier budget (maxVerifierCalls #{limits.max_verifier_calls}) is spent"
+        end
+        return "#{refuted} claims in a row were refuted (maxRefutedInARow)" if refuted >= limits.max_refuted_in_a_row
+
+        nil
+      end
+
+      # @return [Decision]
+      def abstained(why)
+        Decision.new(outcome: "abstain", reason: "verify.abstained", reasons: [why], citations: [], code_quote_valid: false,
+                     framework_claim: false)
+      end
 
       # @return [Array<Array(Hash, String)>, String] per claim [verdict, code seen], or why the batch failed
       def verify_batch(batch)

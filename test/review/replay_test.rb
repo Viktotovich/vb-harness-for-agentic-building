@@ -113,6 +113,42 @@ class ReplayTest < Minitest::Test
     File.write(full, text)
   end
 
+  # A field run's verifier made 68 calls on one task for no findings. With the run's budget spent, the claims left
+  # are recorded as unverified with the reason, not dropped and not verified.
+  def test_the_verifier_stops_when_the_runs_budget_is_spent
+    @config = Harness::Config.parse(RR.raw_config(@server.base_url).merge("maxVerifierCalls" => 1))
+    record = review_the_replay
+    by_id = (record["rejected"] + record["abstained"] + record["questions"]).to_h { |c| [c["id"], c["reason"]] }
+    assert_equal "verify.abstained", by_id["C4"], "the second batch is not verified"
+    assert_equal "verify.abstained", by_id["C3"], "an accepted claim gets no support or challenge calls"
+    skipped = Harness::State::Events.read(@store.events_path).find { |e| e["stage"] == "review.verify" && e["kind"] == "skipped" }
+    assert_match(/verifier budget \(maxVerifierCalls 1\) is spent; 1 claims left unverified/, skipped["detail"])
+    assert_empty record["findings"]
+    @store.write_run({ "status" => "done" })
+    Harness::State.write_json(@store.plan_path, { "tasks" => [TestSupport::RunFixture.task("T1", "Pricing", modify: ["src/types.ts"])] })
+    report = Harness::Report::Render.markdown(@store)
+    assert_match(/- Not verified \(T1, `src\/lib\/cache\.ts:4`, the run's verifier budget .*\): A publish can be served stale/, report)
+  end
+
+  def test_the_verifier_stops_after_claims_in_a_row_are_refuted
+    verifier = Harness::Review::Verifier.new(Struct.new(:config, :client).new(@config, Struct.new(:calls).new(Hash.new(0))))
+    assert_nil verifier.send(:stop_reason, 2)
+    assert_equal "3 claims in a row were refuted (maxRefutedInARow)", verifier.send(:stop_reason, 3)
+  end
+
+  def review_the_replay
+    write("src/components/PricingCard.tsx", CARD)
+    write("src/lib/steps.ts", STEPS)
+    write("src/lib/cache.ts", CACHE)
+    typecheck = Harness::Gates::Baseline.compare(@setup.runner.run(@setup.stack.gates["typecheck"]), @setup.baseline["typecheck"])
+    map = Harness::Repo::Map.new(root: @setup.worktree.root, protected: @setup.stack.protected_paths)
+    reviewer = Harness::Review::Reviewer.new(client: TestSupport::RunFixture.client(@config, @store), config: @config,
+                                             worktree: @setup.worktree, stack: @setup.stack, runner: @setup.runner,
+                                             baseline: @setup.baseline, events: @setup.events, store: @store, map: map)
+    task = Harness::Plan::PlanParser.parse({ "tasks" => [TestSupport::RunFixture.task("T1", "Pricing", modify: ["src/types.ts"])] }).tasks.first
+    reviewer.call(task: task, diff: @setup.worktree.patch(context: 10), gates: [typecheck])
+  end
+
   def test_the_replayed_claims_never_become_findings
     write("src/components/PricingCard.tsx", CARD)
     write("src/lib/steps.ts", STEPS)

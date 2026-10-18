@@ -41,6 +41,9 @@ module Harness
       MAX_PATH_HINTS = 5
       MAX_REQUEST_CHARS = 6000
       MAX_STAGED_CHARS = 12_000
+      # review "light" skips the per-task review of a change this small whose gates passed first time. A field run's
+      # review of 7 tiny files cost more than implementing and fixing them, and found nothing.
+      LIGHT_REVIEW_MAX_LINES = 80
       REVIEW_CONTEXT = 10
 
       # Ends the task as blocked.
@@ -395,11 +398,24 @@ module Harness
       def review
         step("reviewing")
         if @ctx.reviewer.nil?
-          emit("review.discover", "skipped", subject: "review", detail: "review is not configured yet")
+          emit("review.discover", "skipped", subject: "review",
+                                             detail: @ctx.config.review == "off" ? "review is off (config: review)" : "review is not configured yet")
           return
         end
 
-        @ctx.reviewer.call(task: @task, diff: @ctx.worktree.patch(context: REVIEW_CONTEXT), gates: @last_gates)
+        diff = @ctx.worktree.patch(context: REVIEW_CONTEXT)
+        if @ctx.config.review == "light" && @fix_rounds.zero? && changed_lines(diff) <= LIGHT_REVIEW_MAX_LINES
+          emit("review.discover", "skipped", subject: "review",
+                                             detail: "light review: the gates passed first time on a small change (#{changed_lines(diff)} lines)")
+          return
+        end
+
+        @ctx.reviewer.call(task: @task, diff: diff, gates: @last_gates)
+      end
+
+      # @return [Integer] lines the diff adds or removes
+      def changed_lines(diff)
+        diff.each_line.count { |l| l.start_with?("+", "-") && !l.start_with?("+++", "---") }
       end
 
       # @return [Outcome]

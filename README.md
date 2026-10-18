@@ -310,7 +310,14 @@ identify the stack), `alwaysGates`, `protectedPaths` (globs the model may never 
 used by the review; without it, framework claims abstain instead of being confirmed).
 
 **Limits** (defaults): `maxFilesPerTask` 3, `maxFixRounds` 3, `maxReplanRounds` 2, `maxDiagnostics` 20,
-`maxLookups` 6, `maxReviewFixTasks` 2, `wholeFileRewriteMaxBytes` 4096, `maxGateOutputBytes` 204800.
+`maxLookups` 6, `maxReviewFixTasks` 2, `wholeFileRewriteMaxBytes` 4096, `maxGateOutputBytes` 204800,
+`maxVerifierCalls` 60 (per run), `maxRefutedInARow` 3.
+
+**Review** (`review`, default `full`): `full` reviews every task and the whole run; `light` skips the per-task
+review of a small change (80 changed lines or fewer) whose gates passed first time, and keeps the final review;
+`off` skips review. In every mode the verifier stops when the run has used `maxVerifierCalls`, or after
+`maxRefutedInARow` claims in a row were refuted by the code; the claims left are recorded as unverified
+questions, never dropped. Review is the most expensive stage with a small model, so `light` is a good start.
 
 `gateEnvAllow` lists extra environment variables your gates need; everything that looks like a secret is removed
 from the gates' environment otherwise.

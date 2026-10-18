@@ -69,7 +69,11 @@ module Harness
         @clock = clock
         @caps = {}
         @strikes = Hash.new(0)
+        @calls = Hash.new(0)
       end
+
+      # @return [Hash{Symbol=>Integer}] completions asked for so far, per role (the review caps its verifier with it)
+      attr_reader :calls
 
       # Called with (role:, label:, reason:, message:) for every reply the client throws away and retries, so the
       # run's event log counts it (DESIGN.md 10.3). Final failures are raised and the caller records them.
@@ -96,6 +100,7 @@ module Harness
       def complete(role, messages, label:, parser: nil, schema: nil, tools: nil, max_output_tokens: nil)
         profile = @config.profile_for(role)
         caps = capabilities(role)
+        @calls[role] += 1
         call = Call.new(role: role, label: label, profile: profile, caps: caps)
         json = !parser.nil? || !schema.nil?
         native = !tools.nil? && !tools.empty? && caps.tool_calls == "native"

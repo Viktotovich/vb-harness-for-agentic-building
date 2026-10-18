@@ -35,9 +35,10 @@ module TestSupport
     }.freeze
 
     # @return [Harness::Config]
-    def self.config(base_url, extra_gates: {}, always: [])
+    def self.config(base_url, extra_gates: {}, always: [], review: "full")
       ruby = RbConfig.ruby
       Harness::Config.parse({
+                              "review" => review,
                               "profiles" => { "default" => { "baseUrl" => base_url, "maxOutputTokens" => 1000, "timeoutSec" => 30 } },
                               "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
                               "stacks" => { "astro" => {
@@ -77,10 +78,10 @@ module TestSupport
     # Run a plan end to end. replies: { "T1 implement" => reply, "T1 fix" => reply, ... }, a reply may be an
     # Array consumed in order (the last repeats).
     # @return [Result]
-    def self.run(tmp, plan, replies, files: FILES, extra_gates: {}, always: [])
+    def self.run(tmp, plan, replies, files: FILES, extra_gates: {}, always: [], review: "full")
       repo, env = TestSupport.repo(tmp, files)
       server = server(replies)
-      config = config(server.base_url, extra_gates: extra_gates, always: always)
+      config = config(server.base_url, extra_gates: extra_gates, always: always, review: review)
       store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "r1")
       setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
       outcome = Harness::Run.new(config: config, client: client(config, store), setup: setup)

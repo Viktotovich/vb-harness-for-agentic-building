@@ -10,11 +10,14 @@ require_relative "gates/gate"
 module Harness
   # Limits with their defaults from DESIGN.md section 14.
   Limits = Data.define(:max_files_per_task, :max_fix_rounds, :max_replan_rounds, :max_diagnostics, :max_lookups,
-                       :max_review_fix_tasks, :whole_file_rewrite_max_bytes, :max_gate_output_bytes)
+                       :max_review_fix_tasks, :whole_file_rewrite_max_bytes, :max_gate_output_bytes,
+                       :max_verifier_calls, :max_refuted_in_a_row)
 
   # Validated config.json. stacks maps a stack name to a Gates::Stack.
   # projects: folders linked in the app (name => absolute path); they live only in the local config.json.
-  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects) do
+  # review: "full" reviews every task and the whole run; "light" skips the per-task review of a small change whose
+  # gates passed first time; "off" skips review.
+  Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects, :review) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
     # @raise [ArgumentError] on an unknown role
@@ -33,9 +36,12 @@ module Harness
       "maxLookups" => [:max_lookups, 6],
       "maxReviewFixTasks" => [:max_review_fix_tasks, 2],
       "wholeFileRewriteMaxBytes" => [:whole_file_rewrite_max_bytes, 4096],
-      "maxGateOutputBytes" => [:max_gate_output_bytes, 204_800]
+      "maxGateOutputBytes" => [:max_gate_output_bytes, 204_800],
+      "maxVerifierCalls" => [:max_verifier_calls, 60],
+      "maxRefutedInARow" => [:max_refuted_in_a_row, 3]
     }.freeze
-    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects] + LIMIT_DEFAULTS.keys).freeze
+    REVIEW_MODES = %w[full light off].freeze
+    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review] + LIMIT_DEFAULTS.keys).freeze
     PROJECT_NAME = /\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
     # Read and validate a config file.
@@ -68,7 +74,8 @@ module Harness
         stacks: Parse.hash!(h.fetch("stacks", {}), "stacks").to_h { |name, s| [name, Gates::Stack.parse(name, s)] }.freeze,
         gate_env_allow: Parse.strings!(h.fetch("gateEnvAllow", []), "gateEnvAllow").dup.freeze,
         dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun"),
-        projects: parse_projects(h.fetch("projects", []))
+        projects: parse_projects(h.fetch("projects", [])),
+        review: Parse.enum!(h.fetch("review", "full"), "review", REVIEW_MODES)
       )
     end
 

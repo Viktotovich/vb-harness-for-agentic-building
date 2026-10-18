@@ -55,5 +55,8 @@
   "maxReviewFixTasks": 2,
   "wholeFileRewriteMaxBytes": 4096,
   "maxGateOutputBytes": 204800,
+  "maxVerifierCalls": 60,
+  "maxRefutedInARow": 3,
+  "review": "full",
   "dryRun": false
 }

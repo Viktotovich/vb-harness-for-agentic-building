@@ -23,7 +23,8 @@ class ConfigTest < Minitest::Test
     p = c.profiles["default"]
     assert_equal ["auto", "probe", 4000, 900, nil], [p.model, p.context_tokens, p.max_output_tokens, p.timeout_sec, p.api_key_env]
     assert_equal %w[probe low], [p.thinking.control, p.thinking.effort]
-    assert_equal [3, 3, 2, 20, 6, 2, 4096, 204_800], c.limits.to_h.values
+    assert_equal [3, 3, 2, 20, 6, 2, 4096, 204_800, 60, 3], c.limits.to_h.values
+    assert_equal "full", c.review
     assert_equal false, c.dry_run
     assert(Harness::Model::ROLES.all? { |r| c.roles[r] == "default" })
   end

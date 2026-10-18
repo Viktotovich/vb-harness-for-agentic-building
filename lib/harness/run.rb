@@ -95,7 +95,7 @@ module Harness
       @stop = stop || -> { false }
       self.class.observe(client, setup.events) if client.respond_to?(:on_discard) && client.on_discard.nil?
       map = Repo::Map.new(root: setup.worktree.root, cache_dir: cache_dir, protected: setup.stack.protected_paths)
-      @reviewer = if review
+      @reviewer = if review && config.review != "off"
                     Review::Reviewer.new(client: client, config: config, worktree: setup.worktree, stack: setup.stack,
                                          runner: setup.runner, baseline: setup.baseline, events: setup.events,
                                          store: setup.store, map: map, cache_dir: cache_dir)

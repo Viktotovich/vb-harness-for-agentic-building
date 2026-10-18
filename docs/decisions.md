@@ -523,3 +523,16 @@ allowance, since that is what the model generated. Thinking is counted separatel
 (`completion_tokens_details.reasoning_tokens`) or estimated from the reasoning text it returns. Request records
 carry `usage.thinking`, and the report's Cost table has an "Of which thinking" column and a note on how the counts
 are made.
+
+## Review can be light or off, and the verifier has a budget
+
+In a field run the review cost about four times as much as implementing and fixing combined: on one three-file
+task the verifier made 68 calls (222K tokens in, 48 minutes) and found nothing, after six claims in a row were
+refuted. Two changes:
+
+- **`review`** in the config: `full` (the default, as before), `light` (skips the per-task review of a change of
+  80 changed lines or fewer whose gates passed first time; the final review still runs) or `off`.
+- **Caps, in every mode.** `maxVerifierCalls` (60 per run, counted by the client) and `maxRefutedInARow` (3): the
+  verifier checks them before each batch of claims and before the support and challenge steps of an accepted
+  claim. Claims it stops on are recorded as abstained with the reason, and the report lists them under Questions
+  as "Not verified", so none is silently dropped.

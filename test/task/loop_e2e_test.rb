@@ -178,6 +178,29 @@ class LoopE2ETest < Minitest::Test
     assert_equal 37, planner.send(:max_create_lines), "1000 output tokens: 1000 * 3 bytes / 40 bytes a line / 2"
   end
 
+  # review "light" skips the per-task review of a small change whose gates passed first time; a change that needed
+  # a fix is still reviewed. review "off" makes no review calls at all.
+  def test_review_light_skips_small_first_time_changes_and_off_skips_review
+    replies = { "T1 implement" => F.replace(PRICE, "  return n;", "  return n * 2;"),
+                "T2 implement" => F.replace(TAX, "export const rate = 0.2;", "export const rate = 0.25; // BROKEN"),
+                "T2 fix" => F.replace(TAX, "export const rate = 0.25; // BROKEN", "export const rate = 0.25;") }
+    tasks = [F.task("T1", "Double the price", modify: [PRICE]), F.task("T2", "Raise the tax", modify: [TAX])]
+    @result = F.run(@tmp, { "tasks" => tasks }, replies, review: "light")
+    assert_equal %w[done done], @result.outcome.tasks.map(&:status)
+    skipped = events.select { |e| e["stage"] == "review.discover" && e["kind"] == "skipped" }
+    assert_equal ["T1"], skipped.map { |e| e["task"] }, "only the first-time change is skipped"
+    assert_match(/light review: the gates passed first time on a small change \(\d+ lines\)/, skipped.first["detail"])
+
+    @result.server.stop
+    FileUtils.rm_rf(@tmp)
+    @tmp = Dir.mktmpdir("harness-e2e-")
+    @result = F.run(@tmp, { "tasks" => [tasks.first] }, replies, review: "off")
+    assert_equal "done", @result.outcome.tasks.first.status
+    reviews = @result.server.chat_bodies.count { |b| F::REVIEW_ROLES.any? { |o, _| b["messages"].first["content"].start_with?(o) } }
+    assert_equal 0, reviews, "no review calls"
+    assert(events.any? { |e| e["detail"] == "review is off (config: review)" })
+  end
+
   def run_plan_with(gates, always, tasks, replies)
     @result = F.run(@tmp, { "tasks" => tasks }, replies, extra_gates: gates, always: always)
   end

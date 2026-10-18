@@ -167,6 +167,10 @@ module Harness
           Array(r["questions"]).each do |c|
             out << "- Unconfirmed claim (#{where}, #{code("#{c['file']}:#{c['line']}")}, #{State::Reasons.text(c['reason'])}): #{line(c['problem'])}"
           end
+          # Claims the review's caps stopped before they were checked: listed, so none is silently dropped.
+          Array(r["abstained"]).select { |c| Array(c["reasons"]).any? { |x| x.to_s.match?(/maxVerifierCalls|maxRefutedInARow/) } }.each do |c|
+            out << "- Not verified (#{where}, #{code("#{c['file']}:#{c['line']}")}, #{line(Array(c['reasons']).first, 120)}): #{line(c['problem'])}"
+          end
         end
         out.empty? ? ["None."] : ["Claims here are model output that no test confirmed; they are not findings.", "", *out]
       end
