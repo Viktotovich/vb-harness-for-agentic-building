@@ -396,6 +396,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | The planner keeps asking | Answer with `harness answer RUN_ID` (or in the app); the run continues. |
 | A run stopped (crash, Ctrl+C, power) | `harness resume RUN_ID` continues from the last saved step. |
 | Windows: paths too long | Keep the harness folder short (for example `C:\harness`); worktrees live under it. |
+| The model server stays busy after a run | A request the harness gave up on (a timeout, a stop, a crash) is closed on the harness's side; a server that does not notice a closed connection keeps generating until it finishes. Wait, or restart the server. Raise `timeoutSec` if requests time out often. |
 
 ## Limitations
 

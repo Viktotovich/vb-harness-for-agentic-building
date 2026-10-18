@@ -565,3 +565,12 @@ or times out before the run: an event (`gate.failed:<gate>`, "fails before the r
 `baselineFailing`, and a line at the top of the report. Tasks are still judged only on new problems. With
 `requireGreenBaseline` (or `harness run --require-green-baseline`) the run stops after intake, before any model
 call, with exit code 2 and the gates named.
+
+## A request the harness gives up on
+
+A field report saw the model server at full CPU after a run had ended, with no harness process left, and a dev
+server then failed to start. On a timeout the harness's HTTP client already closes its connection (Net::HTTP's block
+form), which stops servers that watch for a closed client; this server did not. Cancelling on the server side would
+need a server-specific endpoint, which does not belong in `lib/` (I1). So the harness now says what happened: the
+timeout error names the timeout and says the server may keep working, a test checks that the stub server sees the
+client go away, and the README's troubleshooting table explains the symptom.

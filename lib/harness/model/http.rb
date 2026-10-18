@@ -68,7 +68,14 @@ module Harness
         body = res.body.to_s.dup.force_encoding(Encoding::UTF_8).scrub
         Response.new(status: res.code.to_i, body: body, json: parse_json(body))
       rescue *NETWORK_ERRORS => e
-        kind = e.is_a?(Timeout::Error) ? "timed out" : "failed (#{e.class.name.split('::').last})"
+        # Net::HTTP.start's block has closed the connection by now. A server that stops when its client goes away
+        # stops here; one that does not may keep generating (a field report saw a server busy after the run).
+        kind = if e.is_a?(Timeout::Error)
+                 "timed out after #{timeout}s; the connection was closed, but a server that does not notice a closed " \
+                 "connection may keep working on the request"
+               else
+                 "failed (#{e.class.name.split('::').last})"
+               end
         raise ModelUnavailableError, "request to #{uri.scheme}://#{uri.host}:#{uri.port}#{uri.path} #{kind}"
       end
 
