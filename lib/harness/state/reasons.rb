@@ -27,6 +27,7 @@ module Harness
         "plan.too_large_for_context" => "task too large for the context",
         "plan.unknown_gate" => "plan names a gate the stack does not define",
         "plan.gate_unavailable" => "plan names a gate that cannot run in this repository",
+        "plan.not_a_test_file" => "plan names a test that is not a test file",
         "edit.search_not_found" => "edit search text not found",
         "edit.search_ambiguous" => "edit search text matched more than once",
         "edit.undeclared_path" => "edit to a file the task does not declare",

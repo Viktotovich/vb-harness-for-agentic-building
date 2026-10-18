@@ -16,6 +16,10 @@ module Harness
 
     # Plan checks against the worktree (DESIGN.md 5.3).
     module Checks
+      # A test file by the common conventions: a .test. or .spec. (or _test / _spec) file name, or a file under a
+      # tests, test, __tests__, spec or e2e folder. A field plan once named a page as its own test, and the unit
+      # gate then ran the test runner on the page.
+      TEST_FILE = %r{(?:\A|/)(?:tests?|__tests__|spec|e2e)/|[._](?:test|spec)\.[A-Za-z0-9]+\z}
       # @param plan [Plan]
       # @param root [String] worktree root
       # @param max_files [Integer] maxFilesPerTask
@@ -137,6 +141,13 @@ module Harness
           issues << Issue.new(task: task.id, reason: "plan.gate_unavailable",
                               message: "#{task.id}: the #{a.gate} gate cannot run in this repository (#{unavailable[a.gate]}); " \
                                        "use one of #{runnable.join(', ')}")
+        end
+        task.acceptance.select { |a| a.kind == "test" && a.path }.each do |a|
+          next if TEST_FILE.match?(a.path.to_s)
+
+          issues << Issue.new(task: task.id, reason: "plan.not_a_test_file",
+                              message: "#{task.id}: the test item's path #{a.path} is not a test file; give a test path " \
+                                       "such as tests/<name>.test.ts, or prove the task with a gate instead")
         end
         if task.acceptance.any? { |a| a.kind == "test" } && !test_gates.empty? && (test_gates - unavailable.keys).empty?
           issues << Issue.new(task: task.id, reason: "plan.gate_unavailable",

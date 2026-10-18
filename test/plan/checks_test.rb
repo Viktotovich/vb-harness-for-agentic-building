@@ -12,7 +12,7 @@ class ChecksTest < Minitest::Test
 
   def setup
     @root = Dir.mktmpdir("harness-checks-")
-    { "src/a.ts" => "export const a = 1;\n", "src/b.ts" => "b", "src/big.ts" => "x" * 30_000, ".env" => "SECRET=1" }.each do |rel, text|
+    { "src/a.ts" => "export const a = 1;\n", "src/b.ts" => "b", "src/b.test.ts" => "b", "src/big.ts" => "x" * 30_000, ".env" => "SECRET=1" }.each do |rel, text|
       FileUtils.mkdir_p(File.dirname(File.join(@root, rel)))
       File.write(File.join(@root, rel), text)
     end
@@ -61,9 +61,9 @@ class ChecksTest < Minitest::Test
     rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: t.test_paths, rewrite_bytes: 4096)
     assert_includes rules, "Edit only these files: src/a.ts, tests/a.test.ts."
     assert_includes rules, "Write the test for this task exactly at tests/a.test.ts"
-    i = only(issues(task("T2", acceptance: [written.merge("path" => "src/b.ts")])))
+    i = only(issues(task("T2", acceptance: [written.merge("path" => "src/b.test.ts")])))
     assert_equal "plan.path_exists", i.reason, "an existing file named as a new test must be listed under modify"
-    assert_empty issues(task("T3", files: { "modify" => %w[src/a.ts src/b.ts] }, acceptance: [written.merge("path" => "src/b.ts")]))
+    assert_empty issues(task("T3", files: { "modify" => %w[src/a.ts src/b.test.ts] }, acceptance: [written.merge("path" => "src/b.test.ts")]))
     i = only(issues(task("T4", files: { "modify" => %w[src/a.ts src/b.ts], "create" => %w[src/c.ts] }, acceptance: [written])))
     assert_equal "plan.too_many_files", i.reason, "the written test counts toward maxFilesPerTask"
   end
@@ -104,13 +104,27 @@ class ChecksTest < Minitest::Test
     assert_equal "T1: the lint gate cannot run in this repository (tool not installed: canceled due to missing packages); " \
                  "use one of typecheck", i.message
     assert_equal "plan names a gate that cannot run in this repository", Harness::State::Reasons.text("plan.gate_unavailable")
-    test_item = { "kind" => "test", "path" => "src/a.ts", "write" => false, "describe" => "a is 1" }
+    test_item = { "kind" => "test", "path" => "src/a.test.ts", "write" => false, "describe" => "a is 1" }
     i = only(issues(task("T2", acceptance: [test_item]), unavailable: missing, test_gates: ["lint"]))
     assert_match(/T2: tests cannot run in this repository \(lint: tool not installed/, i.message)
     assert_empty issues(task("T3", acceptance: [test_item]), test_gates: ["lint"]), "tests are fine when their gate runs"
     no_tests = 'use "gate" and "assert" items only, never "test"'
     assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false), no_tests
     refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true), no_tests
+  end
+
+  # A field plan proved an .astro page with {"kind": "test", "path": "src/pages/admin/index.astro"}: the page itself
+  # as its test, so the unit gate ran the test runner on a page. Test items must name test files.
+  def test_a_test_item_must_name_a_test_file
+    page = { "kind" => "test", "path" => "src/pages/admin/index.astro", "write" => true, "describe" => "it renders" }
+    i = only(issues(task("T1", files: { "modify" => ["src/a.ts"] }, acceptance: [page])))
+    assert_equal "plan.not_a_test_file", i.reason
+    assert_match(/T1: the test item's path src\/pages\/admin\/index\.astro is not a test file/, i.message)
+    assert_equal "plan names a test that is not a test file", Harness::State::Reasons.text("plan.not_a_test_file")
+    %w[tests/a.test.ts src/lib/price.spec.js test/unit/price.ts e2e/home.ts src/__tests__/a.tsx lib/price_test.rb].each do |path|
+      ok = { "kind" => "test", "path" => path, "write" => true, "describe" => "x" }
+      assert_empty issues(task("T1", files: { "modify" => ["src/a.ts"] }, acceptance: [ok])), "#{path} is a test file"
+    end
   end
 
   def test_unavailable_gates_come_from_the_baseline

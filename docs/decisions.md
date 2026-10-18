@@ -485,3 +485,11 @@ reply that cannot be used (cut off, not JSON, the wrong shape) counts as a repla
 went wrong and asks for a shorter plan. When the rounds run out, the run ends `failed` with the reason in
 `run.json`, the CLI prints it (and `--json` prints the result with an `error` field), and the exit code stays 1,
 which the README now describes as "the run failed".
+
+## A test item must name a test file
+
+A field plan proved an `.astro` page with `{"kind": "test", "path": "src/pages/admin/index.astro", "write": true}`:
+the page itself as its test. The plan check accepted it, and the unit gate then ran the test runner on a page. Now
+a test item whose path does not look like a test file (a `.test.`/`.spec.` or `_test`/`_spec` name, or a file under
+`tests/`, `test/`, `__tests__/`, `spec/` or `e2e/`) is refused as `plan.not_a_test_file`, and the planner prompt
+says to give a test file, never the file under test.
