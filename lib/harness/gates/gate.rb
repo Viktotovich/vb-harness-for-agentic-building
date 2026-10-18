@@ -94,7 +94,10 @@ module Harness
         end
         always = Parse.strings!(h.fetch("alwaysGates", []), "#{path}.alwaysGates")
         always.each do |g|
-          raise ParseError, "#{path}.alwaysGates: no gate named #{g.inspect}" unless gates.key?(g)
+          next if gates.key?(g)
+
+          raise ParseError, "#{path}.alwaysGates: no gate named #{g.inspect}; " \
+                            "a gate removed from gates must be removed from alwaysGates too"
         end
         new(name: name, detect: Parse.strings!(h.fetch("detect", []), "#{path}.detect").dup.freeze,
             framework: Parse.hash!(h.fetch("framework", {}), "#{path}.framework"),

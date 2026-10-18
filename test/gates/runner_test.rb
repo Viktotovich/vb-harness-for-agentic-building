@@ -125,7 +125,7 @@ class RunnerTest < Minitest::Test
     assert_equal %w[touched eslint 2 task], stack.gates["lint"].then { |g| [g.scope, g.parser, g.cost_rank.to_s, g.phase] }
     assert_equal "integration", stack.gates["build"].phase
     err = assert_raises(Harness::ParseError) { G::Stack.parse("astro", { "alwaysGates" => ["typecheck"] }) }
-    assert_equal "stacks.astro.alwaysGates: no gate named \"typecheck\"", err.message
+    assert_equal "stacks.astro.alwaysGates: no gate named \"typecheck\"; a gate removed from gates must be removed from alwaysGates too", err.message
   end
 
   def test_result_json_round_trip
