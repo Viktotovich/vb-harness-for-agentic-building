@@ -109,7 +109,9 @@ module Harness
         strike(call, outcome.reason) if retried && thinking
         @on_discard&.call(role: role, label: label, reason: outcome.reason,
                           message: "#{outcome.message[0, 200]}; #{thinking ? 'retried with thinking off' : 'retried'}") if retried
+        first = outcome
         outcome = attempt(call, Wire.thinking_off(body, caps.thinking_control), usage, json, parser, native) if retried
+        raise out_of_room(label, first, outcome) if outcome.is_a?(Bad) && OUT_OF_ROOM.include?(first.reason)
         raise ModelOutputError.new("#{label}: #{outcome.message}", reason: outcome.reason) if outcome.is_a?(Bad)
 
         Completion.new(text: outcome.text, value: outcome.value, usage: usage, ms: ms_since(started),
@@ -332,6 +334,14 @@ module Harness
       # @return [Integer]
       def ms_since(started)
         ((@clock.call - started) * 1000).round
+      end
+
+      # The first reply ran out of output room and the retry failed too. A field run's retry returned "no edits",
+      # which read as a shape problem; the cause is the size of the answer, so the error keeps that reason.
+      # @return [ModelOutputError]
+      def out_of_room(label, first, second)
+        ModelOutputError.new("#{label}: the answer did not fit in maxOutputTokens: #{first.message}; " \
+                             "the retry with thinking off then failed: #{second.message}", reason: first.reason)
       end
 
       # Count a reply that ran out of room with thinking on; at THINKING_STRIKES the role stops thinking.

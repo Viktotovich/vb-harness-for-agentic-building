@@ -500,3 +500,16 @@ A field run blocked a task on `edit.create_exists` twice: on a retry, the model 
 created in an earlier attempt. Edits now take the files this task has already created (kept in its state, so they
 survive a resume) and allow a whole-file create over those. Any other existing file is still refused unless it is
 small and listed in `files.modify`, so one task cannot overwrite a file another task created.
+
+## A new file has to fit in one reply
+
+A field task created one 250-line file. The implementer's reply was cut off at `maxOutputTokens`, the retry with
+thinking off returned no edits, and the task was blocked as a shape problem (`model.schema_mismatch`) after two
+calls. Doubling the allowance did not help. Three changes, none tied to a model:
+
+- The planner prompt says how long a new file may be: half the implementer profile's output allowance (the rest is
+  for thinking and the JSON around it) at about 40 bytes a line, so 150 lines at 4,000 tokens. Bigger modules are
+  split into several files and tasks.
+- When a reply runs out of room and the retry with thinking off fails in another way, the error keeps the
+  out-of-room reason and both messages, so the cause is not reported as a shape problem.
+- A task that creates files and is blocked that way says what to do: split the file, or raise `maxOutputTokens`.

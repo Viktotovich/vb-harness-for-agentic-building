@@ -68,7 +68,8 @@ module Harness
         test_gates = Checks.test_gates(stack)
         system = Prompts.render("planner_system", max_files: @config.limits.max_files_per_task,
                                                   gates: (stack.gates.keys - unavailable.keys).join(", "),
-                                                  tests: test_gates.empty? || !(test_gates - unavailable.keys).empty?)
+                                                  tests: test_gates.empty? || !(test_gates - unavailable.keys).empty?,
+                                                  max_create_lines: max_create_lines)
         user = first_prompt(system, request, root, stack, answers)
         check_budget = implementer_budget
         rounds = 0
@@ -117,6 +118,17 @@ module Harness
         end
         Prompts.render("planner_user", request: request, sections: sections)
       end
+
+      # About how many lines one new file can have and still fit in one implementer reply: half the output
+      # allowance (the rest goes to thinking and the JSON around it) at about 40 bytes a line. A field task asked
+      # for one 250-line file and every reply was cut off.
+      # @return [Integer]
+      def max_create_lines
+        out = @config.profile_for(:implementer).max_output_tokens
+        [(out * Model::Tokens::BYTES_PER_TOKEN / BYTES_PER_LINE / 2).floor, 20].max
+      end
+
+      BYTES_PER_LINE = 40
 
       # The implementer's budget, for the "fits the context" check.
       # @return [Integer]

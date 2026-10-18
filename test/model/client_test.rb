@@ -117,6 +117,18 @@ class ClientTest < Minitest::Test
     assert_nil srv.chat_bodies[5]["chat_template_kwargs"], "other roles still think"
   end
 
+  # A field run: the first reply was cut off and the retry with thinking off came back with no edits, which was
+  # reported as a shape problem. The cause is the size of the answer, so that is the reason kept.
+  def test_a_cut_off_reply_whose_retry_also_fails_is_reported_as_out_of_room
+    parser = ->(v) { v["edits"].is_a?(Array) && !v["edits"].empty? ? v : raise(Harness::ParseError, "edits: the reply contains no edits") }
+    srv = server([INCOMPLETE, Fake.ok('{"edits": []}')])
+    err = assert_raises(Harness::ModelOutputError) do
+      client(srv).complete(:implementer, msgs, label: "T1.implement", parser: parser, schema: { "type" => "object" })
+    end
+    assert_equal "model.truncated", err.reason
+    assert_match(/did not fit in maxOutputTokens: .*the retry with thinking off then failed: edits: the reply contains no edits/, err.message)
+  end
+
   def test_inline_thinking_is_stripped_before_parsing
     srv = server([Fake.ok("<think>let me see</think>\n```json\n{\"a\": 1}\n```")])
     assert_equal({ "a" => 1 }, ask(client(srv)).value)

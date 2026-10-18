@@ -164,6 +164,20 @@ class LoopE2ETest < Minitest::Test
     assert_match(/could not run, not blocking: command not found/, lint_events.first["detail"])
   end
 
+  # A field task created one 250-line file and every reply was cut off. The planner is told how long a new file may
+  # be, and a task blocked that way says what to do.
+  def test_a_create_that_does_not_fit_in_one_reply_says_how_to_fix_it
+    cut = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
+    task = { "id" => "T1", "title" => "Add the store", "intent" => "Add it.", "files" => { "create" => ["src/lib/store.ts"] },
+             "dependsOn" => [], "acceptance" => [{ "kind" => "gate", "gate" => "typecheck" }] }
+    run_plan([task], { "T1 implement" => cut })
+    t1 = @result.outcome.tasks.first
+    assert_equal %w[blocked model.truncated], [t1.status, t1.reason]
+    assert_match(/split it into smaller files and tasks, or raise maxOutputTokens for the implementer profile/, t1.detail)
+    planner = Harness::Plan::Planner.new(client: nil, config: F.config("http://127.0.0.1:1"), events: nil)
+    assert_equal 37, planner.send(:max_create_lines), "1000 output tokens: 1000 * 3 bytes / 40 bytes a line / 2"
+  end
+
   def run_plan_with(gates, always, tasks, replies)
     @result = F.run(@tmp, { "tasks" => tasks }, replies, extra_gates: gates, always: always)
   end

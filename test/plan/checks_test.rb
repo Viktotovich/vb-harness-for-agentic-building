@@ -47,7 +47,7 @@ class ChecksTest < Minitest::Test
     assert_equal "plan.no_changes", i.reason
     assert_match(/T1 creates and modifies no files\. Every task must change something: fold the inspection into the task that writes/, i.message)
     assert_equal "task changes no files", Harness::State::Reasons.text("plan.no_changes")
-    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true), "Do not plan tasks that only inspect"
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150), "Do not plan tasks that only inspect"
   end
 
   # Shakedown bug 2: a test the task writes is one of its files, and its exact path reaches the implementer.
@@ -91,7 +91,7 @@ class ChecksTest < Minitest::Test
     stray = task("T4", files: { "create" => ["src/x.ts"], "read" => ["src/styles/global.css"] })
     i = only(issues(t1, stray))
     assert_equal ["plan.missing_path", "T4"], [i.reason, i.task], "without dependsOn the file may not exist yet when T4 runs"
-    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true),
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150),
                     "files that a task in \"dependsOn\" creates"
   end
 
@@ -109,8 +109,8 @@ class ChecksTest < Minitest::Test
     assert_match(/T2: tests cannot run in this repository \(lint: tool not installed/, i.message)
     assert_empty issues(task("T3", acceptance: [test_item]), test_gates: ["lint"]), "tests are fine when their gate runs"
     no_tests = 'use "gate" and "assert" items only, never "test"'
-    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false), no_tests
-    refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true), no_tests
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: false, max_create_lines: 150), no_tests
+    refute_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150), no_tests
   end
 
   # A field plan proved an .astro page with {"kind": "test", "path": "src/pages/admin/index.astro"}: the page itself

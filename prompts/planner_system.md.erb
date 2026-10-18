@@ -10,6 +10,7 @@ Questions: {"text": "...", "blocking": true}
 
 Rules:
 - A task creates or modifies at most <%= max_files %> files. Prefer one component, function or page per task.
+- A file a task creates must be short enough to write in one reply: at most about <%= max_create_lines %> lines. Split a bigger module into several files and tasks.
 - Every task creates or modifies at least one file. Do not plan tasks that only inspect, analyse or verify: put the files to look at under "read" of the task that makes the change.
 - A test the task writes ({"kind": "test", "write": true}) counts as one of its files; give its exact path, a test file such as tests/<name>.test.ts, never the file under test.
 - "modify" and "read" list files from the file list, or files that a task in "dependsOn" creates; "create" lists only files that do not exist yet.

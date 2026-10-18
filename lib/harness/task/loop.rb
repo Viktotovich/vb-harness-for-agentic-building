@@ -166,7 +166,12 @@ module Harness
         c.value
       rescue ModelOutputError => e
         emit(stage, "rejected", reason: e.reason, detail: e.message[0, 300])
-        raise Blocked.new(e.reason, e.message)
+        message = e.message
+        if Model::Client::OUT_OF_ROOM.include?(e.reason) && !@task.files.create.empty?
+          message = "#{message}. A new file may be too long to write in one reply: split it into smaller files and " \
+                    "tasks, or raise maxOutputTokens for the #{role} profile"
+        end
+        raise Blocked.new(e.reason, message)
       end
 
       # Apply edits; on rejections give the model one retry for the rejected edits only.
