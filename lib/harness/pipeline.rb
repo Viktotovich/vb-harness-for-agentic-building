@@ -23,7 +23,10 @@ module Harness
     EXIT_WAITING = 3
 
     # status: the run status; questions: blocking questions when waiting; issues: plan problems when rejected.
-    Result = Data.define(:run_id, :status, :exit_code, :outcome, :questions, :issues, :plan_path)
+    # error: why planning failed, when it did (status "failed", no plan).
+    Result = Data.define(:run_id, :status, :exit_code, :outcome, :questions, :issues, :plan_path, :error) do
+      def initialize(run_id:, status:, exit_code:, outcome:, questions:, issues:, plan_path:, error: nil) = super
+    end
 
     # @param config [Config]
     # @param home [String] where runs/ lives (next to the config file)
@@ -57,7 +60,7 @@ module Harness
         store.update_run({ "planOnly" => plan_only })
         if request
           store.write_request(request)
-          planned(store, setup, client, plan_with_model(setup, client, request, []), stop: stop)
+          plan_and_run(store, setup, client, request, [], stop: stop)
         else
           planned(store, setup, client, check_given(setup, client, Plan::PlanParser.parse(plan_hash)), stop: stop)
         end
@@ -85,7 +88,7 @@ module Harness
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = Run.observe(@client_factory.call(store), setup.events)
-        planned(store, setup, client, plan_with_model(setup, client, request_of(store), pairs), stop: stop)
+        plan_and_run(store, setup, client, request_of(store), pairs, stop: stop)
       end
     end
 
@@ -111,7 +114,7 @@ module Harness
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
         client = Run.observe(@client_factory.call(store), setup.events)
         if status == "planning" || !File.file?(store.plan_path)
-          next planned(store, setup, client, plan_with_model(setup, client, request_of(store), Array(run["answers"])), stop: stop)
+          next plan_and_run(store, setup, client, request_of(store), Array(run["answers"]), stop: stop)
         end
 
         plan = Plan::PlanParser.parse(JSON.parse(File.read(store.plan_path, encoding: "UTF-8")))
@@ -125,6 +128,19 @@ module Harness
     end
 
     private
+
+    # Plan with the model, then go on as planned. A planner that never produced a usable plan ends the run "failed"
+    # with the reason, so status, the report and --json say what happened instead of leaving it "planning".
+    # @return [Result]
+    def plan_and_run(store, setup, client, request, answers, stop: nil)
+      result = plan_with_model(setup, client, request, answers)
+      planned(store, setup, client, result, stop: stop)
+    rescue ModelOutputError => e
+      message = "planning failed: #{e.message}"[0, 500]
+      store.update_run({ "status" => "failed", "exitCode" => 1, "error" => message })
+      Result.new(run_id: store.run_id, status: "failed", exit_code: 1, outcome: nil, questions: [], issues: [],
+                 plan_path: nil, error: message)
+    end
 
     # @return [Plan::Planner::Result]
     def plan_with_model(setup, client, request, answers)

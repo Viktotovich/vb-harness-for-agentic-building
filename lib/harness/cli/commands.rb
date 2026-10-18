@@ -144,6 +144,7 @@ module Harness
         end
 
         out.puts "run #{result.run_id}: #{result.status}"
+        out.puts "  #{result.error}" if result.error
         result.questions.each_with_index { |q, i| out.puts "  question #{i + 1}: #{q}" }
         out.puts "  answer with: harness answer #{result.run_id}" unless result.questions.empty?
         result.issues.each { |i| out.puts "  plan problem: #{i.message}" }
@@ -163,7 +164,7 @@ module Harness
       def self.json_of(result)
         h = { "run" => result.run_id, "status" => result.status, "exitCode" => result.exit_code,
               "questions" => result.questions, "issues" => result.issues.map { |i| i.to_h.transform_keys(&:to_s) },
-              "plan" => result.plan_path }
+              "plan" => result.plan_path, "error" => result.error }
         return h unless result.outcome
 
         h.merge("branch" => result.outcome.branch,

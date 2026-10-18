@@ -69,6 +69,28 @@ class PipelineTest < Minitest::Test
                  user, "the request is shown, fenced, before the context")
   end
 
+  # A field run died at planning: one plan cut off, the retry invalid JSON, and the run aborted with nothing on
+  # stdout. A reply that cannot be used is now one more planning round, with the reason fed back.
+  def test_a_plan_reply_that_cannot_be_used_is_asked_for_again
+    broken = TestSupport::FakeLlmServer.ok('{"tasks": [ {"id": "T1",, }')
+    fixture({ "plan" => [broken, broken, F.plan_reply([t1])], "T1 implement" => GOOD })
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal [0, "done"], [r.exit_code, r.status]
+    retried = Harness::State::Events.read(store(r).events_path).find { |e| e["stage"] == "plan" && e["kind"] == "retried" }
+    assert_match(/replan 1: the reply could not be used \(model\./, retried["detail"])
+    third = bodies("You plan")[2]["messages"].last["content"]
+    assert_includes third, "Your previous reply could not be used"
+  end
+
+  def test_a_planner_that_never_produces_a_plan_ends_the_run_failed_with_the_reason
+    broken = TestSupport::FakeLlmServer.ok("not json at all")
+    fixture({ "plan" => broken })
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
+    assert_equal ["failed", 1], [r.status, r.exit_code]
+    assert_match(/\Aplanning failed: /, r.error)
+    assert_equal ["failed", 1], store(r).read_run.values_at("status", "exitCode")
+  end
+
   def test_a_discarded_planner_reply_is_counted_as_a_plan_rejection
     truncated = TestSupport::FakeLlmServer.error(502, "structured output was incomplete (finish_reason=length)")
     fixture({ "plan" => [truncated, F.plan_reply([t1])], "T1 implement" => GOOD })

@@ -476,3 +476,12 @@ too") did not cover them. Now a skipped gate does not block when the task does n
 did not run at intake: it is recorded as a `skipped` event ("could not run, not blocking") and the gates that did
 run get their fix rounds. A gate the baseline skipped is not run again for each task. A gate the task names, one
 that ran at intake, and one the stack does not define still block.
+
+## A planner reply that cannot be used is one more round, and a failed plan says so
+
+A field run died at planning: the first plan was cut off, the client's retry with thinking off returned invalid
+JSON, and the run aborted. With `--json`, stdout was empty, and `run.json` was left at `planning`. Now a planner
+reply that cannot be used (cut off, not JSON, the wrong shape) counts as a replan round: the next prompt says what
+went wrong and asks for a shorter plan. When the rounds run out, the run ends `failed` with the reason in
+`run.json`, the CLI prints it (and `--json` prints the result with an `error` field), and the exit code stays 1,
+which the README now describes as "the run failed".

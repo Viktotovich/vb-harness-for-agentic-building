@@ -85,6 +85,22 @@ class CliRunTest < Minitest::Test
     assert_match(/uncommitted changes/, err)
   end
 
+  # A field run: planning failed and --json printed nothing at all. It now prints the result with the reason.
+  def test_a_planning_failure_prints_a_json_result_with_the_reason
+    @server.stop
+    @server = Fake.new { |body, _n| body["messages"].first["content"].start_with?("You plan") ? Fake.ok("not json") : Fake.ok("OK") }
+    config = JSON.parse(File.read(@config_path))
+    config["profiles"]["default"]["baseUrl"] = @server.base_url
+    File.write(@config_path, JSON.generate(config))
+    request = File.join(@home, "request.md")
+    File.write(request, "Make prices double.")
+    code, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    assert_equal 1, code
+    result = JSON.parse(out)
+    assert_equal "failed", result["status"]
+    assert_match(/\Aplanning failed: /, result["error"])
+  end
+
   def test_request_question_answer_build_through_the_cli
     request = File.join(@home, "request.md")
     File.write(request, "Make prices double.")

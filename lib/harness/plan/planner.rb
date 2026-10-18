@@ -73,7 +73,21 @@ module Harness
         check_budget = implementer_budget
         rounds = 0
         loop do
-          plan = ask(system, user, rounds)
+          plan = begin
+            ask(system, user, rounds)
+          rescue ModelOutputError => e
+            raise if rounds >= @config.limits.max_replan_rounds
+
+            # A cut-off or broken reply is one more round, not the end of the run: say what went wrong and ask for
+            # a shorter plan (a field run lost its whole run to one truncated plan and one invalid JSON reply).
+            rounds += 1
+            @events.emit(stage: "plan", kind: "retried", detail: "replan #{rounds}: the reply could not be used (#{e.reason})")
+            user = "#{first_prompt(system, request, root, stack, answers)}
+
+" +
+                   Prompts.render("planner_output_retry", reason: e.message[0, 300])
+            next
+          end
           issues = Checks.run(plan, root: root, max_files: @config.limits.max_files_per_task, protected: stack.protected_paths,
                                     gates: stack.gates.keys, budget: check_budget, unavailable: unavailable,
                                     test_gates: test_gates)

@@ -150,8 +150,9 @@ Useful options:
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
 | `--port N`, `--[no-]open` | `ui` | The app's port, and whether to open the browser. |
 
-Progress lines go to stderr; the result goes to stdout. Exit codes: `0` done, `1` a task was blocked or something
-regressed, `2` a configuration or environment problem, `3` waiting for your answers.
+Progress lines go to stderr; the result goes to stdout. Exit codes: `0` done, `1` the run failed (planning
+failed, a task was blocked, or something regressed), `2` a configuration or environment problem, `3` waiting for
+your answers.
 
 ## Projects and workspaces
 
