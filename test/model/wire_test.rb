@@ -7,6 +7,16 @@ require_relative "../test_helper"
 class WireTest < Minitest::Test
   W = Harness::Model::Wire
 
+  # A field run blocked a task on invalid JSON at the first attempt. Repairs that cannot change the meaning are
+  # tried before giving up; anything else still fails.
+  def test_extract_json_repairs_stray_commas_and_nothing_else
+    assert_equal({ "edits" => [1, 2] }, W.extract_json('{"edits": [1, 2,], }'))
+    assert_equal({ "a" => 1, "b" => 2 }, W.extract_json('{"a": 1,, "b": 2}'))
+    assert_equal({ "s" => "keep ,] and ,, here" }, W.extract_json('{"s": "keep ,] and ,, here",}'), "strings are untouched")
+    assert_raises(JSON::ParserError) { W.extract_json('{"edits": [{"op": "create", "content": "half') }
+    assert_raises(JSON::ParserError) { W.extract_json('{"a": "x" "b": 2}') }
+  end
+
   def test_extract_json_handles_fences_and_prose
     assert_equal({ "a" => 1 }, W.extract_json('{"a":1}'))
     assert_equal({ "a" => 1 }, W.extract_json("```json\n{\"a\":1}\n```"))

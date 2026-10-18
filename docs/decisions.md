@@ -574,3 +574,11 @@ form), which stops servers that watch for a closed client; this server did not. 
 need a server-specific endpoint, which does not belong in `lib/` (I1). So the harness now says what happened: the
 timeout error names the timeout and says the server may keep working, a test checks that the stub server sees the
 client go away, and the README's troubleshooting table explains the symptom.
+
+## Stray commas in a model's JSON are repaired
+
+A field run blocked a task on `model.invalid_json` at the first attempt. Before giving up on a reply, the client
+now tries repairs that cannot change what it means: a comma before a closing `}` or `]`, and a doubled comma, with
+text inside strings never touched. A cut-off reply is not completed and a missing quote is not guessed, since
+either could turn half an edit into an accepted one; those still fail, and the usual retry with thinking off
+follows. A repaired reply still goes through the same schema and parser checks.

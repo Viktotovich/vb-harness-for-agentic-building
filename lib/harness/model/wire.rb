@@ -69,7 +69,49 @@ module Harness
         stop = s.rindex(/[}\]]/)
         raise if start.nil? || stop.nil? || stop <= start
 
-        JSON.parse(s[start..stop])
+        body = s[start..stop]
+        begin
+          JSON.parse(body)
+        rescue JSON::ParserError
+          repaired = repair_json(body)
+          raise if repaired == body
+
+          JSON.parse(repaired)
+        end
+      end
+
+      # Repairs that cannot change what a reply means: a comma before a closing bracket, and a doubled comma.
+      # Text inside strings is never touched. A cut-off reply is not completed and a missing quote is not
+      # guessed, since either could turn half an edit into an accepted one.
+      # @param text [String]
+      # @return [String]
+      def repair_json(text)
+        out = +""
+        in_string = false
+        escaped = false
+        pending_comma = false
+        text.each_char do |ch|
+          if in_string
+            out << ch
+            if escaped then escaped = false
+            elsif ch == "\\" then escaped = true
+            elsif ch == '"' then in_string = false
+            end
+            next
+          end
+          if ch == ","
+            pending_comma = true # held back until the next significant character shows whether it belongs
+            next
+          end
+          if pending_comma && !ch.match?(/\s/)
+            out << "," unless "}]".include?(ch)
+            pending_comma = false
+          end
+          in_string = true if ch == '"'
+          out << ch
+        end
+        out << "," if pending_comma
+        out
       end
 
       # Rewrite tool use as plain text (port of REVIEWER flattenToolHistory). A JSON-only request must not
