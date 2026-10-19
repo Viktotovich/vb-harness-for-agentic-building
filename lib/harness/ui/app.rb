@@ -8,6 +8,7 @@ require_relative "../errors"
 require_relative "../model/http"
 require_relative "../model/probe"
 require_relative "../model/stream"
+require_relative "../modes"
 require_relative "../projects"
 require_relative "../providers/actions"
 require_relative "../providers/detect"
@@ -71,7 +72,8 @@ module Harness
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
         ["GET", %r{\A/api/runs/([\w-]+)/events\z}, :run_events], ["GET", %r{\A/api/runs/([\w-]+)/report\z}, :run_report],
         ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["POST", %r{\A/api/runs/([\w-]+)/stop\z}, :run_stop],
-        ["GET", %r{\A/api/providers\z}, :providers],
+        ["GET", %r{\A/api/providers\z}, :providers], ["GET", %r{\A/api/settings\z}, :settings],
+        ["POST", %r{\A/api/settings\z}, :settings_post],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
         ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
       ].freeze
@@ -111,6 +113,8 @@ module Harness
         when :run_stop then Response.json({ "stopping" => @builds.stop(args[0]) })
         when :providers then Response.json(Providers::Detect.local(http: @http, env: @env, clis: @clis, urls: @urls).map(&:to_json_hash))
         when :provider_post then provider_post(args[0], body(req))
+        when :settings then Response.json(settings)
+        when :settings_post then settings_post(body(req))
         when :projects then Response.json(projects!.list.map { |p| project_json(p) })
         when :project_post then project_post(args[0], body(req))
         end
@@ -246,6 +250,30 @@ module Harness
         result
       end
 
+      # The mode and the planner's model, for Settings. Nothing secret is in it: apiKeyEnv is only a name (I12),
+      # and it is left out anyway.
+      # @return [Hash]
+      def settings
+        return { "configured" => false } unless File.file?(@config_path)
+
+        cfg = JSON.parse(File.read(@config_path, encoding: "UTF-8"))
+        { "configured" => true, "mode" => Modes.current(cfg), "review" => cfg.fetch("review", "full"),
+          "modes" => Modes::ALL.map { |id, (label, text, _)| { "id" => id, "label" => label, "text" => text } },
+          "first" => cfg.fetch("roles", {}).fetch("implementer", "default"), "second" => Modes.second(cfg),
+          "secondRoles" => Modes::SECOND_ROLES,
+          "profiles" => cfg.fetch("profiles", {}).map { |name, p| { "profile" => name, "model" => p["model"], "baseUrl" => p["baseUrl"] } } }
+      end
+
+      # {"mode": "quick"} and/or {"second": "profile"} ({"second": null} for the implementer's own model).
+      # @return [Response]
+      def settings_post(data)
+        mode = data["mode"]&.to_s
+        second = data.key?("second") ? data["second"]&.to_s&.then { |v| v.empty? ? nil : v } : false
+        Providers::Setup.update(path: @config_path, mode: mode, second: second)
+        load_config
+        Response.json(settings)
+      end
+
       # @return [Hash] the probe results, in plain words too
       def use_provider(data)
         kind = data["kind"].to_s
@@ -256,10 +284,13 @@ module Harness
         raise ParseError, "choose a model" unless model.match?(Providers::Actions::MODEL)
 
         key_env = data["keyEnv"].to_s.empty? ? nil : data["keyEnv"].to_s
-        Providers::Setup.use(path: @config_path, name: name, base_url: custom_url(name, base), model: model, key_env: key_env)
+        second = data["as"] == "second"
+        Providers::Setup.use(path: @config_path, name: name, base_url: custom_url(name, base), model: model, key_env: key_env,
+                             second: second)
         load_config
+        name = Modes::SECOND if second
         caps = @probe.call(@config.profiles[name], refresh: true)
-        { "profile" => name, "model" => caps.model_id, "summary" => plain_words(caps) }
+        { "profile" => name, "model" => caps.model_id, "summary" => plain_words(caps), "second" => second }
       end
 
       def custom_url(name, base)

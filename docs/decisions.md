@@ -646,3 +646,12 @@ mode, Careful, Balanced (the default) or Quick, which writes `review`, `requireG
 and an existing config whose values match no mode can keep them. Then it asks for one model or two: with two, a
 `planning` profile serves the planner, reviewer and verifier, and the implementer, fixer and summarizer keep
 `default`. Picking the first model again counts as one model.
+
+## The app's Settings change the mode and the planning model
+
+The modes and the second model were only in `harness init`, so someone who set up from the app got `review:
+"full"` and one model for every role, with no way to change either without editing `config.json`. The presets
+moved to `Harness::Modes`, which `init` and the app share. Settings now opens with **How runs work**: the three
+modes, and a picker for the profile the planner, reviewer and verifier use (the implementer's own, or any other
+configured one). **Plan & review** on a model writes it as the `planning` profile, so a second model can sit on
+the same server as the first. A config the app creates starts Balanced, as one from `init` does.

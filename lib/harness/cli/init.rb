@@ -7,6 +7,7 @@ require "uri"
 require_relative "../config"
 require_relative "../errors"
 require_relative "../model/http"
+require_relative "../modes"
 require_relative "../providers/detect"
 require_relative "../state/records"
 
@@ -15,7 +16,7 @@ module Harness
     # harness init: write config.json from config.example.json, asking a few questions. The questions are ported
     # from REVIEWER src/setup/wizard.js (endpoint, model, docs); the target repository is given per run, so it is
     # not asked. LM Studio and Ollama found on this machine are offered first. Keys are never typed in: only the name of the
-    # env var that holds one (I12). Then a mode (Careful, Balanced or Quick, see MODES) and whether a second model
+    # env var that holds one (I12). Then a mode (Careful, Balanced or Quick, see Modes) and whether a second model
     # takes the planner and reviewers.
     class Init
       # Raised when input ends before the questions are answered.
@@ -24,20 +25,6 @@ module Harness
       ENV_NAME = /\A[A-Z_][A-Z0-9_]{0,63}\z/
       CONTEXT = /\A(?:probe|\d{3,7})\z/
       EXAMPLE = File.expand_path("../../../config.example.json", __dir__)
-      # Presets for how careful a run is: a name, what it means, and the settings it writes. Any value can still be
-      # edited in config.json afterwards.
-      MODES = {
-        "careful" => ["Careful", "review every task and the whole run, and stop when the repository's own checks " \
-                                 "already fail before the run", { "review" => "full", "requireGreenBaseline" => true, "maxFixRounds" => 3 }],
-        "balanced" => ["Balanced", "skip the review of small tasks that pass their checks first time; the whole run " \
-                                   "is still reviewed", { "review" => "light", "requireGreenBaseline" => false, "maxFixRounds" => 3 }],
-        "quick" => ["Quick", "no review and fewer fix rounds, for trying things out",
-                    { "review" => "off", "requireGreenBaseline" => false, "maxFixRounds" => 2 }]
-      }.freeze
-      DEFAULT_MODE = "balanced"
-      # With two models, these roles use the second one; the implementer, fixer and summarizer keep the first.
-      SECOND_ROLES = %w[planner reviewer verifier].freeze
-      SECOND = "planning"
 
       # @param input [#gets]
       # @param out [IO] where questions and the summary go
@@ -114,18 +101,18 @@ module Harness
       # @param fresh [Boolean] cfg comes from the example, not an existing config.json
       # @return [String, nil] the preset chosen, nil when the current settings were kept
       def pick_mode(cfg, fresh)
-        keys = MODES.keys
-        current = keys.find { |k| MODES[k][2].all? { |f, v| cfg[f] == v } } unless fresh
-        options = MODES.values.map { |name, text, _| "#{name}: #{text}" }
+        keys = Modes::ALL.keys
+        current = Modes.current(cfg) unless fresh
+        options = Modes::ALL.values.map { |name, text, _| "#{name}: #{text}" }
         keep = !fresh && current.nil?
         options << "Keep the current settings (review #{cfg['review'] || 'full'})" if keep
-        default = keep ? options.size : keys.index(current || DEFAULT_MODE) + 1
+        default = keep ? options.size : keys.index(current || Modes::DEFAULT) + 1
         say "\nHow careful should runs be?"
         options.each_with_index { |o, i| say "  #{i + 1}) #{o}" }
         n = ask("Mode", default.to_s) { |s| s.match?(/\A\d+\z/) && s.to_i.between?(1, options.size) ? nil : "pick 1-#{options.size}" }.to_i
         return nil if n > keys.size
 
-        cfg.merge!(MODES[keys[n - 1]][2])
+        Modes.apply(cfg, keys[n - 1])
         keys[n - 1]
       end
 
@@ -142,7 +129,7 @@ module Harness
         n = ask("Models", now ? "2" : "1") { |s| %w[1 2].include?(s) ? nil : "pick 1-2" }
         return one_model(cfg, roles) if n == "1"
 
-        name = now || SECOND
+        name = now || Modes::SECOND
         second = cfg["profiles"][name] ||= JSON.parse(JSON.generate(profile)).merge("contextTokens" => "probe")
         say "\nThe second model (planner, reviewer and verifier)"
         second["baseUrl"] = ask("Server URL", second["baseUrl"]) { |s| url_problem(s) }.chomp("/")
@@ -152,14 +139,14 @@ module Harness
           say "  That is the first model again, so every role uses it."
           return one_model(cfg, roles)
         end
-        SECOND_ROLES.each { |r| roles[r] = name }
+        Modes.assign_second(cfg, name)
         name
       end
 
       # @return [nil]
       def one_model(cfg, roles)
-        SECOND_ROLES.each { |r| roles[r] = "default" }
-        cfg["profiles"].delete(SECOND) unless roles.value?(SECOND)
+        Modes.assign_second(cfg, nil)
+        cfg["profiles"].delete(Modes::SECOND) unless roles.value?(Modes::SECOND)
         nil
       end
 
@@ -201,9 +188,9 @@ module Harness
         say "  api key env  #{profile['apiKeyEnv'] || 'none'}"
         if second
           p = cfg["profiles"][second]
-          say "  second model #{p['model']} at #{p['baseUrl']} (#{SECOND_ROLES.join(', ')})"
+          say "  second model #{p['model']} at #{p['baseUrl']} (#{Modes::SECOND_ROLES.join(', ')})"
         end
-        say "  mode         #{mode ? MODES[mode][0] : 'current settings'} (review #{cfg['review'] || 'full'})"
+        say "  mode         #{mode ? Modes::ALL[mode][0] : 'current settings'} (review #{cfg['review'] || 'full'})"
         say "  docs         #{docs && docs['local'] ? docs['local'] : 'none (framework claims will abstain)'}"
       end
 

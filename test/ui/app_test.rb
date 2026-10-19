@@ -296,4 +296,44 @@ data: [DONE]
     assert_equal 400, custom.status, "a key typed where the env var name goes is refused"
     assert_equal 400, post("/api/providers/use", { "kind" => "custom", "baseUrl" => "file:///etc", "model" => "m" }).status
   end
+
+  # Settings: the mode and the planner's model, as `harness init` sets them, changeable from the app.
+  def test_settings_change_the_mode_and_the_planning_model
+    @ollama = Fake.new(routes: { "/api/tags" => [200, { "models" => [{ "name" => "small:7b" }, { "name" => "large:32b" }] }] },
+                       models: [{ "id" => "small:7b" }, { "id" => "large:32b" }])
+    start(urls: { "lmstudio" => "http://127.0.0.1:9/v1", "ollama" => @ollama.base_url.delete_suffix("/v1") })
+    assert_equal({ "configured" => false }, get("/api/settings").json)
+    assert_equal 400, post("/api/providers/use", { "kind" => "ollama", "model" => "small:7b", "as" => "second" }).status,
+                 "a second model needs a first"
+    assert_equal 400, post("/api/settings", { "mode" => "quick" }).status, "no config yet"
+
+    post("/api/providers/use", { "kind" => "ollama", "model" => "small:7b" })
+    s = get("/api/settings").json
+    assert_equal ["balanced", "light", "ollama", nil], s.values_at("mode", "review", "first", "second"), "a new config starts Balanced"
+    assert_equal %w[careful balanced quick], s["modes"].map { |m| m["id"] }
+    refute_includes JSON.generate(s), "apiKeyEnv"
+
+    s = post("/api/settings", { "mode" => "careful" }).json
+    assert_equal ["careful", "full"], s.values_at("mode", "review")
+    cfg = JSON.parse(File.read(File.join(@home, "config.json")))
+    assert_equal ["full", true, 3], cfg.values_at("review", "requireGreenBaseline", "maxFixRounds")
+    assert_equal 400, post("/api/settings", { "mode" => "reckless" }).status
+
+    used = post("/api/providers/use", { "kind" => "ollama", "model" => "large:32b", "as" => "second" }).json
+    assert_equal ["planning", "large:32b", true], used.values_at("profile", "model", "second")
+    s = get("/api/settings").json
+    assert_equal "planning", s["second"]
+    assert_equal({ "profile" => "planning", "model" => "large:32b", "baseUrl" => @ollama.base_url }, s["profiles"].find { |p| p["profile"] == "planning" })
+    roles = JSON.parse(File.read(File.join(@home, "config.json")))["roles"]
+    assert_equal %w[planning planning planning], roles.values_at("planner", "reviewer", "verifier")
+    assert_equal %w[ollama ollama ollama], roles.values_at("implementer", "fixer", "summarizer")
+    assert_equal "small:7b", JSON.parse(File.read(File.join(@home, "config.json")))["profiles"]["ollama"]["model"],
+                 "the first model is unchanged on the same server"
+
+    assert_nil post("/api/settings", { "second" => nil }).json["second"], "back to the same model"
+    assert_equal ["ollama"], JSON.parse(File.read(File.join(@home, "config.json")))["roles"].values.uniq
+    assert_equal "planning", post("/api/settings", { "second" => "planning" }).json["second"]
+    assert_equal 400, post("/api/settings", { "second" => "nope" }).status
+    assert_equal "careful", get("/api/settings").json["mode"], "changing models leaves the mode alone"
+  end
 end

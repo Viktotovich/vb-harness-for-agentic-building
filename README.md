@@ -123,7 +123,10 @@ This starts the local app on `http://127.0.0.1:4567/` and, on first start, opens
    start LM Studio's server, load a downloaded model, or pull an Ollama model, each with one click. For any other
    server, enter its OpenAI-compatible URL and, if it needs a key, the *name* of the environment variable that holds
    the key (never the key itself). Choose **Use** on a model: the harness probes it and tells you what it found, for
-   example "16K context, JSON mode: yes, tools: no, thinking can be turned off".
+   example "16K context, JSON mode: yes, tools: no, thinking can be turned off". Once a model is set up, the top of
+   Settings has **How runs work**: the [mode](#configuration) (Careful, Balanced or Quick), and which model the
+   planner, reviewer and verifier use. **Plan & review** on any model makes it that second model, even on the same
+   server as the first.
 
    ![Settings · providers: the app looks for LM Studio and Ollama on this machine; a custom OpenAI-compatible server at 127.0.0.1:8080 has been checked and offers one model to use](docs/media/app-connect-a-model.png)
 2. **Chat.** Chat mode is a planning conversation: work out what to build, compare approaches, sketch the steps.
@@ -372,8 +375,8 @@ review of a small change (80 changed lines or fewer) whose gates passed first ti
 `maxRefutedInARow` claims in a row were refuted by the code; the claims left are recorded as unverified
 questions, never dropped. Review is the most expensive stage with a small model, so `light` is a good start.
 
-**Modes.** `harness init` asks how careful runs should be and writes the matching settings, which you can still
-edit afterwards:
+**Modes.** `harness init` asks how careful runs should be, and the app's Settings can change it later; either
+writes the matching settings, which you can still edit by hand:
 
 | Mode | `review` | `requireGreenBaseline` | `maxFixRounds` | For |
 | --- | --- | --- | --- | --- |
@@ -383,7 +386,8 @@ edit afterwards:
 
 It also asks whether to use one model for everything, or a second model (often a larger one) for the planner,
 reviewer and verifier, with the implementer and fixer on the first. That writes a `planning` profile and points
-those `roles` at it.
+those `roles` at it. In the app, **Plan & review** on a model does the same, and Settings picks which configured
+model those roles use. A config the app creates starts Balanced, like one from `init`.
 
 **A red baseline.** When a blocking gate already fails before the run, intake says so (an event, and a line at the
 top of the report); tasks are still judged only on new problems. Set `requireGreenBaseline` to `true` to stop the
