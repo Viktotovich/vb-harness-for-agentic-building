@@ -17,8 +17,28 @@ decisions.
 
 **Status: early development.** Everything below works and is tested, but expect rough edges and changes.
 
+## Fastest path
+
+You need [Ruby 3.3+](#requirements), git, and a model server; [LM Studio](https://lmstudio.ai/) or
+[Ollama](https://ollama.com/) is the easiest. Then:
+
+```bash
+git clone https://github.com/Viktotovich/vb-harness-for-agentic-building.git
+cd vb-harness-for-agentic-building
+ruby exe/harness
+```
+
+The app opens in your browser. In **Settings · providers**, choose **Use** on a model. Switch to **Build**, pick
+your project, describe the feature, and send. Two things stop a run before it starts, each with a message saying
+what to do: a project without its dependencies installed (run `npm install` in it first) and uncommitted changes
+(commit or stash them).
+
+On the command line instead, `ruby exe/harness init` asks a few questions (Enter accepts each default), and
+`ruby exe/harness run --repo ../my-site --request request.md` builds what `request.md` describes.
+
 ## Contents
 
+- [Fastest path](#fastest-path)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Install](#install)
