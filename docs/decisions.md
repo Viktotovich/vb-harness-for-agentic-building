@@ -637,3 +637,12 @@ still installs nothing itself (I10).
 `--help` listed `probe`, `cleanup` and `push`, which are planned (DESIGN.md 11.1) but not built, so a first try
 of any of them only printed "not implemented yet". Help now lists the built commands with a line on what each
 does; the planned ones are not listed, and still say so when typed.
+
+## init offers modes and a second model
+
+`harness init` copied every setting but the server's from the example, so each new config got `review: "full"`
+and one model for every role, and the settings that change a run the most went unnoticed. It now asks for a
+mode, Careful, Balanced (the default) or Quick, which writes `review`, `requireGreenBaseline` and `maxFixRounds`,
+and an existing config whose values match no mode can keep them. Then it asks for one model or two: with two, a
+`planning` profile serves the planner, reviewer and verifier, and the implementer, fixer and summarizer keep
+`default`. Picking the first model again counts as one model.
