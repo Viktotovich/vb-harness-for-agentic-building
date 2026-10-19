@@ -12,7 +12,20 @@ require_relative "cli/ui_command"
 module Harness
   # Command-line entry point. Subcommands arrive milestone by milestone (DESIGN.md section 11.1).
   module CLI
-    SUBCOMMANDS = %w[init probe run status resume answer report eval cleanup push ui].freeze
+    # The commands --help lists, in the order someone new needs them.
+    COMMANDS = {
+      "ui" => "the local app (the default with no command)",
+      "init" => "write config.json, asking a few questions",
+      "run" => "plan and build a request in a repository",
+      "status" => "where a run is: tasks, current step, rejections",
+      "answer" => "answer a run's blocking questions",
+      "resume" => "continue a stopped run",
+      "report" => "write a run's report.md",
+      "eval" => "run the evaluation tasks"
+    }.freeze
+    # Planned in DESIGN.md 11.1 but not built: not listed, and they say so when typed.
+    PLANNED = %w[probe cleanup push].freeze
+    SUBCOMMANDS = (COMMANDS.keys + PLANNED).freeze
     DOCS_URL = "https://vb-harness.vandbruno.net"
 
     EXIT_OK = 0
@@ -71,7 +84,9 @@ module Harness
       OptionParser.new do |o|
         o.banner = "Usage: harness [--version] [--help] <command> [options]"
         o.separator ""
-        o.separator "Commands: #{SUBCOMMANDS.join(', ')}"
+        o.separator "Commands:"
+        COMMANDS.each { |name, text| o.separator format("    %<name>-8s %<text>s", name: name, text: text) }
+        o.separator ""
         o.separator "Documentation: #{DOCS_URL}"
         o.on("--version", "Print the version") { out.puts VERSION }
         o.on("-h", "--help", "Show this help") { out.puts o.help }

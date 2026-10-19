@@ -631,3 +631,9 @@ each task that needed one, and the cause only showed at the end. Intake now chec
 folder exists in the user's checkout, before the worktree is made (so a stop leaves no branch behind), and stops
 with the install command to run: the configured `packageManager`, or the one the lockfile names, or npm. The harness
 still installs nothing itself (I10).
+
+## --help lists only commands that exist
+
+`--help` listed `probe`, `cleanup` and `push`, which are planned (DESIGN.md 11.1) but not built, so a first try
+of any of them only printed "not implemented yet". Help now lists the built commands with a line on what each
+does; the planned ones are not listed, and still say so when typed.

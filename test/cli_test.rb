@@ -23,7 +23,8 @@ class CliTest < Minitest::Test
     code, out, = run_cli("--help")
     assert_equal 0, code
     assert_includes out, "Usage: harness"
-    assert_includes out, "push"
+    assert_match(/^    run      plan and build a request in a repository$/, out)
+    Harness::CLI::PLANNED.each { |name| refute_match(/^    #{name} /, out, "#{name} is not built, so it is not listed") }
     assert_includes out, "Documentation: https://vb-harness.vandbruno.net"
   end
 
