@@ -623,3 +623,11 @@ A field run worked around a failed planner by writing `plan.json` by hand, but `
 exclusive, so the run lost the request, which the implementer, fixer and reviewers use for exact values. Both can
 now be given: the plan runs as written (and is checked like a planner's), and the request is saved as
 `request.md` and shown as context. Giving neither is the only usage error. The README documents the plan format.
+
+## Missing dependencies stop the run at intake
+
+A run on a repository without `npm install` skipped every gate as "tool not installed"; the plan check then refused
+each task that needed one, and the cause only showed at the end. Intake now checks that every `dependencyDirs`
+folder exists in the user's checkout, before the worktree is made (so a stop leaves no branch behind), and stops
+with the install command to run: the configured `packageManager`, or the one the lockfile names, or npm. The harness
+still installs nothing itself (I10).

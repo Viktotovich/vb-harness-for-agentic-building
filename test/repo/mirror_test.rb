@@ -53,6 +53,26 @@ class MirrorTest < Minitest::Test
     assert(Harness::State::Events.read(store.events_path).any? { |e| e["subject"] == "node_modules" && e["detail"] == "1 files linked into the worktree" })
   end
 
+  # A field run without `npm install`: every gate was skipped as "tool not installed" and the plan check refused each
+  # task, which only showed at the end. Intake now stops first, says what to run, and leaves no worktree behind.
+  def test_intake_stops_when_a_dependency_dir_is_missing
+    files = F::FILES.merge(".gitignore" => "node_modules/\n", "pnpm-lock.yaml" => "lockfileVersion: '9.0'\n")
+    repo, env = TestSupport.repo(@tmp, files)
+    raw = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } },
+            "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+            "stacks" => { "astro" => { "detect" => ["astro.config.mjs"], "dependencyDirs" => ["node_modules"] } } }
+    config = Harness::Config.parse(raw)
+    store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: "m3")
+    e = assert_raises(Harness::ConfigError) { Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env)) }
+    assert_match(/\Anode_modules is missing in .+: the project's dependencies are not installed/, e.message)
+    assert_includes e.message, "Run `pnpm install` there, then start the run again", "the lockfile names the package manager"
+    refute File.exist?(File.join(@tmp, "workspaces", "m3")), "no worktree was created"
+
+    pinned = Harness::Config.parse(raw.merge("stacks" => { "astro" => raw["stacks"]["astro"].merge("packageManager" => "yarn") }))
+    e = assert_raises(Harness::ConfigError) { Harness::Run.intake(config: pinned, repo: repo, store: store, parent_env: ENV.to_h.merge(env)) }
+    assert_includes e.message, "Run `yarn install` there", "a configured packageManager wins over the lockfile"
+  end
+
   # I11: a mirrored file is a hard link into the user's checkout. Writing it in the worktree must never change the
   # original, and edits from a model may not target it at all.
   def test_writing_a_mirrored_file_leaves_the_users_original_unchanged

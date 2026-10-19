@@ -53,14 +53,17 @@ module Harness
     # @param workspaces [String, nil] where worktrees go; default workspaces/ next to runs/
     # @return [Setup]
     # @raise [GitError] on a dirty or missing repository
-    # @raise [ConfigError] when no configured stack matches the repository
+    # @raise [ConfigError] when no configured stack matches the repository, or its dependencies are not installed
     def self.intake(config:, repo:, store:, parent_env: ENV, cache_dir: nil, workspaces: nil)
       events = State::Events.new(path: store.events_path, run_id: store.run_id)
       events.emit(stage: "intake", kind: "stage_started")
       env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
       workspaces ||= File.join(File.dirname(File.dirname(store.dir)), "workspaces")
-      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: Repo::Git.new(env: env, cache_dir: cache_dir),
-                                       workspaces: workspaces)
+      git = Repo::Git.new(env: env, cache_dir: cache_dir)
+      # Checked in the user's checkout before the worktree exists, so a stop here leaves no branch behind.
+      top = Repo::Worktree.top_level(repo, git)
+      require_dependencies(detect_stack(config, top), top)
+      worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: git, workspaces: workspaces)
       stack = detect_stack(config, worktree.root)
       stack.dependency_dirs.each do |dir|
         m = Repo::Mirror.link(File.join(worktree.repo, dir), File.join(worktree.root, dir))
@@ -82,6 +85,31 @@ module Harness
                         "baseSha" => worktree.base_sha, "stack" => stack.name, "baselineFailing" => red })
       events.emit(stage: "intake", kind: "stage_finished", detail: "stack #{stack.name}, base #{worktree.base_sha[0, 12]}")
       Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: baseline, events: events, store: store, env: env)
+    end
+
+    # Lockfiles that name the package manager which installs node_modules, first match wins.
+    NODE_LOCKFILES = { "pnpm-lock.yaml" => "pnpm", "yarn.lock" => "yarn", "bun.lock" => "bun", "bun.lockb" => "bun" }.freeze
+
+    # Every dependencyDirs folder must exist in the user's checkout. Without it the project's tools are missing,
+    # so every gate is skipped as "tool not installed" and the plan check refuses each task that needs one; a
+    # field run only found out at the end. Nothing is installed here (I10): the message says what to run.
+    # @param stack [Gates::Stack]
+    # @param top [String] the repository's top-level folder
+    # @return [void]
+    # @raise [ConfigError] naming the missing folder and the install command
+    def self.require_dependencies(stack, top)
+      missing = stack.dependency_dirs.reject { |d| File.directory?(File.join(top, d)) }
+      return if missing.empty?
+
+      how = if missing.include?("node_modules")
+              manager = stack.package_manager
+              manager = NODE_LOCKFILES.find { |f, _| File.file?(File.join(top, f)) }&.last || "npm" if manager == "auto"
+              "run `#{manager} install` there"
+            else
+              "install the project's dependencies there"
+            end
+      raise ConfigError, "#{missing.join(', ')} #{missing.size == 1 ? 'is' : 'are'} missing in #{top}: the project's " \
+                         "dependencies are not installed, so its checks cannot run. #{how.capitalize}, then start the run again"
     end
 
     # @param config [Config]

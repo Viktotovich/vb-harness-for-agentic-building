@@ -48,8 +48,10 @@ module Harness
         new(repo: top, root: File.realpath(dir), branch: branch, base_sha: base, git: git)
       end
 
-      # @return [String]
-      # @raise [GitError]
+      # @param repo [String] path inside the user's repository
+      # @param git [Git]
+      # @return [String] the repository's top-level folder
+      # @raise [GitError] when repo is not a directory or not a git repository
       def self.top_level(repo, git)
         raise GitError, "#{File.basename(repo.to_s)}: not a directory" unless File.directory?(repo.to_s)
 
@@ -57,7 +59,6 @@ module Harness
       rescue GitError => e
         raise GitError, "not a git repository (#{e.message})"
       end
-      private_class_method :top_level
 
       # Reattach to an existing worktree (resume).
       # @param repo [String]
