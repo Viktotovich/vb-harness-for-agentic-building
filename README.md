@@ -32,6 +32,9 @@ what to do: a project without its dependencies installed (run `npm install` in i
 On the command line instead, `ruby exe/harness init` asks a few questions (Enter accepts each default), and
 `ruby exe/harness run --repo ../my-site --request request.md` builds what `request.md` describes.
 
+Stuck? `ruby exe/harness doctor --repo ../my-site` (or **Check setup** at the top of Settings) lists every reason a
+build would not start, each with what to do, without changing anything or asking a model to write.
+
 [![An animated walkthrough of a run: a request, the live progress card, rejected outputs and why, the evidence-gated review, a claim confirmed by a failing test, and the finished Badge component rendered on the pricing page](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
 *An animated illustration of a run in the app, ending with the component it built, rendered (not a screen recording). Click it for the 1080p, 60 fps video.*
@@ -147,6 +150,7 @@ The app only listens on `127.0.0.1`, refuses other host names, and needs a per-s
 
 ```bash
 ruby exe/harness init                                   # write config.json, asking a few questions
+ruby exe/harness doctor --repo /path/to/repo            # check everything a run needs, in one list
 ruby exe/harness run --repo /path/to/repo --request request.md
 ruby exe/harness status                                 # the newest run: tasks, current step, rejections
 ruby exe/harness status RUN_ID --watch                  # refresh every second until it stops
@@ -466,6 +470,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 
 | Symptom | What to do |
 | --- | --- |
+| Not sure what is wrong | `harness doctor --repo PATH` checks Ruby, git, the config, each model server and the repository in one pass, and says what to do for each problem. |
 | "the repository has uncommitted changes" | Commit or stash first. Runs always start from a clean `HEAD`. |
 | "node_modules is missing … the project's dependencies are not installed" | Run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. The harness never installs anything itself. |
 | A gate is **skipped**: "tool not installed" | Install the project's dependencies in your repository (`npm install`), and keep `node_modules` in `dependencyDirs`. |
@@ -484,7 +489,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
   context map and docs.
 - Review evidence uses a local docs checkout only; online docs are not fetched.
 - Gates run your tools on your machine: a gate is as trustworthy as the command you configure.
-- `harness probe`, `cleanup` and `push` are not implemented yet; use `git` directly to push a branch.
+- `harness cleanup` and `push` are not implemented yet; use `git` directly to push a branch.
 
 ## Why Ruby
 

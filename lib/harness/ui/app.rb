@@ -4,6 +4,7 @@
 
 require "json"
 require_relative "../config"
+require_relative "../doctor"
 require_relative "../errors"
 require_relative "../model/http"
 require_relative "../model/probe"
@@ -73,7 +74,7 @@ module Harness
         ["GET", %r{\A/api/runs/([\w-]+)/events\z}, :run_events], ["GET", %r{\A/api/runs/([\w-]+)/report\z}, :run_report],
         ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["POST", %r{\A/api/runs/([\w-]+)/stop\z}, :run_stop],
         ["GET", %r{\A/api/providers\z}, :providers], ["GET", %r{\A/api/settings\z}, :settings],
-        ["POST", %r{\A/api/settings\z}, :settings_post],
+        ["POST", %r{\A/api/settings\z}, :settings_post], ["GET", %r{\A/api/doctor\z}, :doctor],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
         ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
       ].freeze
@@ -115,6 +116,7 @@ module Harness
         when :provider_post then provider_post(args[0], body(req))
         when :settings then Response.json(settings)
         when :settings_post then settings_post(body(req))
+        when :doctor then Response.json(doctor(req.query["project"]))
         when :projects then Response.json(projects!.list.map { |p| project_json(p) })
         when :project_post then project_post(args[0], body(req))
         end
@@ -262,6 +264,15 @@ module Harness
           "first" => cfg.fetch("roles", {}).fetch("implementer", "default"), "second" => Modes.second(cfg),
           "secondRoles" => Modes::SECOND_ROLES,
           "profiles" => cfg.fetch("profiles", {}).map { |name, p| { "profile" => name, "model" => p["model"], "baseUrl" => p["baseUrl"] } } }
+      end
+
+      # Check setup: harness doctor for the config, and for a project when one is named.
+      # @param name [String, nil] a project from the picker
+      # @return [Hash]
+      def doctor(name)
+        repo = name.to_s.empty? || @projects.nil? ? nil : projects!.find(name.to_s).path
+        checks = Doctor.new(config_path: @config_path, env: @env, repo: repo, http: @http).checks
+        { "ready" => Doctor.ready?(checks), "project" => repo && name, "checks" => checks.map(&:to_json_hash) }
       end
 
       # {"mode": "quick"} and/or {"second": "profile"} ({"second": null} for the implementer's own model).
