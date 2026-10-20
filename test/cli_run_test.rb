@@ -99,6 +99,41 @@ class CliRunTest < Minitest::Test
     assert_includes implement["messages"].last["content"], "The factor is exactly 2."
   end
 
+  # The dryRun key was parsed and then ignored. A dry run now runs intake, the baseline gates and the plan checks,
+  # calls no model, and leaves no worktree.
+  def test_a_dry_run_checks_everything_but_calls_no_model
+    code, out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--dry-run", "--json")
+    assert_equal 0, code, err
+    found = JSON.parse(out)
+    assert_equal ["dry_run", 0], found.values_at("status", "exitCode")
+    assert_equal "astro", found.dig("dryRun", "stack")
+    assert_equal [%w[typecheck passed]], found.dig("dryRun", "gates").map { |g| g.values_at("gate", "status") }
+    assert_equal "run the plan's 1 task(s)", found.dig("dryRun", "next")
+    assert_empty @server.requests, "no model server request at all, not even the probe"
+    run = JSON.parse(File.read(File.join(@home, "runs", found["run"], "run.json")))
+    refute File.exist?(run["worktree"]), "the worktree is removed"
+
+    code, out, = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--dry-run")
+    assert_equal 0, code
+    assert_match(/: dry_run\n  stack: astro, base \h{12} \(no model was called\)\n  gate typecheck  passed\n  next, a real run would run the plan's 1 task\(s\)\n/, out)
+    code, _out, err = cli("resume", found["run"], "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/was a dry run and has no worktree/, err)
+
+    bad = File.join(@home, "bad-plan.json")
+    File.write(bad, JSON.generate({ "tasks" => [F.task("T1", "Edit a missing file", modify: ["src/nope.ts"])] }))
+    code, out, = cli("run", "--repo", @repo, "--from-plan", bad, "--config", @config_path, "--dry-run", "--json")
+    assert_equal [1, "plan.missing_path"], [code, JSON.parse(out)["issues"].first["reason"]], "plan problems show without a model"
+
+    request = File.join(@home, "request.md")
+    File.write(request, "Double the price.")
+    File.write(@config_path, JSON.generate(JSON.parse(File.read(@config_path)).merge("dryRun" => true)))
+    code, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    assert_equal [0, "dry_run", "plan the request with the model"], [code, JSON.parse(out)["status"], JSON.parse(out).dig("dryRun", "next")],
+                 "\"dryRun\": true in the config makes run a dry run"
+    assert_empty @server.requests
+  end
+
   def test_review_can_be_set_on_the_command_line
     code, out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--review", "off", "--json")
     assert_equal 0, code, err
@@ -142,6 +177,48 @@ class CliRunTest < Minitest::Test
 
     code, out, = cli("resume", waiting["run"], "--config", @config_path, "--json")
     assert_equal [0, "done"], [code, JSON.parse(out)["tasks"].first["status"]], "resuming a finished run changes nothing"
+  end
+
+  # A field run crashed after its prompts were edited mid-run. Each run now records what produced it, and answer
+  # and resume stop when the harness version or the prompts changed, unless the change is accepted.
+  def test_answer_and_resume_stop_when_what_produced_the_run_changed
+    request = File.join(@home, "request.md")
+    File.write(request, "Make prices double.")
+    _, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    run_id = JSON.parse(out)["run"]
+    run_json = File.join(@home, "runs", run_id, "run.json")
+    identity = JSON.parse(File.read(run_json))["identity"]
+    assert_equal [Harness::VERSION, Harness::State::Identity.prompts_digest], identity.values_at("harnessVersion", "prompts")
+    assert_match(/\A\h{16}\z/, identity["config"])
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["prompts"] = "0000000000000000" }))
+    answers = File.join(@home, "answers.json")
+    File.write(answers, JSON.generate(["USD"]))
+    code, _out, err = cli("answer", run_id, "--answers", answers, "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/the prompt files \(0000000000000000 then, \h{16} now\) changed since this run started/, err)
+    assert_match(/pass --accept-changes to continue anyway/, err)
+    assert_equal "waiting", JSON.parse(File.read(run_json))["status"], "nothing changed"
+
+    code, _out, err = cli("answer", run_id, "--answers", answers, "--config", @config_path, "--accept-changes")
+    assert_equal 0, code, err
+    events = Harness::State::Events.read(File.join(@home, "runs", run_id, "events.jsonl"))
+    assert(events.any? { |e| e["subject"] == "identity" && e["detail"].match?(/\Athe prompt files \(.+\) changed; continuing \(--accept-changes\)\z/) })
+    assert_equal Harness::State::Identity.prompts_digest, JSON.parse(File.read(run_json)).dig("identity", "prompts"), "the identity is updated"
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["harnessVersion"] = "0.0.1" }))
+    code, _out, err = cli("resume", run_id, "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/the harness version \(0\.0\.1 then, #{Regexp.escape(Harness::VERSION)} now\) changed/, err)
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["harnessVersion"] = Harness::VERSION }))
+    cfg = JSON.parse(File.read(@config_path))
+    cfg["profiles"]["default"]["timeoutSec"] = 1200
+    File.write(@config_path, JSON.generate(cfg))
+    code, _out, err = cli("resume", run_id, "--config", @config_path, "--review", "off")
+    assert_equal 0, code, "a changed config only warns: #{err}"
+    events = Harness::State::Events.read(File.join(@home, "runs", run_id, "events.jsonl"))
+    assert(events.any? { |e| e["subject"] == "identity" && e["detail"].start_with?("the config changed") })
   end
 
   def test_answers_can_be_typed_on_stdin

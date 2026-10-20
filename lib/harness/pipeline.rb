@@ -8,6 +8,7 @@ require_relative "plan/checks"
 require_relative "plan/plan"
 require_relative "plan/planner"
 require_relative "run"
+require_relative "state/identity"
 require_relative "state/lock"
 require_relative "state/run_store"
 require_relative "task/edits"
@@ -18,14 +19,18 @@ module Harness
   # execution, and picking a stopped run up again. One process per run at a time (harness.lock).
   #
   # Run statuses in run.json: planning, waiting (on answers), planned (--plan-only), plan_rejected, running,
-  # done, failed, stopped.
+  # done, failed, stopped, dry_run.
   class Pipeline
     EXIT_WAITING = 3
 
+    # @return [Config]
+    attr_reader :config
+
     # status: the run status; questions: blocking questions when waiting; issues: plan problems when rejected.
-    # error: why planning failed, when it did (status "failed", no plan).
-    Result = Data.define(:run_id, :status, :exit_code, :outcome, :questions, :issues, :plan_path, :error) do
-      def initialize(run_id:, status:, exit_code:, outcome:, questions:, issues:, plan_path:, error: nil) = super
+    # error: why planning failed, when it did (status "failed", no plan). dry_run: what a dry run found (see
+    # #dry_run_result), nil otherwise.
+    Result = Data.define(:run_id, :status, :exit_code, :outcome, :questions, :issues, :plan_path, :error, :dry_run) do
+      def initialize(run_id:, status:, exit_code:, outcome:, questions:, issues:, plan_path:, error: nil, dry_run: nil) = super
     end
 
     # @param config [Config]
@@ -47,15 +52,19 @@ module Harness
     # @param plan_only [Boolean] stop after planning
     # @param run_id [String, nil] a new run id chosen by the caller (the app shows it before intake ends)
     # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
+    # @param dry_run [Boolean] stop after intake, the baseline and the checks of a given plan: no model call
     # @return [Result]
     # @raise [GitError, ConfigError, ParseError, ModelOutputError, ModelUnavailableError]
-    def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil)
+    def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil, dry_run: false)
       raise ArgumentError, "give a request, a plan, or both" if request.nil? && plan_hash.nil?
 
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
+        store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review })
+        next dry_run_result(store, setup, request, plan_hash) if dry_run
+
         red = Array(store.read_run["baselineFailing"])
         next red_baseline_stop(store, red) if @config.require_green_baseline && !red.empty?
 
@@ -76,9 +85,11 @@ module Harness
     # @param run_id [String]
     # @param answers [Array<String>] one per blocking question, in order
     # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
+    # @param accept_changes [Boolean] continue although the harness version or prompts changed (State::Identity)
     # @return [Result]
-    # @raise [ConfigError] when the run is not waiting, or the number of answers is wrong
-    def answer(run_id, answers, stop: nil)
+    # @raise [ConfigError] when the run is not waiting, the number of answers is wrong, or what produced the run
+    #   changed
+    def answer(run_id, answers, stop: nil, accept_changes: false)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
@@ -89,9 +100,11 @@ module Harness
           raise ConfigError, "run #{run_id} has #{questions.size} blocking questions; got #{answers.size} answers"
         end
 
+        warnings = State::Identity.check!(run["identity"], State::Identity.current(@config), accept: accept_changes)
         pairs = Array(run["answers"]) + questions.zip(answers)
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
+        identity_changed(store, setup, warnings)
         client = Run.observe(@client_factory.call(store), setup.events)
         plan_and_run(store, setup, client, request_of(store), pairs, stop: stop)
       end
@@ -107,16 +120,20 @@ module Harness
     # Continue a stopped or crashed run where it left off.
     # @param run_id [String]
     # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
+    # @param accept_changes [Boolean] continue although the harness version or prompts changed (State::Identity)
     # @return [Result]
-    # @raise [ConfigError] when the run is unknown, waiting for answers, or locked by another process
-    def resume(run_id, stop: nil)
+    # @raise [ConfigError] when the run is unknown, a dry run, locked by another process, or what produced it changed
+    def resume(run_id, stop: nil, accept_changes: false)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
         status = run["status"]
         return waiting_result(store, run) if status == "waiting"
+        raise ConfigError, "run #{run_id} was a dry run and has no worktree; start a new run without --dry-run" if status == "dry_run"
 
+        warnings = State::Identity.check!(run["identity"], State::Identity.current(@config), accept: accept_changes)
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
+        identity_changed(store, setup, warnings)
         client = Run.observe(@client_factory.call(store), setup.events)
         if status == "planning" || !File.file?(store.plan_path)
           next plan_and_run(store, setup, client, request_of(store), Array(run["answers"]), stop: stop)
@@ -133,6 +150,14 @@ module Harness
     end
 
     private
+
+    # Record each accepted change as an event (the report lists them) and take the current identity, so the next
+    # resume compares against what ran last (a run from before identities were recorded gets one here).
+    # @return [void]
+    def identity_changed(store, setup, warnings)
+      warnings.each { |w| setup.events.emit(stage: "intake", kind: "accepted", subject: "identity", detail: w[0, 300]) }
+      store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review })
+    end
 
     # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red.
     # @return [Result]
@@ -163,12 +188,47 @@ module Harness
                          unavailable: Plan::Checks.unavailable(setup.baseline))
     end
 
+    # A dry run: intake and the baseline have run; a given plan is checked too, except against the context budget,
+    # which needs the model. Nothing is planned or implemented, and the worktree is removed again (the branch stays,
+    # like every run's). Exit 0 when nothing found would stop a real run, 1 for plan problems, 2 for a red baseline
+    # with requireGreenBaseline.
+    # @return [Result]
+    def dry_run_result(store, setup, request, plan_hash)
+      plan = plan_hash && Plan::PlanParser.parse(plan_hash)
+      issues = plan ? check_given(setup, nil, plan, budget: nil).issues : []
+      store.write_request(request) if request
+      red = Array(store.read_run["baselineFailing"])
+      found = {
+        "stack" => setup.stack.name, "baseSha" => setup.worktree.base_sha, "branch" => setup.worktree.branch,
+        "gates" => setup.baseline.values.map do |r|
+          { "gate" => r.gate, "status" => r.status, "problems" => r.diagnostics.size, "reason" => r.reason }
+        end,
+        "baselineFailing" => red, "requireGreenBaseline" => @config.require_green_baseline,
+        "next" => if plan then "run the plan's #{plan.tasks.size} task(s)"
+                  elsif request then "plan the request with the model"
+                  end
+      }
+      code = if !issues.empty? then 1
+             elsif @config.require_green_baseline && !red.empty? then 2
+             else 0
+             end
+      setup.worktree.remove(force: true)
+      setup.events.emit(stage: "intake", kind: "accepted", subject: "dry run", detail: "stopped after intake and the checks: no model was called")
+      store.update_run({ "status" => "dry_run", "exitCode" => code, "dryRun" => found })
+      Result.new(run_id: store.run_id, status: "dry_run", exit_code: code, outcome: nil, questions: [], issues: issues,
+                 plan_path: nil, dry_run: found)
+    end
+
     # A plan from a file (or edited after --plan-only) is checked like a planner's, without replanning.
+    # @param budget [Integer, nil, false] the implementer's context budget; false (the default) asks the model's
+    #   profile for it, nil skips that check (a dry run calls no model)
     # @return [Plan::Planner::Result]
-    def check_given(setup, client, plan)
-      impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: [], rewrite_bytes: @config.limits.whole_file_rewrite_max_bytes))
-      budget = Task::Gather.budget(client: client, config: @config, role: :implementer, system: impl_system,
-                                   schema: Task::EditSet::SCHEMA)
+    def check_given(setup, client, plan, budget: false)
+      if budget == false
+        impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: [], rewrite_bytes: @config.limits.whole_file_rewrite_max_bytes))
+        budget = Task::Gather.budget(client: client, config: @config, role: :implementer, system: impl_system,
+                                     schema: Task::EditSet::SCHEMA)
+      end
       issues = Plan::Checks.run(plan, root: setup.worktree.root, max_files: @config.limits.max_files_per_task,
                                       protected: setup.stack.protected_paths, gates: setup.stack.gates.keys, budget: budget,
                                       unavailable: Plan::Checks.unavailable(setup.baseline),

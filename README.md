@@ -169,10 +169,12 @@ Useful options:
 | `--config FILE` | every command | Use another config; runs and caches live next to it. |
 | `--json` | every command | Machine-readable output. |
 | `--plan-only` | `run` | Stop after planning; edit `runs/<id>/plan.json`, then `resume`. |
+| `--dry-run` | `run` | Run intake, the baseline gates and, with `--from-plan`, the plan checks, then stop. No model is called and the worktree is removed. `"dryRun": true` in the config does the same for every `run`. |
 | `--require-green-baseline` | `run` | Stop after intake when a blocking gate already fails (see `requireGreenBaseline`). |
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote (format below). With `--request` too, the request is kept as context for the implementer and reviewers. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
+| `--accept-changes` | `answer`, `resume` | Continue a run although the harness version or its prompts changed since it started (see Troubleshooting). |
 | `--port N`, `--[no-]open` | `ui` | The app's port, and whether to open the browser. |
 
 A plan for `--from-plan` is the JSON the planner writes (`runs/<id>/plan.json`), and it is checked the same way:
@@ -238,10 +240,14 @@ Everything about a run is in `runs/<runId>/`:
 | --- | --- |
 | `report.md` | The summary to read first. |
 | `events.jsonl` | Every stage and every rejected output, with a reason code. `status` and the app are built from it. |
-| `plan.json`, `run.json` | The plan as run, and the run's state. |
+| `plan.json`, `run.json` | The plan as run, and the run's state, including the harness version, prompts and config it started with. |
 | `tasks/<id>/` | Per task: `state.json`, gate results per round, `review.json`, and `blocked.patch` if it was blocked. |
 | `records/` | One file per model request: role, profile, model id, tokens, time, outcome, and for a failed request the HTTP status and the server's error text (redacted). Never a key. |
 | `final_review.json` | The review of the whole run. |
+
+**Read this first**, at the top of the report when it applies, says what the numbers below do not show: a gate
+that could not run, review that was off or light, a run that failed or stopped early, a dry run, and anything that
+changed while the run was paused. Each line says what to do about it.
 
 **Rejections** are the heart of the report: every output the harness threw away is counted by reason, such as
 "edit search text not found", "typecheck failed", "depends on code not shown" or "needs a value its type forbids".
@@ -393,6 +399,12 @@ model those roles use. A config the app creates starts Balanced, like one from `
 top of the report); tasks are still judged only on new problems. Set `requireGreenBaseline` to `true` to stop the
 run there instead, before any model call (exit code 2).
 
+**A dry run** (`harness run --dry-run`, or `"dryRun": true` for every `run` on the command line) shows what a run
+would start from without calling a model: the stack, each gate's baseline result, the plan's problems when a plan
+is given (all but the context-size check, which needs the model), and what would happen next. It exits 0 when
+nothing found would stop a real run, 1 for plan problems, 2 for a failing baseline under `requireGreenBaseline`.
+The app's Build is never a dry run.
+
 `gateEnvAllow` lists extra environment variables your gates need; everything that looks like a secret is removed
 from the gates' environment otherwise.
 
@@ -462,6 +474,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | Many "edit search text not found" | The model is not copying code exactly. A larger or less quantized model usually helps. |
 | The planner keeps asking | Answer with `harness answer RUN_ID` (or in the app); the run continues. |
 | A run stopped (crash, Ctrl+C, power) | `harness resume RUN_ID` continues from the last saved step. |
+| "… changed since this run started" | The harness was updated, or its prompt files edited, after the run began; `run.json` records both. Start a new run, or pass `--accept-changes` to `answer` or `resume` to continue anyway. A changed `config.json` only adds a note to the run's events. |
 | Windows: paths too long | Keep the harness folder short (for example `C:\harness`); worktrees live under it. |
 | The model server stays busy after a run | A request the harness gave up on (a timeout, a stop, a crash) is closed on the harness's side; a server that does not notice a closed connection keeps generating until it finishes. Wait, or restart the server. Raise `timeoutSec` if requests time out often. |
 

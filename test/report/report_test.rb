@@ -81,6 +81,35 @@ class ReportTest < Minitest::Test
     assert_match(/\| unit \| passed \| passed \(pass\) \|/, section("Gates against the baseline"))
   end
 
+  # What a reader must know before trusting the numbers comes first: checks that did not run, review cut back,
+  # a run that ended early, and what changed mid-run. A run with none of these has no such section.
+  def test_read_this_first_says_what_the_numbers_do_not_show
+    @store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: "r20261020-120000-abcd")
+    @store.write_run({ "status" => "stopped", "review" => "off" })
+    Harness::State.write_json(@store.baseline_path, { "lint" => { "gate" => "lint", "status" => "skipped", "reason" => "tool not installed: eslint" },
+                                                      "typecheck" => { "gate" => "typecheck", "status" => "passed" } })
+    Harness::State::Events.new(path: @store.events_path, run_id: @store.run_id)
+                          .emit(stage: "intake", kind: "accepted", subject: "identity", detail: "the config changed since the run started; the rest of the run uses the new one")
+    Harness::Report::Render.write(@store)
+    first = section("Read this first")
+    assert_includes first, "- **Stopped early:** the tasks not done yet are listed below; `harness resume r20261020-120000-abcd` continues the run."
+    assert_includes first, "- **Gate not run:** `lint` could not run (tool not installed: eslint), so nothing in this run was checked by it."
+    refute_includes first, "typecheck"
+    assert_includes first, "- **No review:** review was off (`review: off`), so only the gates checked these changes."
+    assert_includes first, "- **Changed mid-run:** the config changed since the run started"
+    assert report.index("## Read this first") < report.index("## Tasks"), "before everything else"
+
+    @store.write_run({ "status" => "done", "review" => "full" })
+    File.write(@store.baseline_path, "{}")
+    File.write(@store.events_path, "")
+    Harness::Report::Render.write(@store)
+    refute_includes report, "## Read this first", "nothing to say, no section"
+    @store.write_run({ "status" => "failed", "error" => "planning failed: no JSON\n## injected", "review" => "light" })
+    Harness::Report::Render.write(@store)
+    assert_includes section("Read this first"), "- **Run failed:** planning failed: no JSON ## injected"
+    assert_includes section("Read this first"), "- **Light review:**"
+  end
+
   def test_blocked_tasks_and_rejections
     broken = F.replace(PRICE, "  return n;", "  return n * 2; // BROKEN 4")
     run_plan([F.task("T1", "Double", modify: [PRICE])], { "T1 implement" => broken, "T1 fix" => F.replace(PRICE, "BROKEN 4", "BROKEN 4") })

@@ -73,6 +73,32 @@ class MirrorTest < Minitest::Test
     assert_includes e.message, "Run `yarn install` there", "a configured packageManager wins over the lockfile"
   end
 
+  # Fixing one intake problem should never just uncover the next: every problem that stops intake is reported in
+  # one message, and a single problem keeps its own error.
+  def test_intake_reports_every_problem_at_once
+    files = F::FILES.merge(".gitignore" => "node_modules/\n")
+    repo, env = TestSupport.repo(@tmp, files)
+    File.write(File.join(repo, "notes.txt"), "uncommitted")
+    raw = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } },
+            "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+            "stacks" => { "astro" => { "detect" => ["astro.config.mjs"], "dependencyDirs" => ["node_modules"] } } }
+    store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: "m4")
+    intake = ->(cfg) { Harness::Run.intake(config: Harness::Config.parse(cfg), repo: repo, store: store, parent_env: ENV.to_h.merge(env)) }
+    e = assert_raises(Harness::ConfigError) { intake.call(raw) }
+    assert_equal ["2 problems stop this run:", "  - the repository has uncommitted changes; commit or stash them first"],
+                 e.message.lines.map(&:chomp).first(2)
+    assert_match(/\A  - node_modules is missing in /, e.message.lines[2])
+    refute File.exist?(File.join(@tmp, "workspaces", "m4"))
+
+    no_stack = raw.merge("stacks" => { "astro" => { "detect" => ["nothing.here"] } })
+    e = assert_raises(Harness::ConfigError) { intake.call(no_stack) }
+    assert_match(/  - no configured stack matches this repository/, e.message, "a missing stack is listed with the rest")
+
+    FileUtils.mkdir_p(File.join(repo, "node_modules"))
+    e = assert_raises(Harness::GitError, "only a dirty tree left: its own error, as before") { intake.call(raw) }
+    assert_equal "the repository has uncommitted changes; commit or stash them first", e.message
+  end
+
   # I11: a mirrored file is a hard link into the user's checkout. Writing it in the worktree must never change the
   # original, and edits from a model may not target it at all.
   def test_writing_a_mirrored_file_leaves_the_users_original_unchanged
