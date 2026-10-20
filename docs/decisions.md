@@ -655,3 +655,10 @@ moved to `Harness::Modes`, which `init` and the app share. Settings now opens wi
 modes, and a picker for the profile the planner, reviewer and verifier use (the implementer's own, or any other
 configured one). **Plan & review** on a model writes it as the `planning` profile, so a second model can sit on
 the same server as the first. A config the app creates starts Balanced, as one from `init` does.
+
+## Intake reports every problem at once
+
+Intake stopped at the first problem it found: uncommitted changes, then, once those were committed, missing
+dependencies, then a repository no stack matches. Each cost a restart. It now checks all three in the user's
+checkout before the worktree exists and reports them together, one per line. A single problem keeps its own error
+and message, so a dirty tree alone is still a git error with the same text.

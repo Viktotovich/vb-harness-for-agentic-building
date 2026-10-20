@@ -13,6 +13,7 @@ module Harness
     # every write and every commit happens here.
     class Worktree
       RUN_ID = /\A[A-Za-z0-9][A-Za-z0-9_-]{0,63}\z/
+      DIRTY = "the repository has uncommitted changes; commit or stash them first"
 
       # @return [String] the user's repository (top level)
       attr_reader :repo
@@ -36,7 +37,7 @@ module Harness
 
         top = top_level(repo, git)
         dirty = git.run(%w[status --porcelain --untracked-files=all], chdir: top)
-        raise GitError, "the repository has uncommitted changes; commit or stash them first" unless dirty.strip.empty?
+        raise GitError, DIRTY unless dirty.strip.empty?
 
         base = git.run(%w[rev-parse HEAD], chdir: top).strip
         dir = File.join(File.expand_path(workspaces), run_id)
