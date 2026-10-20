@@ -39,7 +39,8 @@ module Harness
         next unless %w[failed timeout].include?(r.status) && stack.gates[name]&.blocking != false
 
         events.emit(stage: "intake", kind: "rejected", subject: name, reason: "gate.#{r.status}:#{name}",
-                    detail: "fails before the run (#{r.diagnostics.size} problems): tasks are judged only on new problems, "                             "but fix the baseline first if you can")
+                    detail: "fails before the run (#{r.diagnostics.size} problems): tasks are judged only on new problems, " \
+                            "but fix the baseline first if you can")
         name
       end
     end

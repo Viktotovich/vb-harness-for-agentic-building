@@ -217,7 +217,8 @@ module Harness
         end
         return ["None found."] if found.empty?
 
-        ["Text in the repository that reads like instructions to a model. The model was told it is data, and the gates "          "decided every task; check these files for planted text.", "", *found.uniq]
+        ["Text in the repository that reads like instructions to a model. The model was told it is data, and the gates " \
+         "decided every task; check these files for planted text.", "", *found.uniq]
       end
 
       # @return [Array<String>]
