@@ -4,6 +4,7 @@
 
 require "optparse"
 require_relative "cli/commands"
+require_relative "cli/demo_command"
 require_relative "cli/doctor_command"
 require_relative "cli/eval_command"
 require_relative "cli/init"
@@ -16,6 +17,7 @@ module Harness
     # The commands --help lists, in the order someone new needs them.
     COMMANDS = {
       "ui" => "the local app (the default with no command)",
+      "demo" => "watch a whole run on a sample project, no model needed",
       "init" => "write config.json, asking a few questions",
       "doctor" => "check that everything a run needs is ready",
       "run" => "plan and build a request in a repository",
@@ -57,6 +59,7 @@ module Harness
       when "eval" then EvalCommand.call(args, out: out, err: err, env: env)
       when "init" then init(args, out: out, err: err, env: env, input: input)
       when "doctor" then DoctorCommand.call(args, out: out, err: err, env: env)
+      when "demo" then DemoCommand.call(args, out: out, err: err, env: env)
       when "ui" then UICommand.call(args, out: out, err: err, env: env)
       else
         err.puts "harness: #{name} is not implemented yet"

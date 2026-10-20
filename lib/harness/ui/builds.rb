@@ -24,10 +24,12 @@ module Harness
       # @param runs_dir [String]
       # @param pipeline [#call] -> Pipeline (built when a run starts, so config changes apply)
       # @param sleeper [#call]
-      def initialize(runs_dir:, pipeline:, sleeper: ->(s) { sleep(s) })
+      # @param finished [#call, nil] (run id) -> void, called in the build's thread once its pipeline step returns
+      def initialize(runs_dir:, pipeline:, sleeper: ->(s) { sleep(s) }, finished: nil)
         @runs_dir = runs_dir
         @pipeline = pipeline
         @sleeper = sleeper
+        @finished = finished
         @jobs = {}
         @mutex = Mutex.new
       end
@@ -178,6 +180,7 @@ module Harness
           stop = -> { @mutex.synchronize { job[:stop] } }
           job[:thread] = Thread.new do
             yield stop
+            @finished&.call(id)
           rescue StandardError => e
             job[:error] = e.message[0, 500]
             crashed(id, job[:error])

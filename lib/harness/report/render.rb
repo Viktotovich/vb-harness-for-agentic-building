@@ -127,6 +127,7 @@ module Harness
         r = data.run
         out = []
         out << "- **Dry run:** no model was called, so nothing was planned or changed." if r["status"] == "dry_run"
+        out << "- **Demo:** a scripted model answered, not a real one. Connect a model to build for real." if r["demo"]
         out << "- **Run failed:** #{line(r['error'])}" if r["status"] == "failed" && r["error"]
         out << "- **Stopped early:** the tasks not done yet are listed below; #{code("harness resume #{data.run_id}")} continues the run." if r["status"] == "stopped"
         data.baseline.each do |gate, g|
