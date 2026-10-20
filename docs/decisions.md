@@ -682,3 +682,12 @@ both values named, unless `--accept-changes` is given; the rest of the run would
 or instructions than its first part. A changed config only adds an event, because raising `timeoutSec` and
 resuming is the documented fix for timeouts. After a check the identity is updated, so the next resume compares
 against what ran last; runs from before this change get one on their first resume.
+
+## The report says first what its numbers do not show
+
+A report with every task done reads as a clean run even when the lint gate never ran for a missing tool, review
+was off, or the config changed while the run was paused. Those facts were in `baseline.json`, the config and the
+events, but not in the report. A **Read this first** section now opens the report when any applies: a gate that
+could not run, review `off` or `light`, a failed or stopped run (with the resume command), a dry run, and each
+identity change accepted on resume. Each line says what to do. The review mode is recorded in `run.json` at the
+start and on each resume, since the report is built from the run's files only.

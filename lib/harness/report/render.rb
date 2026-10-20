@@ -31,9 +31,11 @@ module Harness
       # @return [String]
       def self.markdown(store)
         data = Sources.load(store)
+        notes = warnings(data)
         [
           "# Run #{data.run_id}", "",
           *summary(data), "",
+          *(notes.empty? ? [] : ["## Read this first", "", *notes, ""]),
           "## Tasks", "", *tasks(data), "",
           "## Gates against the baseline", "", *gates(data), "",
           "## Findings", "", *findings(data), "",
@@ -115,6 +117,34 @@ module Harness
           "(#{(t['rejectionRate'] * 100).round}% rejected)",
           "- Wall time: #{duration(t['elapsedMs'])}"
         ]
+      end
+
+      # What a reader must know before trusting the rest: checks that did not run, review that was cut back, a run
+      # that ended early, and changes to what produced the run. Each line says what to do. Empty when there is none.
+      # @param data [Sources]
+      # @return [Array<String>]
+      def self.warnings(data)
+        r = data.run
+        out = []
+        out << "- **Dry run:** no model was called, so nothing was planned or changed." if r["status"] == "dry_run"
+        out << "- **Run failed:** #{line(r['error'])}" if r["status"] == "failed" && r["error"]
+        out << "- **Stopped early:** the tasks not done yet are listed below; #{code("harness resume #{data.run_id}")} continues the run." if r["status"] == "stopped"
+        data.baseline.each do |gate, g|
+          next unless g.is_a?(Hash) && g["status"] == "skipped"
+
+          out << "- **Gate not run:** #{code(gate)} could not run (#{line(g['reason'], 160)}), so nothing in this run was " \
+                 "checked by it. Install the project's dependencies or fix the gate's command, then run again."
+        end
+        case r["review"]
+        when "off" then out << "- **No review:** review was off (#{code('review: off')}), so only the gates checked these changes."
+        when "light"
+          out << "- **Light review:** small tasks that passed their gates first time were not reviewed on their own " \
+                 "(#{code('review: light')}); the whole run was."
+        end
+        data.events.each do |e|
+          out << "- **Changed mid-run:** #{line(e['detail'], 200)}" if e["subject"] == "identity"
+        end
+        out
       end
 
       # @return [Array<String>]

@@ -240,10 +240,14 @@ Everything about a run is in `runs/<runId>/`:
 | --- | --- |
 | `report.md` | The summary to read first. |
 | `events.jsonl` | Every stage and every rejected output, with a reason code. `status` and the app are built from it. |
-| `plan.json`, `run.json` | The plan as run, and the run's state. |
+| `plan.json`, `run.json` | The plan as run, and the run's state, including the harness version, prompts and config it started with. |
 | `tasks/<id>/` | Per task: `state.json`, gate results per round, `review.json`, and `blocked.patch` if it was blocked. |
 | `records/` | One file per model request: role, profile, model id, tokens, time, outcome, and for a failed request the HTTP status and the server's error text (redacted). Never a key. |
 | `final_review.json` | The review of the whole run. |
+
+**Read this first**, at the top of the report when it applies, says what the numbers below do not show: a gate
+that could not run, review that was off or light, a run that failed or stopped early, a dry run, and anything that
+changed while the run was paused. Each line says what to do about it.
 
 **Rejections** are the heart of the report: every output the harness threw away is counted by reason, such as
 "edit search text not found", "typecheck failed", "depends on code not shown" or "needs a value its type forbids".
