@@ -671,3 +671,14 @@ stops before any model call: no probe, no planner. The context-size check is ski
 model's limits. The worktree is removed afterwards (the branch stays, like every run's, since the git allowlist
 has no branch deletion), the run ends `dry_run`, and `resume` refuses it. The app's Build ignores the key, so a
 config shared with the app cannot silently turn every build into a dry run.
+
+## Runs record what produced them
+
+A field run crashed after its prompt files were edited mid-run, and `resume` had no way to notice. Intake now
+writes an `identity` to `run.json`: the harness version, a digest of every prompt file, and a digest of the
+effective config without the command-line overrides (`--review`, `--require-green-baseline`). `answer` and
+`resume` compare it with the current one. A different harness version or different prompts stop the run with
+both values named, unless `--accept-changes` is given; the rest of the run would otherwise run on different code
+or instructions than its first part. A changed config only adds an event, because raising `timeoutSec` and
+resuming is the documented fix for timeouts. After a check the identity is updated, so the next resume compares
+against what ran last; runs from before this change get one on their first resume.

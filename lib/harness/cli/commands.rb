@@ -19,8 +19,8 @@ module Harness
     module Commands
       USAGE = {
         "run" => "Usage: harness run --repo PATH [--request FILE] [--from-plan FILE] [--plan-only] [--dry-run] [--require-green-baseline] [--config FILE] [--review full|light|off] [--json]",
-        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--config FILE] [--review full|light|off] [--json]",
-        "resume" => "Usage: harness resume RUN_ID [--config FILE] [--review full|light|off] [--json]"
+        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--accept-changes] [--config FILE] [--review full|light|off] [--json]",
+        "resume" => "Usage: harness resume RUN_ID [--accept-changes] [--config FILE] [--review full|light|off] [--json]"
       }.freeze
 
       # @param name [String] run, answer or resume
@@ -35,8 +35,10 @@ module Harness
         pipeline = pipeline(opts[:config], env, err, review: opts[:review], green: opts[:green])
         result = case name
                  when "run" then start(pipeline, opts, dry_run: opts[:dry_run] || pipeline.config.dry_run)
-                 when "answer" then pipeline.answer(opts[:run_id], answers(opts, pipeline.questions(opts[:run_id]), err, input))
-                 else pipeline.resume(opts[:run_id])
+                 when "answer"
+                   pipeline.answer(opts[:run_id], answers(opts, pipeline.questions(opts[:run_id]), err, input),
+                                   accept_changes: opts[:accept])
+                 else pipeline.resume(opts[:run_id], accept_changes: opts[:accept])
                  end
         report(result, out, opts[:json])
       rescue ParseError, ConfigError, GitError, ModelUnavailableError, ModelOutputError, ContextOverflowError => e
@@ -47,7 +49,7 @@ module Harness
       # @return [Hash]
       # @raise [OptionParser::ParseError]
       def self.parse(name, args)
-        opts = { config: "config.json", json: false, plan_only: false }
+        opts = { config: "config.json", json: false, plan_only: false, accept: false }
         parser = OptionParser.new do |o|
           o.banner = USAGE.fetch(name)
           o.on("--config FILE", "Config file (default config.json)") { |v| opts[:config] = v }
@@ -62,6 +64,9 @@ module Harness
             o.on("--require-green-baseline", "Stop when a blocking gate already fails before the run") { opts[:green] = true }
           end
           o.on("--answers FILE", "JSON array of answers, one per question") { |v| opts[:answers] = v } if name == "answer"
+          if name != "run"
+            o.on("--accept-changes", "Continue although the harness version or its prompts changed since the run started") { opts[:accept] = true }
+          end
         end
         rest = parser.parse(args)
         if name == "run"

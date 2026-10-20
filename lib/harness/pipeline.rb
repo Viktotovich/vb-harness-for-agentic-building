@@ -8,6 +8,7 @@ require_relative "plan/checks"
 require_relative "plan/plan"
 require_relative "plan/planner"
 require_relative "run"
+require_relative "state/identity"
 require_relative "state/lock"
 require_relative "state/run_store"
 require_relative "task/edits"
@@ -61,6 +62,7 @@ module Harness
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
+        store.update_run({ "identity" => State::Identity.current(@config) })
         next dry_run_result(store, setup, request, plan_hash) if dry_run
 
         red = Array(store.read_run["baselineFailing"])
@@ -83,9 +85,11 @@ module Harness
     # @param run_id [String]
     # @param answers [Array<String>] one per blocking question, in order
     # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
+    # @param accept_changes [Boolean] continue although the harness version or prompts changed (State::Identity)
     # @return [Result]
-    # @raise [ConfigError] when the run is not waiting, or the number of answers is wrong
-    def answer(run_id, answers, stop: nil)
+    # @raise [ConfigError] when the run is not waiting, the number of answers is wrong, or what produced the run
+    #   changed
+    def answer(run_id, answers, stop: nil, accept_changes: false)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
@@ -96,9 +100,11 @@ module Harness
           raise ConfigError, "run #{run_id} has #{questions.size} blocking questions; got #{answers.size} answers"
         end
 
+        warnings = State::Identity.check!(run["identity"], State::Identity.current(@config), accept: accept_changes)
         pairs = Array(run["answers"]) + questions.zip(answers)
         store.update_run({ "answers" => pairs, "questions" => [], "status" => "planning" })
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
+        identity_changed(store, setup, warnings)
         client = Run.observe(@client_factory.call(store), setup.events)
         plan_and_run(store, setup, client, request_of(store), pairs, stop: stop)
       end
@@ -114,9 +120,10 @@ module Harness
     # Continue a stopped or crashed run where it left off.
     # @param run_id [String]
     # @param stop [#call, nil] -> Boolean; true ends the run "stopped" at the next safe point (see Run#execute)
+    # @param accept_changes [Boolean] continue although the harness version or prompts changed (State::Identity)
     # @return [Result]
-    # @raise [ConfigError] when the run is unknown, waiting for answers, or locked by another process
-    def resume(run_id, stop: nil)
+    # @raise [ConfigError] when the run is unknown, a dry run, locked by another process, or what produced it changed
+    def resume(run_id, stop: nil, accept_changes: false)
       store = store_for(run_id)
       locked(store) do
         run = store.read_run
@@ -124,7 +131,9 @@ module Harness
         return waiting_result(store, run) if status == "waiting"
         raise ConfigError, "run #{run_id} was a dry run and has no worktree; start a new run without --dry-run" if status == "dry_run"
 
+        warnings = State::Identity.check!(run["identity"], State::Identity.current(@config), accept: accept_changes)
         setup = Run.reattach(config: @config, store: store, parent_env: @env, cache_dir: @cache_dir)
+        identity_changed(store, setup, warnings)
         client = Run.observe(@client_factory.call(store), setup.events)
         if status == "planning" || !File.file?(store.plan_path)
           next plan_and_run(store, setup, client, request_of(store), Array(run["answers"]), stop: stop)
@@ -141,6 +150,14 @@ module Harness
     end
 
     private
+
+    # Record each accepted change as an event (the report lists them) and take the current identity, so the next
+    # resume compares against what ran last (a run from before identities were recorded gets one here).
+    # @return [void]
+    def identity_changed(store, setup, warnings)
+      warnings.each { |w| setup.events.emit(stage: "intake", kind: "accepted", subject: "identity", detail: w[0, 300]) }
+      store.update_run({ "identity" => State::Identity.current(@config) })
+    end
 
     # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red.
     # @return [Result]

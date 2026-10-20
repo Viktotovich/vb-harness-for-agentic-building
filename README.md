@@ -174,6 +174,7 @@ Useful options:
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote (format below). With `--request` too, the request is kept as context for the implementer and reviewers. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
+| `--accept-changes` | `answer`, `resume` | Continue a run although the harness version or its prompts changed since it started (see Troubleshooting). |
 | `--port N`, `--[no-]open` | `ui` | The app's port, and whether to open the browser. |
 
 A plan for `--from-plan` is the JSON the planner writes (`runs/<id>/plan.json`), and it is checked the same way:
@@ -469,6 +470,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | Many "edit search text not found" | The model is not copying code exactly. A larger or less quantized model usually helps. |
 | The planner keeps asking | Answer with `harness answer RUN_ID` (or in the app); the run continues. |
 | A run stopped (crash, Ctrl+C, power) | `harness resume RUN_ID` continues from the last saved step. |
+| "… changed since this run started" | The harness was updated, or its prompt files edited, after the run began; `run.json` records both. Start a new run, or pass `--accept-changes` to `answer` or `resume` to continue anyway. A changed `config.json` only adds a note to the run's events. |
 | Windows: paths too long | Keep the harness folder short (for example `C:\harness`); worktrees live under it. |
 | The model server stays busy after a run | A request the harness gave up on (a timeout, a stop, a crash) is closed on the harness's side; a server that does not notice a closed connection keeps generating until it finishes. Wait, or restart the server. Raise `timeoutSec` if requests time out often. |
 

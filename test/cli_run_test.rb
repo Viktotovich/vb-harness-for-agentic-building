@@ -179,6 +179,48 @@ class CliRunTest < Minitest::Test
     assert_equal [0, "done"], [code, JSON.parse(out)["tasks"].first["status"]], "resuming a finished run changes nothing"
   end
 
+  # A field run crashed after its prompts were edited mid-run. Each run now records what produced it, and answer
+  # and resume stop when the harness version or the prompts changed, unless the change is accepted.
+  def test_answer_and_resume_stop_when_what_produced_the_run_changed
+    request = File.join(@home, "request.md")
+    File.write(request, "Make prices double.")
+    _, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    run_id = JSON.parse(out)["run"]
+    run_json = File.join(@home, "runs", run_id, "run.json")
+    identity = JSON.parse(File.read(run_json))["identity"]
+    assert_equal [Harness::VERSION, Harness::State::Identity.prompts_digest], identity.values_at("harnessVersion", "prompts")
+    assert_match(/\A\h{16}\z/, identity["config"])
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["prompts"] = "0000000000000000" }))
+    answers = File.join(@home, "answers.json")
+    File.write(answers, JSON.generate(["USD"]))
+    code, _out, err = cli("answer", run_id, "--answers", answers, "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/the prompt files \(0000000000000000 then, \h{16} now\) changed since this run started/, err)
+    assert_match(/pass --accept-changes to continue anyway/, err)
+    assert_equal "waiting", JSON.parse(File.read(run_json))["status"], "nothing changed"
+
+    code, _out, err = cli("answer", run_id, "--answers", answers, "--config", @config_path, "--accept-changes")
+    assert_equal 0, code, err
+    events = Harness::State::Events.read(File.join(@home, "runs", run_id, "events.jsonl"))
+    assert(events.any? { |e| e["subject"] == "identity" && e["detail"].match?(/\Athe prompt files \(.+\) changed; continuing \(--accept-changes\)\z/) })
+    assert_equal Harness::State::Identity.prompts_digest, JSON.parse(File.read(run_json)).dig("identity", "prompts"), "the identity is updated"
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["harnessVersion"] = "0.0.1" }))
+    code, _out, err = cli("resume", run_id, "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/the harness version \(0\.0\.1 then, #{Regexp.escape(Harness::VERSION)} now\) changed/, err)
+
+    File.write(run_json, JSON.generate(JSON.parse(File.read(run_json)).tap { |r| r["identity"]["harnessVersion"] = Harness::VERSION }))
+    cfg = JSON.parse(File.read(@config_path))
+    cfg["profiles"]["default"]["timeoutSec"] = 1200
+    File.write(@config_path, JSON.generate(cfg))
+    code, _out, err = cli("resume", run_id, "--config", @config_path, "--review", "off")
+    assert_equal 0, code, "a changed config only warns: #{err}"
+    events = Harness::State::Events.read(File.join(@home, "runs", run_id, "events.jsonl"))
+    assert(events.any? { |e| e["subject"] == "identity" && e["detail"].start_with?("the config changed") })
+  end
+
   def test_answers_can_be_typed_on_stdin
     request = File.join(@home, "request.md")
     File.write(request, "Make prices double.")
