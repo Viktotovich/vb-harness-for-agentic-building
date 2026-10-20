@@ -60,15 +60,13 @@ module Harness
       Check.new(area: "ruby", ok: ok, detail: "Ruby #{RUBY_VERSION}", fix: ok ? nil : "install Ruby #{MIN_RUBY} or newer")
     end
 
+    # Found on PATH only: doctor starts no process (I4 keeps those to known places).
     # @return [Check]
     def git
       path = Exec.resolve("git", path: @env["PATH"] || @env["Path"], pathext: @env["PATHEXT"])
       return Check.new(area: "git", ok: false, detail: "git was not found on PATH", fix: "install git") unless path
 
-      r = Exec.run(["git", "--version"], chdir: Dir.pwd, env: @env, timeout: 15)
-      Check.new(area: "git", ok: r.success?, detail: r.stdout.strip.empty? ? "git found" : r.stdout.strip, fix: nil)
-    rescue CommandNotFoundError, UnsafeArgumentError, SystemCallError => e
-      Check.new(area: "git", ok: false, detail: "git could not run (#{e.message[0, 120]})", fix: "install git")
+      Check.new(area: "git", ok: true, detail: "git found (#{path})", fix: nil)
     end
 
     # @return [Config, nil]
