@@ -99,6 +99,41 @@ class CliRunTest < Minitest::Test
     assert_includes implement["messages"].last["content"], "The factor is exactly 2."
   end
 
+  # The dryRun key was parsed and then ignored. A dry run now runs intake, the baseline gates and the plan checks,
+  # calls no model, and leaves no worktree.
+  def test_a_dry_run_checks_everything_but_calls_no_model
+    code, out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--dry-run", "--json")
+    assert_equal 0, code, err
+    found = JSON.parse(out)
+    assert_equal ["dry_run", 0], found.values_at("status", "exitCode")
+    assert_equal "astro", found.dig("dryRun", "stack")
+    assert_equal [%w[typecheck passed]], found.dig("dryRun", "gates").map { |g| g.values_at("gate", "status") }
+    assert_equal "run the plan's 1 task(s)", found.dig("dryRun", "next")
+    assert_empty @server.requests, "no model server request at all, not even the probe"
+    run = JSON.parse(File.read(File.join(@home, "runs", found["run"], "run.json")))
+    refute File.exist?(run["worktree"]), "the worktree is removed"
+
+    code, out, = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--dry-run")
+    assert_equal 0, code
+    assert_match(/: dry_run\n  stack: astro, base \h{12} \(no model was called\)\n  gate typecheck  passed\n  next, a real run would run the plan's 1 task\(s\)\n/, out)
+    code, _out, err = cli("resume", found["run"], "--config", @config_path)
+    assert_equal 2, code
+    assert_match(/was a dry run and has no worktree/, err)
+
+    bad = File.join(@home, "bad-plan.json")
+    File.write(bad, JSON.generate({ "tasks" => [F.task("T1", "Edit a missing file", modify: ["src/nope.ts"])] }))
+    code, out, = cli("run", "--repo", @repo, "--from-plan", bad, "--config", @config_path, "--dry-run", "--json")
+    assert_equal [1, "plan.missing_path"], [code, JSON.parse(out)["issues"].first["reason"]], "plan problems show without a model"
+
+    request = File.join(@home, "request.md")
+    File.write(request, "Double the price.")
+    File.write(@config_path, JSON.generate(JSON.parse(File.read(@config_path)).merge("dryRun" => true)))
+    code, out, = cli("run", "--repo", @repo, "--request", request, "--config", @config_path, "--json")
+    assert_equal [0, "dry_run", "plan the request with the model"], [code, JSON.parse(out)["status"], JSON.parse(out).dig("dryRun", "next")],
+                 "\"dryRun\": true in the config makes run a dry run"
+    assert_empty @server.requests
+  end
+
   def test_review_can_be_set_on_the_command_line
     code, out, err = cli("run", "--repo", @repo, "--from-plan", @plan_path, "--config", @config_path, "--review", "off", "--json")
     assert_equal 0, code, err

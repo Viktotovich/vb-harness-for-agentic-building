@@ -662,3 +662,12 @@ Intake stopped at the first problem it found: uncommitted changes, then, once th
 dependencies, then a repository no stack matches. Each cost a restart. It now checks all three in the user's
 checkout before the worktree exists and reports them together, one per line. A single problem keeps its own error
 and message, so a dirty tree alone is still a git error with the same text.
+
+## dryRun does what it says
+
+`dryRun` was accepted and validated in the config but read nowhere, so setting it changed nothing. `harness run
+--dry-run` (or `"dryRun": true`) now runs intake, the baseline gates and, with a plan, the plan checks, then
+stops before any model call: no probe, no planner. The context-size check is skipped because it needs the
+model's limits. The worktree is removed afterwards (the branch stays, like every run's, since the git allowlist
+has no branch deletion), the run ends `dry_run`, and `resume` refuses it. The app's Build ignores the key, so a
+config shared with the app cannot silently turn every build into a dry run.

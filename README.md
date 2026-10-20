@@ -169,6 +169,7 @@ Useful options:
 | `--config FILE` | every command | Use another config; runs and caches live next to it. |
 | `--json` | every command | Machine-readable output. |
 | `--plan-only` | `run` | Stop after planning; edit `runs/<id>/plan.json`, then `resume`. |
+| `--dry-run` | `run` | Run intake, the baseline gates and, with `--from-plan`, the plan checks, then stop. No model is called and the worktree is removed. `"dryRun": true` in the config does the same for every `run`. |
 | `--require-green-baseline` | `run` | Stop after intake when a blocking gate already fails (see `requireGreenBaseline`). |
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote (format below). With `--request` too, the request is kept as context for the implementer and reviewers. |
@@ -392,6 +393,12 @@ model those roles use. A config the app creates starts Balanced, like one from `
 **A red baseline.** When a blocking gate already fails before the run, intake says so (an event, and a line at the
 top of the report); tasks are still judged only on new problems. Set `requireGreenBaseline` to `true` to stop the
 run there instead, before any model call (exit code 2).
+
+**A dry run** (`harness run --dry-run`, or `"dryRun": true` for every `run` on the command line) shows what a run
+would start from without calling a model: the stack, each gate's baseline result, the plan's problems when a plan
+is given (all but the context-size check, which needs the model), and what would happen next. It exits 0 when
+nothing found would stop a real run, 1 for plan problems, 2 for a failing baseline under `requireGreenBaseline`.
+The app's Build is never a dry run.
 
 `gateEnvAllow` lists extra environment variables your gates need; everything that looks like a secret is removed
 from the gates' environment otherwise.
