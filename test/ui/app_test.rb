@@ -297,6 +297,21 @@ data: [DONE]
     assert_equal 400, post("/api/providers/use", { "kind" => "custom", "baseUrl" => "file:///etc", "model" => "m" }).status
   end
 
+  # Check setup: harness doctor in the app, for the config and a picked project.
+  def test_check_setup_runs_the_doctor
+    @model = Fake.new(models: [{ "id" => "m" }])
+    start
+    r = get("/api/doctor").json
+    assert_equal [false, %w[ruby git config]], [r["ready"], r["checks"].map { |c| c["area"] }]
+    assert_equal "run `harness init`, or fix the file", r["checks"].last["fix"]
+    @server.stop
+    start(config: { "profiles" => { "default" => { "baseUrl" => @model.base_url } } })
+    r = get("/api/doctor").json
+    assert r["ready"], r.inspect
+    assert_equal "model", r["checks"].last["area"]
+    assert_equal 404, get("/api/doctor?project=nope").status, "an unknown project is refused"
+  end
+
   # Settings: the mode and the planner's model, as `harness init` sets them, changeable from the app.
   def test_settings_change_the_mode_and_the_planning_model
     @ollama = Fake.new(routes: { "/api/tags" => [200, { "models" => [{ "name" => "small:7b" }, { "name" => "large:32b" }] }] },

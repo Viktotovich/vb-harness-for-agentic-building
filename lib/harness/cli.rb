@@ -4,6 +4,7 @@
 
 require "optparse"
 require_relative "cli/commands"
+require_relative "cli/doctor_command"
 require_relative "cli/eval_command"
 require_relative "cli/init"
 require_relative "cli/inspect"
@@ -16,6 +17,7 @@ module Harness
     COMMANDS = {
       "ui" => "the local app (the default with no command)",
       "init" => "write config.json, asking a few questions",
+      "doctor" => "check that everything a run needs is ready",
       "run" => "plan and build a request in a repository",
       "status" => "where a run is: tasks, current step, rejections",
       "answer" => "answer a run's blocking questions",
@@ -24,7 +26,7 @@ module Harness
       "eval" => "run the evaluation tasks"
     }.freeze
     # Planned in DESIGN.md 11.1 but not built: not listed, and they say so when typed.
-    PLANNED = %w[probe cleanup push].freeze
+    PLANNED = %w[cleanup push].freeze
     SUBCOMMANDS = (COMMANDS.keys + PLANNED).freeze
     DOCS_URL = "https://vb-harness.vandbruno.net"
 
@@ -54,6 +56,7 @@ module Harness
       when "status", "report" then Inspect.call(name, args, out: out, err: err)
       when "eval" then EvalCommand.call(args, out: out, err: err, env: env)
       when "init" then init(args, out: out, err: err, env: env, input: input)
+      when "doctor" then DoctorCommand.call(args, out: out, err: err, env: env)
       when "ui" then UICommand.call(args, out: out, err: err, env: env)
       else
         err.puts "harness: #{name} is not implemented yet"
