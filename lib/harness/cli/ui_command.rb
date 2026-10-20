@@ -34,7 +34,7 @@ module Harness
         first = !File.file?(opts[:config])
         token = SecureRandom.hex(32)
         app = UI::App.new(config_path: opts[:config], token: token, env: env,
-                          pipeline_for: ->(config, home) { Commands.pipeline_for(config, home, env, Silent.new) })
+                          pipeline_for: ->(config, home, run_env = env) { Commands.pipeline_for(config, home, run_env, Silent.new) })
         server = UI::Server.new(app: app, port: opts[:port], token: token, log: ->(msg) { err.puts(msg) })
         out.puts "harness app: #{server.url} (Ctrl+C stops it)"
         open_browser(server.url, env, err) if opts[:open] || (opts[:open].nil? && first)

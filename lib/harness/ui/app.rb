@@ -4,6 +4,7 @@
 
 require "json"
 require_relative "../config"
+require_relative "../demo"
 require_relative "../doctor"
 require_relative "../errors"
 require_relative "../model/http"
@@ -36,7 +37,7 @@ module Harness
       # @param config_path [String] config.json; chats/, runs/ and .cache/ live next to it
       # @param token [String] embedded in the page for POST requests
       # @param env [Hash{String=>String}]
-      # @param pipeline_for [#call] (config, home) -> Pipeline
+      # @param pipeline_for [#call] (config, home[, env]) -> Pipeline; the demo passes its own env (Demo.git_env)
       # @param http [Model::Http]
       # @param clis [Hash{String=>Array<String>}] provider CLIs to use instead of looking (tests)
       # @param urls [Hash{String=>String}] provider URLs to use instead of the defaults (tests)
@@ -51,6 +52,10 @@ module Harness
         @pipeline_for = pipeline_for
         @chats = Chats.new(File.join(@home, "chats"))
         @builds = Builds.new(runs_dir: File.join(@home, "runs"), pipeline: -> { @pipeline_for.call(config!, @home) })
+        # Try the demo: its own folder, config and scripted model, so the user's config and runs are never touched.
+        @demo_dir = File.join(@home, "demo")
+        @demo_builds = Builds.new(runs_dir: File.join(@demo_dir, "runs"), finished: ->(id) { Demo.mark(@demo_dir, id) },
+                                  pipeline: -> { @pipeline_for.call(@demo_config, @demo_dir, Demo.git_env(@env)) })
         load_config
       end
 
@@ -75,6 +80,7 @@ module Harness
         ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["POST", %r{\A/api/runs/([\w-]+)/stop\z}, :run_stop],
         ["GET", %r{\A/api/providers\z}, :providers], ["GET", %r{\A/api/settings\z}, :settings],
         ["POST", %r{\A/api/settings\z}, :settings_post], ["GET", %r{\A/api/doctor\z}, :doctor],
+        ["POST", %r{\A/api/demo\z}, :demo],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
         ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
       ].freeze
@@ -106,12 +112,13 @@ module Harness
         when :stream_stop then Response.json({ "stopped" => @conversation&.stop(args[0]) || false })
         when :run_events
           after = req.query["after"].to_s.match?(/\A\d{1,9}\z/) ? req.query["after"].to_i : 0
-          Response.sse { |sse| @builds.events(args[0], after, sse) }
-        when :run_report then Response.text(@builds.report(args[0]), type: "text/markdown; charset=utf-8")
+          Response.sse { |sse| builds_for(args[0]).events(args[0], after, sse) }
+        when :run_report then Response.text(builds_for(args[0]).report(args[0]), type: "text/markdown; charset=utf-8")
         when :run_answer
-          @builds.answer(args[0], body(req)["answers"])
+          builds_for(args[0]).answer(args[0], body(req)["answers"])
           Response.json({ "ok" => true })
-        when :run_stop then Response.json({ "stopping" => @builds.stop(args[0]) })
+        when :run_stop then Response.json({ "stopping" => builds_for(args[0]).stop(args[0]) })
+        when :demo then demo(body(req))
         when :providers then Response.json(Providers::Detect.local(http: @http, env: @env, clis: @clis, urls: @urls).map(&:to_json_hash))
         when :provider_post then provider_post(args[0], body(req))
         when :settings then Response.json(settings)
@@ -264,6 +271,26 @@ module Harness
           "first" => cfg.fetch("roles", {}).fetch("implementer", "default"), "second" => Modes.second(cfg),
           "secondRoles" => Modes::SECOND_ROLES,
           "profiles" => cfg.fetch("profiles", {}).map { |name, p| { "profile" => name, "model" => p["model"], "baseUrl" => p["baseUrl"] } } }
+      end
+
+      # A demo run's events, report and stop live under demo/; every other run under runs/.
+      # @param id [String]
+      # @return [Builds]
+      def builds_for(id)
+        id.to_s.match?(Builds::RUN_ID) && File.directory?(File.join(@demo_dir, "runs", id)) ? @demo_builds : @builds
+      end
+
+      # Try the demo: a build of the bundled project by a scripted model, shown in a chat like any build. Needs no
+      # model and no config.
+      # @return [Response]
+      def demo(data)
+        chat = @chats.get(data["chat"].to_s)
+        @demo_server ||= Demo::Server.new
+        site, @demo_config = Demo.prepare(@demo_dir, @demo_server.base_url, @env)
+        run = @demo_builds.start(request: Demo::REQUEST, repo: site)
+        @chats.append(chat["id"], { "role" => "user", "content" => Demo::REQUEST, "mode" => "build" })
+        @chats.append(chat["id"], { "role" => "build", "runId" => run, "project" => "demo (scripted model)" })
+        Response.json({ "run" => run })
       end
 
       # Check setup: harness doctor for the config, and for a project when one is named.
