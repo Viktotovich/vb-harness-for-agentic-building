@@ -39,7 +39,8 @@ module Harness
         next unless %w[failed timeout].include?(r.status) && stack.gates[name]&.blocking != false
 
         events.emit(stage: "intake", kind: "rejected", subject: name, reason: "gate.#{r.status}:#{name}",
-                    detail: "fails before the run (#{r.diagnostics.size} problems): tasks are judged only on new problems, "                             "but fix the baseline first if you can")
+                    detail: "fails before the run (#{r.diagnostics.size} problems): tasks are judged only on new problems, " \
+                            "but fix the baseline first if you can")
         name
       end
     end
@@ -60,9 +61,7 @@ module Harness
       env = Gates::Env.build(parent_env, allow: config.gate_env_allow)
       workspaces ||= File.join(File.dirname(File.dirname(store.dir)), "workspaces")
       git = Repo::Git.new(env: env, cache_dir: cache_dir)
-      # Checked in the user's checkout before the worktree exists, so a stop here leaves no branch behind.
-      top = Repo::Worktree.top_level(repo, git)
-      require_dependencies(detect_stack(config, top), top)
+      readiness!(config, Repo::Worktree.top_level(repo, git), git)
       worktree = Repo::Worktree.create(repo: repo, run_id: store.run_id, git: git, workspaces: workspaces)
       stack = detect_stack(config, worktree.root)
       stack.dependency_dirs.each do |dir|
@@ -90,16 +89,40 @@ module Harness
     # Lockfiles that name the package manager which installs node_modules, first match wins.
     NODE_LOCKFILES = { "pnpm-lock.yaml" => "pnpm", "yarn.lock" => "yarn", "bun.lock" => "bun", "bun.lockb" => "bun" }.freeze
 
+    # Everything that would stop the run, checked in the user's checkout before the worktree exists (so a stop
+    # leaves no branch behind), and reported together, so fixing one problem never just uncovers the next. One
+    # problem keeps its own error and message.
+    # @param config [Config]
+    # @param top [String] the repository's top-level folder
+    # @param git [Repo::Git]
+    # @return [void]
+    # @raise [GitError] when the only problem is uncommitted changes
+    # @raise [ConfigError] for any other problem, or several, one per line
+    def self.readiness!(config, top, git)
+      problems = []
+      dirty = !git.run(%w[status --porcelain --untracked-files=all], chdir: top).strip.empty?
+      problems << [GitError, Repo::Worktree::DIRTY] if dirty
+      begin
+        missing = dependency_problem(detect_stack(config, top), top)
+        problems << [ConfigError, missing] if missing
+      rescue ConfigError => e
+        problems << [ConfigError, e.message]
+      end
+      return if problems.empty?
+      raise problems[0][0], problems[0][1] if problems.size == 1
+
+      raise ConfigError, "#{problems.size} problems stop this run:\n#{problems.map { |_, m| "  - #{m}" }.join("\n")}"
+    end
+
     # Every dependencyDirs folder must exist in the user's checkout. Without it the project's tools are missing,
     # so every gate is skipped as "tool not installed" and the plan check refuses each task that needs one; a
     # field run only found out at the end. Nothing is installed here (I10): the message says what to run.
     # @param stack [Gates::Stack]
     # @param top [String] the repository's top-level folder
-    # @return [void]
-    # @raise [ConfigError] naming the missing folder and the install command
-    def self.require_dependencies(stack, top)
+    # @return [String, nil] the missing folders and the install command, or nil when all are there
+    def self.dependency_problem(stack, top)
       missing = stack.dependency_dirs.reject { |d| File.directory?(File.join(top, d)) }
-      return if missing.empty?
+      return nil if missing.empty?
 
       how = if missing.include?("node_modules")
               manager = stack.package_manager
@@ -108,8 +131,8 @@ module Harness
             else
               "install the project's dependencies there"
             end
-      raise ConfigError, "#{missing.join(', ')} #{missing.size == 1 ? 'is' : 'are'} missing in #{top}: the project's " \
-                         "dependencies are not installed, so its checks cannot run. #{how.capitalize}, then start the run again"
+      "#{missing.join(', ')} #{missing.size == 1 ? 'is' : 'are'} missing in #{top}: the project's " \
+        "dependencies are not installed, so its checks cannot run. #{how.capitalize}, then start the run again"
     end
 
     # @param config [Config]

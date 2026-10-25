@@ -655,3 +655,39 @@ moved to `Harness::Modes`, which `init` and the app share. Settings now opens wi
 modes, and a picker for the profile the planner, reviewer and verifier use (the implementer's own, or any other
 configured one). **Plan & review** on a model writes it as the `planning` profile, so a second model can sit on
 the same server as the first. A config the app creates starts Balanced, as one from `init` does.
+
+## Intake reports every problem at once
+
+Intake stopped at the first problem it found: uncommitted changes, then, once those were committed, missing
+dependencies, then a repository no stack matches. Each cost a restart. It now checks all three in the user's
+checkout before the worktree exists and reports them together, one per line. A single problem keeps its own error
+and message, so a dirty tree alone is still a git error with the same text.
+
+## dryRun does what it says
+
+`dryRun` was accepted and validated in the config but read nowhere, so setting it changed nothing. `harness run
+--dry-run` (or `"dryRun": true`) now runs intake, the baseline gates and, with a plan, the plan checks, then
+stops before any model call: no probe, no planner. The context-size check is skipped because it needs the
+model's limits. The worktree is removed afterwards (the branch stays, like every run's, since the git allowlist
+has no branch deletion), the run ends `dry_run`, and `resume` refuses it. The app's Build ignores the key, so a
+config shared with the app cannot silently turn every build into a dry run.
+
+## Runs record what produced them
+
+A field run crashed after its prompt files were edited mid-run, and `resume` had no way to notice. Intake now
+writes an `identity` to `run.json`: the harness version, a digest of every prompt file, and a digest of the
+effective config without the command-line overrides (`--review`, `--require-green-baseline`). `answer` and
+`resume` compare it with the current one. A different harness version or different prompts stop the run with
+both values named, unless `--accept-changes` is given; the rest of the run would otherwise run on different code
+or instructions than its first part. A changed config only adds an event, because raising `timeoutSec` and
+resuming is the documented fix for timeouts. After a check the identity is updated, so the next resume compares
+against what ran last; runs from before this change get one on their first resume.
+
+## The report says first what its numbers do not show
+
+A report with every task done reads as a clean run even when the lint gate never ran for a missing tool, review
+was off, or the config changed while the run was paused. Those facts were in `baseline.json`, the config and the
+events, but not in the report. A **Read this first** section now opens the report when any applies: a gate that
+could not run, review `off` or `light`, a failed or stopped run (with the resume command), a dry run, and each
+identity change accepted on resume. Each line says what to do. The review mode is recorded in `run.json` at the
+start and on each resume, since the report is built from the run's files only.
