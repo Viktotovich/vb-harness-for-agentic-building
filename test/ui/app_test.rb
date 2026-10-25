@@ -43,8 +43,8 @@ class UIAppTest < Minitest::Test
 
   def start(config: nil, env: ENV.to_h, clis: {}, urls: { "lmstudio" => "http://127.0.0.1:9/v1", "ollama" => "http://127.0.0.1:9" })
     File.write(File.join(@home, "config.json"), JSON.generate(config)) if config
-    factory = lambda do |cfg, home|
-      Harness::Pipeline.new(config: cfg, home: home, env: env, client_factory: ->(store) { F.client(cfg, store) })
+    factory = lambda do |cfg, home, run_env = env|
+      Harness::Pipeline.new(config: cfg, home: home, env: run_env, client_factory: ->(store) { F.client(cfg, store) })
     end
     app = Harness::UI::App.new(config_path: File.join(@home, "config.json"), token: @token, env: env, pipeline_for: factory,
                                clis: clis, urls: urls)
@@ -295,6 +295,25 @@ data: [DONE]
     custom = post("/api/providers/custom", { "baseUrl" => @lms.base_url, "keyEnv" => "sk-123" })
     assert_equal 400, custom.status, "a key typed where the env var name goes is refused"
     assert_equal 400, post("/api/providers/use", { "kind" => "custom", "baseUrl" => "file:///etc", "model" => "m" }).status
+  end
+
+  # Try the demo: a whole build by a scripted model, in a chat like any build, with no config of the user's.
+  def test_try_the_demo_builds_the_sample_project_without_a_config
+    start
+    chat = post("/api/chats", {}).json["id"]
+    run = post("/api/demo", { "chat" => chat }).json["run"]
+    assert_match(/\Ar\d{8}-\d{6}-\h{4}\z/, run)
+    events = get("/api/runs/#{run}/events?after=0").events
+    assert_equal ["end", { "status" => "done" }], events.last
+    tasks = events.select { |e, _| e == "run" }.last[1]["tasks"].map { |t| t["id"] }
+    assert_equal %w[T1 T2], tasks
+    report = get("/api/runs/#{run}/report").body
+    assert_includes report, "- **Demo:** a scripted model answered, not a real one."
+    assert_match(/\| T1 \| Double the price \| done \| `\h{7}` \| 1 \|/, report, "the scripted first edit fails and is fixed")
+    messages = get("/api/chats/#{chat}").json["messages"]
+    assert_equal [["user", Harness::Demo::REQUEST], ["build", run]], messages.map { |m| [m["role"], m["content"] || m["runId"]] }
+    refute File.exist?(File.join(@home, "config.json")), "the user's config is never written"
+    assert_empty Dir.glob(File.join(@home, "runs", "*")), "nor their runs"
   end
 
   # Check setup: harness doctor in the app, for the config and a picked project.

@@ -24,7 +24,9 @@ cd vb-harness-for-agentic-building
 ruby exe/harness
 ```
 
-The app opens in your browser. In **Settings · providers**, choose **Use** on a model. Switch to **Build**, pick
+The app opens in your browser. To see a whole build before setting anything up, choose **Try the demo** in
+Settings (or run `ruby exe/harness demo`): a scripted model builds a tiny sample project, with a failed check, its
+fix and a review, in under a minute. Then, in **Settings · providers**, choose **Use** on a model. Switch to **Build**, pick
 your project, describe the feature, and send. Two things stop a run before it starts, each with a message saying
 what to do: a project without its dependencies installed (run `npm install` in it first) and uncommitted changes
 (commit or stash them).
@@ -149,6 +151,7 @@ The app only listens on `127.0.0.1`, refuses other host names, and needs a per-s
 ## Quick start: the command line
 
 ```bash
+ruby exe/harness demo                                   # a whole run on a sample project, no model needed
 ruby exe/harness init                                   # write config.json, asking a few questions
 ruby exe/harness doctor --repo /path/to/repo            # check everything a run needs, in one list
 ruby exe/harness run --repo /path/to/repo --request request.md

@@ -703,3 +703,14 @@ says what to do; the exit code is 0 when ready and 2 otherwise. Doctor writes, i
 asks a server only for its model list, so it costs no tokens; whether the model's output is usable is still only
 learned by a run. It replaces the planned `probe` command. A non-blocking gate without its tool is reported but
 is not counted as a problem.
+
+## harness demo and Try the demo
+
+Nothing worked until a model was connected, so a first look at the harness needed a model server, a model and a
+project. `harness demo` and **Try the demo** in Settings now run the real pipeline on a bundled project with a
+scripted model: a small OpenAI-compatible server on 127.0.0.1 that answers each step as a good model would (a
+plan of two tasks, a first edit that fails the project's check, the fix, a review that finds nothing) and answers
+the capability probe with plain text. The project's check is a Ruby script, so no Node is needed. Everything
+lives in `demo/` next to the config: its own config, runs and project, so the user's config and runs are never
+touched, and the demo's commits carry their own author, so it works before git knows who the user is. The run is
+marked as a demo and its report says so first. In the app the demo is a build card in a chat like any other.
