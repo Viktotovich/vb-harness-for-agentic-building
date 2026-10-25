@@ -99,19 +99,28 @@ module Harness
     # @raise [GitError] when the only problem is uncommitted changes
     # @raise [ConfigError] for any other problem, or several, one per line
     def self.readiness!(config, top, git)
-      problems = []
-      dirty = !git.run(%w[status --porcelain --untracked-files=all], chdir: top).strip.empty?
-      problems << [GitError, Repo::Worktree::DIRTY] if dirty
-      begin
-        missing = dependency_problem(detect_stack(config, top), top)
-        problems << [ConfigError, missing] if missing
-      rescue ConfigError => e
-        problems << [ConfigError, e.message]
-      end
+      problems = problems(config, top, git)
       return if problems.empty?
       raise problems[0][0], problems[0][1] if problems.size == 1
 
       raise ConfigError, "#{problems.size} problems stop this run:\n#{problems.map { |_, m| "  - #{m}" }.join("\n")}"
+    end
+
+    # The checks behind #readiness!, also run by `harness doctor`.
+    # @param config [Config]
+    # @param top [String] the repository's top-level folder
+    # @param git [Repo::Git]
+    # @return [Array<Array(Class, String)>] the error class and message of each problem, in a stable order
+    def self.problems(config, top, git)
+      out = []
+      out << [GitError, Repo::Worktree::DIRTY] unless git.run(%w[status --porcelain --untracked-files=all], chdir: top).strip.empty?
+      begin
+        missing = dependency_problem(detect_stack(config, top), top)
+        out << [ConfigError, missing] if missing
+      rescue ConfigError => e
+        out << [ConfigError, e.message]
+      end
+      out
     end
 
     # Every dependencyDirs folder must exist in the user's checkout. Without it the project's tools are missing,

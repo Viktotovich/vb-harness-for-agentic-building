@@ -691,3 +691,15 @@ events, but not in the report. A **Read this first** section now opens the repor
 could not run, review `off` or `light`, a failed or stopped run (with the resume command), a dry run, and each
 identity change accepted on resume. Each line says what to do. The review mode is recorded in `run.json` at the
 start and on each resume, since the report is built from the run's files only.
+
+## harness doctor and Check setup
+
+The reasons a run would not start were found one at a time: no config, then a server that did not answer, then a
+dirty tree, then missing dependencies, each at a different stage. `harness doctor [--repo PATH]` and **Check
+setup** in Settings now look for all of them in one pass: Ruby and git; the config; for each profile a role uses,
+that its key's variable is set, its server answers and lists the model; and with a repository, the same checks
+intake runs plus whether each gate's tool is there (for `npx -- tool`, in `node_modules/.bin`). Each problem
+says what to do; the exit code is 0 when ready and 2 otherwise. Doctor writes, installs and starts nothing, and
+asks a server only for its model list, so it costs no tokens; whether the model's output is usable is still only
+learned by a run. It replaces the planned `probe` command. A non-blocking gate without its tool is reported but
+is not counted as a problem.
