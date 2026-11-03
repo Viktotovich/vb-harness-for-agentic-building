@@ -760,3 +760,16 @@ going in place (no new run status, so resume and answer are unchanged), shows th
 (`agentQuestion`), the events and the app, and takes the next note as the answer. Without one within
 `agent.askTimeoutSec`, the agent is told to decide and say what it assumed, so an unattended run never hangs. The
 app also gets a Pipeline / Agent switch in Settings and lists each agent's steps in a card's details.
+
+## A tool without its configuration could not run
+
+The first agent-mode eval on a local model was invalid: the eval project has ESLint but no `eslint.config.*`, ESLint
+9+ stops with an error on any file, and the harness counted that as "lint failed". Every task was sent back to fix
+a problem no code change could fix, and one that had already fixed its real type error was blocked anyway. Two
+changes. The runner now reads "couldn't find an eslint.config" and similar as "the tool has no configuration in
+this project", a gate that could not run (I6), not one that failed. And gates that check touched files, which
+never ran at baseline, get one trial run at intake on one existing source file: one that could not run is
+recorded in the baseline like any skipped gate, so the planner is told, the plan check refuses it, and a task
+that does not name it is not blocked by it. A trial that passes or finds problems is not recorded. A gate configured
+to change files (a formatter with `--write`) would edit the trial's file, so intake undoes any change the trials
+made before a task starts.

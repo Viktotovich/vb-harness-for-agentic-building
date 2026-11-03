@@ -21,6 +21,48 @@ class BaselineTest < Minitest::Test
   A = ["src/a.ts", "TS2322", "Type mismatch"].freeze
   C = ["src/c.ts", "TS2304", "Cannot find name 'x'"].freeze
 
+  # Touched-files gates get one trial run at intake: one that cannot run here (an eval run's lint had no eslint
+  # config) is recorded as unavailable; one that runs, passing or not, is left to the tasks as before.
+  def test_touched_gates_that_cannot_run_are_found_at_intake
+    root = Dir.mktmpdir("harness-probe-")
+    FileUtils.mkdir_p(File.join(root, "src/lib"))
+    File.write(File.join(root, "src/lib/a.ts"), "export const a = 1;\n")
+    File.write(File.join(root, "src/b.astro"), "<p/>\n")
+    ruby = RbConfig.ruby
+    gate = ->(name, code, blocking: true) { G::Gate.new(name: name, argv: [ruby, "-e", code, "{files}"], scope: "touched", parser: nil, blocking: blocking, cost_rank: 1, phase: "task", timeout_sec: 30) }
+    gates = { "lint" => gate.call("lint", "warn %{Oops! Something went wrong! :(\\n\\nESLint couldn't find an eslint.config.js file.}; exit 2"),
+              "style" => gate.call("style", "warn 'src/lib/a.ts:1 missing semicolon'; exit 1"),
+              "seen" => gate.call("seen", "puts ARGV.join(','); exit 0"),
+              "typecheck" => G::Gate.new(name: "typecheck", argv: [ruby, "-e", "exit 0"], scope: "project", parser: nil, blocking: true, cost_rank: 2, phase: "task", timeout_sec: 30) }
+    runner = G::Runner.new(root: root, env: ENV.to_h)
+    found = B.probe_touched(runner, gates, root: root)
+    assert_equal ["lint"], found.keys, "only the gate that could not run; a failing or passing gate is left alone"
+    assert_equal "skipped", found["lint"].status
+    assert_match(/\Athe tool has no configuration in this project: .* \(trial run at intake on src\/lib\/a\.ts\)\z/, found["lint"].reason)
+    assert_equal({ "lint" => found["lint"].reason[0, 120] }, Harness::Plan::Checks.unavailable(found), "the planner is told")
+    assert_empty B.probe_touched(runner, gates, root: Dir.mktmpdir("harness-probe-empty-")), "no source file, no trial"
+  ensure
+    FileUtils.rm_rf(root) if root
+  end
+
+  # A gate configured to rewrite files (a formatter with --write) must not leave its trial run's edit behind.
+  def test_a_trial_run_that_changes_a_file_is_undone_at_intake
+    tmp = Dir.mktmpdir("harness-probe-write-")
+    files = { "astro.config.mjs" => "export default {};\n", "src/lib/a.ts" => "export const a = 1;\n" }
+    repo, env = TestSupport.repo(tmp, files)
+    writer = "File.write(ARGV[0], File.read(ARGV[0]) + '// formatted')"
+    raw = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } }, "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+            "stacks" => { "astro" => { "detect" => ["astro.config.mjs"],
+                                       "gates" => { "format" => { "argv" => [RbConfig.ruby, "-e", writer, "{files}"], "scope" => "touched", "blocking" => false } } } } }
+    store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "p1")
+    setup = Harness::Run.intake(config: Harness::Config.parse(raw), repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+    refute setup.worktree.dirty?, "the trial run's edit was undone"
+    assert_equal "export const a = 1;\n", File.read(File.join(setup.worktree.root, "src/lib/a.ts"))
+    assert(Harness::State::Events.read(store.events_path).any? { |e| e["subject"] == "trial runs" && e["kind"] == "retried" })
+  ensure
+    FileUtils.rm_rf(tmp) if tmp
+  end
+
   def test_a_failure_already_present_at_baseline_does_not_block
     cmp = B.compare(result("failed", [diag(*A, line: 9)]), result("failed", [diag(*A, line: 3)]))
     assert_equal "baseline_same", cmp.verdict

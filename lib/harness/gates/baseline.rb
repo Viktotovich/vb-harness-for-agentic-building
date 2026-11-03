@@ -27,6 +27,41 @@ module Harness
         gates.values.reject { |g| g.scope == "touched" }.sort_by(&:cost_rank).to_h { |g| [g.name, runner.run(g)] }
       end
 
+      # Source files a trial run of a touched-files gate may check, most common kinds first.
+      PROBE_GLOBS = %w[src/**/*.ts src/**/*.js src/**/*.tsx src/**/*.jsx src/**/*.mjs src/**/*.astro src/**/*.vue src/**/*.svelte
+                       lib/**/*.rb app/**/*.rb **/*.py].freeze
+
+      # Gates that check touched files never run at baseline, so a tool that cannot run here (not installed, no
+      # configuration) was found out only when a task ran it: an eval run had every task sent back to fix a lint
+      # gate that had no eslint config. Each such gate gets one trial run on one existing source file; only a
+      # gate that could not run is returned, recorded like a skipped baseline gate (I6): the planner is told, the
+      # plan check refuses it, and a task that does not name it is not blocked by it. A trial that passes or finds
+      # problems is not recorded, so those gates behave as before.
+      # @param runner [Runner]
+      # @param gates [Hash{String=>Gate}]
+      # @param root [String] the worktree
+      # @return [Hash{String=>Result}] the gates that could not run
+      def self.probe_touched(runner, gates, root:)
+        touched = gates.values.select { |g| g.scope == "touched" }
+        sample = probe_file(root)
+        return {} if touched.empty? || sample.nil?
+
+        touched.sort_by(&:cost_rank).filter_map do |g|
+          r = runner.run(g, files: [sample])
+          [g.name, r.with(reason: "#{r.reason} (trial run at intake on #{sample})")] if r.status == "skipped"
+        end.to_h
+      end
+
+      # @return [String, nil] a relative path, or nil when the repository has no recognisable source file
+      def self.probe_file(root)
+        PROBE_GLOBS.each do |glob|
+          found = Dir.glob(glob, base: root).reject { |p| p.split("/").include?("node_modules") }.min
+          return found if found
+        end
+        nil
+      end
+      private_class_method :probe_file
+
       # @param path [String] runs/<runId>/baseline.json
       # @param results [Hash{String=>Result}]
       # @return [void]

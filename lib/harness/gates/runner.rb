@@ -59,7 +59,12 @@ module Harness
       CANNOT_RUN = {
         "blocked by the system's policy" => Regexp.union("Application Control policy has blocked", "blocked by group policy",
                                                            "blocked by your organization"),
-        "the tool cannot check these files" => Regexp.union("No parser could be inferred")
+        "the tool cannot check these files" => Regexp.union("No parser could be inferred"),
+        # The tool is installed but the project has no configuration for it: ESLint 9+ without an eslint.config.*
+        # file stops with an error on any file. An eval run counted that as a lint failure on every task and sent
+        # each one back to fix a problem no code change could fix.
+        "the tool has no configuration in this project" => Regexp.union("couldn't find an eslint.config", "No ESLint configuration found",
+                                                                        "couldn't find a configuration file")
       }.freeze
 
       # Characters of output an agent sees after running a gate or command.
