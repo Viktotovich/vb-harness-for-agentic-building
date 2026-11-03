@@ -714,3 +714,37 @@ the capability probe with plain text. The project's check is a Ruby script, so n
 lives in `demo/` next to the config: its own config, runs and project, so the user's config and runs are never
 touched, and the demo's commits carry their own author, so it works before git knows who the user is. The run is
 marked as a demo and its report says so first. In the app the demo is a build card in a chat like any other.
+
+## Agent mode: an agent inside the pipeline, not a second harness
+
+The pipeline asks for one structured reply per step, which keeps weak local models on rails but cannot
+investigate a bug, follow a change through many files, or check its own work before handing it in. Agent mode
+puts a tool-using agent where that reply was, and keeps everything around it: intake, the worktree, the baseline,
+the gates, review, commits, resume, events and the report. A separate agentic harness would have had to rebuild
+all of that, and its safety, a second time.
+
+An investigating agent, which can read and run checks but not write, explores the repository before planning;
+its findings reach the planner fenced, as model output. Each task is then worked by an agent with tools to read,
+list, search, find symbols, edit (exact replace, whole files, and long new files in parts through `append_file`),
+view its diff, run the stack's gates and run commands declared in config. The agent's `finish` is a claim: the
+harness runs the task's gates itself (I7) and sends a failure back into the same conversation, so the agent keeps
+what it read, for up to `agent.maxRounds` rounds. Review and its follow-up fix tasks work as before. An agent that
+runs out of steps without finishing blocks its task; unfinished work is never offered to the gates as done.
+
+The invariants hold by construction. Every write goes through `Task::Edits`, so I2 and `protectedPaths` apply.
+Commands are declared in config with fixed argv; the model picks one by name and fills declared parameters, each
+checked by kind (a path must exist in the worktree; a word allows no shell characters and cannot start with `-`),
+so no model ever writes a command line (I3). Commands run through `Gates::Runner`, one of the places allowed to
+start processes (I4), with the scrubbed environment (I5). Every tool result is fenced (I9). Models without native
+tool calls use a JSON protocol, one tool per reply, and are never offered tools. Older tool results are cut to one
+line when the conversation outgrows half the context, so long tasks still fit.
+
+## What an agent may not touch
+
+A review before merging agent mode found four ways its reach could be misused, all closed before it landed. A
+`word` parameter could name a file outside the worktree (`/etc/passwd`, `C:/...`, `..`) as a command argument:
+words may no longer start with `/` or `~`, name a drive, or contain `..`. An agent could make a failing gate pass by
+editing what the gate checks against (`tsconfig.json`, a test runner's config, `package.json`) or an existing test:
+outside the files the plan names, those writes are refused, so the gates keep judging the code rather than being
+adjusted to it (I7). `read_file` refuses files over 2 MB instead of loading them, and `list_dir` no longer shows the
+names of protected files.

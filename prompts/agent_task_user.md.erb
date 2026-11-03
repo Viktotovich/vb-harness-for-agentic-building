@@ -1,0 +1,18 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+The task, as planned:
+<%= task %>
+
+<% if request -%>
+The whole feature request this task is one part of. Take exact values, names and text from it; build only this task's part:
+<%= request %>
+
+<% end -%>
+<% unless done.empty? -%>
+Tasks already done in this run:
+<% done.each do |d| -%>
+- <%= d %>
+<% end -%>
+
+<% end -%>
+Start by finding the code this task concerns.

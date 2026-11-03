@@ -62,6 +62,9 @@ module Harness
         "the tool cannot check these files" => Regexp.union("No parser could be inferred")
       }.freeze
 
+      # Characters of output an agent sees after running a gate or command.
+      OUTPUT_TAIL = 6000
+
       # @param root [String] worktree root
       # @param env [Hash{String=>String}] from Env.build
       # @param max_output [Integer] maxGateOutputBytes, per stream
@@ -76,22 +79,34 @@ module Harness
       # @param tests [Array<String>] test files (relative), for {tests}; empty runs the whole suite
       # @return [Result]
       def run(gate, files: [], tests: [])
+        run_with_output(gate, files: files, tests: tests).first
+      end
+
+      # #run, plus the end of the command's output, for an agent that has to read it (Agent::Toolbox).
+      # @param gate [Gate]
+      # @param files [Array<String>]
+      # @param tests [Array<String>]
+      # @return [Array(Result, String)] the result and up to OUTPUT_TAIL characters of stdout and stderr
+      def run_with_output(gate, files: [], tests: [])
         argv = expand(gate.argv, files, tests)
-        return skipped(gate, "no files to check", gate.argv) if argv.nil?
+        return [skipped(gate, "no files to check", gate.argv), ""] if argv.nil?
 
         r = Exec.run(argv, chdir: @root, env: @env, timeout: gate.timeout_sec, max_output: @max_output)
         output = "#{r.stdout}\n#{r.stderr}"
-        return result(gate, "timeout", r, [], "timed out after #{gate.timeout_sec}s") if r.timed_out
-        return result(gate, "passed", r, [], nil) if r.success?
-        return skipped(gate, "tool not installed: #{output[MISSING_TOOL]}", argv) if output.match?(MISSING_TOOL)
+        tail = output.strip.length > OUTPUT_TAIL ? "…#{output.strip[-OUTPUT_TAIL..]}" : output.strip
+        return [result(gate, "timeout", r, [], "timed out after #{gate.timeout_sec}s"), tail] if r.timed_out
+        return [result(gate, "passed", r, [], nil), tail] if r.success?
+        return [skipped(gate, "tool not installed: #{output[MISSING_TOOL]}", argv), tail] if output.match?(MISSING_TOOL)
 
-        CANNOT_RUN.each { |why, pattern| return skipped(gate, "#{why}: #{output.lines.find { |l| l.match?(pattern) }.to_s.strip[0, 200]}", argv) if output.match?(pattern) }
+        CANNOT_RUN.each do |why, pattern|
+          return [skipped(gate, "#{why}: #{output.lines.find { |l| l.match?(pattern) }.to_s.strip[0, 200]}", argv), tail] if output.match?(pattern)
+        end
 
-        result(gate, "failed", r, Parsers.parse(gate.parser, output, root: @root), nil)
+        [result(gate, "failed", r, Parsers.parse(gate.parser, output, root: @root), nil), tail]
       rescue CommandNotFoundError => e
-        skipped(gate, "command not found: #{argv&.first} (#{e.class.name.split('::').last})", argv || gate.argv)
+        [skipped(gate, "command not found: #{argv&.first} (#{e.class.name.split('::').last})", argv || gate.argv), ""]
       rescue UnsafeArgumentError, PathError => e
-        skipped(gate, e.message, argv || gate.argv)
+        [skipped(gate, e.message, argv || gate.argv), ""]
       end
 
       private

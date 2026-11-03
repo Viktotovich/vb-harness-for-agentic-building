@@ -179,6 +179,7 @@ Useful options:
 | `--dry-run` | `run` | Run intake, the baseline gates and, with `--from-plan`, the plan checks, then stop. No model is called and the worktree is removed. `"dryRun": true` in the config does the same for every `run`. |
 | `--require-green-baseline` | `run` | Stop after intake when a blocking gate already fails (see `requireGreenBaseline`). |
 | `--review MODE` | `run`, `answer`, `resume` | `full`, `light` or `off` for this run, overriding the config's `review`. |
+| `--mode MODE` | `run`, `answer`, `resume` | `pipeline` or `agent` for this run, overriding the config's `mode` (see Agent mode). |
 | `--from-plan FILE` | `run` | Skip the planner and run a plan you wrote (format below). With `--request` too, the request is kept as context for the implementer and reviewers. |
 | `--answers FILE` | `answer` | A JSON array of answers instead of typing them. |
 | `--accept-changes` | `answer`, `resume` | Continue a run although the harness version or its prompts changed since it started (see Troubleshooting). |
@@ -401,6 +402,35 @@ It also asks whether to use one model for everything, or a second model (often a
 reviewer and verifier, with the implementer and fixer on the first. That writes a `planning` profile and points
 those `roles` at it. In the app, **Plan & review** on a model does the same, and Settings picks which configured
 model those roles use. A config the app creates starts Balanced, like one from `init`.
+
+**Agent mode** (`"mode": "agent"`, or `--mode agent`) trades speed for accuracy. Instead of one structured
+reply per step, each task is worked by an agent with tools: it reads, lists and searches the code, edits files
+(exact search-and-replace, whole files, and long new files in parts), and runs the project's gates and the
+commands you allow, until it calls `finish`. Its finish is a claim, not a result: the harness then runs the task's
+gates itself, and sends any failure back to the same agent, which keeps what it already read, until the gates
+pass or `agent.maxRounds` runs out. Before planning, an investigating agent reads the repository (it cannot change
+files) and its findings go to the planner, so plans and bug fixes start from the code as it is. Tasks may change
+up to `agent.maxFilesPerTask` files.
+
+The safety rules do not change. Writes stay in the worktree and outside `protectedPaths`; tool output is fenced as
+untrusted; only gates mark a task done. The agent runs only the stack's gates and the commands you declare under
+`agent.commands`, by name: an argument written exactly as `{name}` is filled from a declared parameter, either
+`path` (an existing file in the repository) or `word` (letters, digits and `. _ : / @ -`, never starting with
+`-`, and never an absolute path, drive letter or `..`). The model never writes a command line. Check configuration
+(`package.json`, `tsconfig*.json`, `*.config.*`, linter configs and the like) and tests that already exist can be
+changed only when the plan names them, so an agent cannot make a gate pass by weakening it.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `agent.maxSteps` | 60 | Tool calls per stretch of a task's work. |
+| `agent.maxRounds` | 6 | How often the harness may send a task back after its gates failed. |
+| `agent.maxFilesPerTask` | 12 | Files one task may change (replaces `maxFilesPerTask` in agent mode). |
+| `agent.investigate` | `true` | Explore the repository before planning. |
+| `agent.maxInvestigateSteps` | 30 | Tool calls for that exploration. |
+| `agent.commands` | `{}` | Named commands the agent may run, as above. |
+
+Agent mode makes many more model calls than the pipeline; with a local model, expect a task to take several
+times longer. Models without native tool calls use a JSON reply protocol, one tool per reply.
 
 **A red baseline.** When a blocking gate already fails before the run, intake says so (an event, and a line at the
 top of the report); tasks are still judged only on new problems. Set `requireGreenBaseline` to `true` to stop the

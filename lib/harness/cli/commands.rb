@@ -18,9 +18,9 @@ module Harness
     # harness run / answer / resume. Progress goes to stderr, the result to stdout (or --json).
     module Commands
       USAGE = {
-        "run" => "Usage: harness run --repo PATH [--request FILE] [--from-plan FILE] [--plan-only] [--dry-run] [--require-green-baseline] [--config FILE] [--review full|light|off] [--json]",
-        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--accept-changes] [--config FILE] [--review full|light|off] [--json]",
-        "resume" => "Usage: harness resume RUN_ID [--accept-changes] [--config FILE] [--review full|light|off] [--json]"
+        "run" => "Usage: harness run --repo PATH [--request FILE] [--from-plan FILE] [--plan-only] [--dry-run] [--require-green-baseline] [--config FILE] [--review full|light|off] [--mode pipeline|agent] [--json]",
+        "answer" => "Usage: harness answer RUN_ID [--answers FILE] [--accept-changes] [--config FILE] [--review full|light|off] [--mode pipeline|agent] [--json]",
+        "resume" => "Usage: harness resume RUN_ID [--accept-changes] [--config FILE] [--review full|light|off] [--mode pipeline|agent] [--json]"
       }.freeze
 
       # @param name [String] run, answer or resume
@@ -32,7 +32,7 @@ module Harness
       # @return [Integer] exit code (DESIGN.md 5.5)
       def self.call(name, args, out:, err:, env:, input: $stdin)
         opts = parse(name, args)
-        pipeline = pipeline(opts[:config], env, err, review: opts[:review], green: opts[:green])
+        pipeline = pipeline(opts[:config], env, err, review: opts[:review], green: opts[:green], mode: opts[:mode])
         result = case name
                  when "run" then start(pipeline, opts, dry_run: opts[:dry_run] || pipeline.config.dry_run)
                  when "answer"
@@ -55,6 +55,7 @@ module Harness
           o.on("--config FILE", "Config file (default config.json)") { |v| opts[:config] = v }
           o.on("--json", "Machine-readable output") { opts[:json] = true }
           o.on("--review MODE", Config::REVIEW_MODES, "Review: #{Config::REVIEW_MODES.join(', ')} (overrides the config)") { |v| opts[:review] = v }
+          o.on("--mode MODE", Config::MODES, "pipeline, or agent: a tool-using agent per task (overrides the config)") { |v| opts[:mode] = v }
           if name == "run"
             o.on("--repo PATH", "Target git repository") { |v| opts[:repo] = v }
             o.on("--request FILE", "Feature request to plan") { |v| opts[:request] = v }
@@ -81,9 +82,10 @@ module Harness
       end
 
       # @return [Pipeline]
-      def self.pipeline(config_path, env, err, review: nil, green: nil)
+      def self.pipeline(config_path, env, err, review: nil, green: nil, mode: nil)
         config = Config.load(config_path, env: env)
         config = config.with(review: review) if review
+        config = config.with(mode: mode) if mode
         config = config.with(require_green_baseline: true) if green
         pipeline_for(config, File.dirname(File.expand_path(config_path)), env, err)
       end

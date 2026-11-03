@@ -3,6 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "json"
+require_relative "agent/settings"
 require_relative "parse"
 require_relative "model/profiles"
 require_relative "gates/gate"
@@ -18,8 +19,10 @@ module Harness
   # review: "full" reviews every task and the whole run; "light" skips the per-task review of a small change whose
   # gates passed first time; "off" skips review.
   # require_green_baseline: stop after intake when a blocking gate already fails, instead of only warning.
+  # mode: "pipeline" (one structured reply per task step) or "agent" (a tool-using agent per task, see
+  # Agent::Worker); agent: its Agent::Settings.
   Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects, :review,
-                       :require_green_baseline) do
+                       :require_green_baseline, :mode, :agent) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
     # @raise [ArgumentError] on an unknown role
@@ -43,7 +46,9 @@ module Harness
       "maxRefutedInARow" => [:max_refuted_in_a_row, 3]
     }.freeze
     REVIEW_MODES = %w[full light off].freeze
-    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review requireGreenBaseline] + LIMIT_DEFAULTS.keys).freeze
+    MODES = %w[pipeline agent].freeze
+    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review requireGreenBaseline mode agent] +
+                LIMIT_DEFAULTS.keys).freeze
     PROJECT_NAME = /\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
     # Read and validate a config file.
@@ -78,7 +83,9 @@ module Harness
         dry_run: Parse.bool!(h.fetch("dryRun", false), "dryRun"),
         projects: parse_projects(h.fetch("projects", [])),
         review: Parse.enum!(h.fetch("review", "full"), "review", REVIEW_MODES),
-        require_green_baseline: Parse.bool!(h.fetch("requireGreenBaseline", false), "requireGreenBaseline")
+        require_green_baseline: Parse.bool!(h.fetch("requireGreenBaseline", false), "requireGreenBaseline"),
+        mode: Parse.enum!(h.fetch("mode", "pipeline"), "mode", MODES),
+        agent: Agent::Settings.parse(h.fetch("agent", {}))
       )
     end
 

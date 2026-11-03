@@ -3,6 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "json"
+require_relative "agent/investigator"
 require_relative "errors"
 require_relative "plan/checks"
 require_relative "plan/plan"
@@ -38,7 +39,12 @@ module Harness
     # @param env [Hash{String=>String}] the process environment
     # @param client_factory [#call] store -> Model::Client (records go into the run's folder)
     def initialize(config:, home:, env:, client_factory:)
-      @config = config
+      # Agent mode plans larger tasks: an agent reads and checks its way through them instead of answering once.
+      @config = if config.mode == "agent"
+                  config.with(limits: config.limits.with(max_files_per_task: config.agent.max_files_per_task))
+                else
+                  config
+                end
       @runs_dir = File.join(home, "runs")
       @cache_dir = File.join(home, ".cache")
       @env = env
@@ -183,9 +189,12 @@ module Harness
 
     # @return [Plan::Planner::Result]
     def plan_with_model(setup, client, request, answers)
+      findings = if @config.mode == "agent" && @config.agent.investigate
+                   Agent::Investigator.call(client: client, config: @config, setup: setup, request: request)
+                 end
       Plan::Planner.new(client: client, config: @config, events: setup.events, cache_dir: @cache_dir)
                    .call(request: request, root: setup.worktree.root, stack: setup.stack, answers: answers,
-                         unavailable: Plan::Checks.unavailable(setup.baseline))
+                         unavailable: Plan::Checks.unavailable(setup.baseline), findings: findings)
     end
 
     # A dry run: intake and the baseline have run; a given plan is checked too, except against the context budget,

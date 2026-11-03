@@ -71,6 +71,22 @@
   "maxVerifierCalls": 60,
   "maxRefutedInARow": 3,
   "review": "full",
+  "mode": "pipeline",
+  "agent": {
+    "maxSteps": 60,
+    "maxRounds": 6,
+    "maxFilesPerTask": 12,
+    "investigate": true,
+    "maxInvestigateSteps": 30,
+    "commands": {
+      "run_test_file": {
+        "description": "run one test file with vitest",
+        "argv": ["npx", "--offline", "--no", "--", "vitest", "run", "{file}"],
+        "params": { "file": "path" },
+        "timeoutSec": 300
+      }
+    }
+  },
   "requireGreenBaseline": false,
   "dryRun": false
 }
