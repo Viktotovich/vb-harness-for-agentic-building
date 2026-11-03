@@ -61,9 +61,11 @@ module Harness
       # @param stack [Gates::Stack]
       # @param answers [Array<Array(String, String)>] [question, answer] pairs from harness answer
       # @param unavailable [Hash{String=>String}] gates the baseline could not run here, with why; never offered
+      # @param findings [String, nil] what an investigating agent found in the repository (agent mode), model output
       # @return [Result]
       # @raise [ModelOutputError, ModelUnavailableError, ContextOverflowError]
-      def call(request:, root:, stack:, answers: [], unavailable: {})
+      def call(request:, root:, stack:, answers: [], unavailable: {}, findings: nil)
+        @findings = findings
         @events.emit(stage: "plan", kind: "stage_started")
         test_gates = Checks.test_gates(stack)
         system = Prompts.render("planner_system", max_files: @config.limits.max_files_per_task,
@@ -115,6 +117,10 @@ module Harness
         unless answers.empty?
           qa = answers.map { |q, a| "Q: #{q}\nA: #{a}" }.join("\n\n")
           sections << "Answers to your earlier questions:\n#{Untrusted.fence(qa)}"
+        end
+        if @findings
+          sections << "What an agent found by reading this repository before planning (its output, so check it against the " \
+                      "files above):\n#{Untrusted.fence(@findings)}"
         end
         Prompts.render("planner_user", request: request, sections: sections)
       end

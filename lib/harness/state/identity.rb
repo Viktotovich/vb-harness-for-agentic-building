@@ -53,12 +53,12 @@ module Harness
         Sha256.hex(files.map { |f| "#{File.basename(f)}\0#{File.binread(f)}\0" }.join)[0, 16]
       end
 
-      # The command-line overrides (--review, --require-green-baseline) are left out: giving one on resume is a
+      # The command-line overrides (--review, --require-green-baseline, --mode) are left out: giving one on resume is a
       # choice for that step, not a change of config.
       # @param config [Config]
       # @return [String] 16 hex characters
       def self.config_digest(config)
-        Sha256.hex(config.with(review: "full", require_green_baseline: false).inspect)[0, 16]
+        Sha256.hex(config.with(review: "full", require_green_baseline: false, mode: "pipeline").inspect)[0, 16]
       end
     end
   end

@@ -11,6 +11,7 @@ require_relative "../model/tokens"
 require_relative "../prompts"
 require_relative "../repo/paths"
 require_relative "../untrusted"
+require_relative "../agent/session"
 require_relative "edits"
 require_relative "gather"
 
@@ -116,11 +117,104 @@ module Harness
       # @return [Outcome]
       def from_the_start
         step("gathering")
-        edit_set = implement
-        apply(edit_set, :implementer, @implement_messages)
-        fix_until_green
+        if @ctx.config.mode == "agent"
+          agent_until_green
+        else
+          edit_set = implement
+          apply(edit_set, :implementer, @implement_messages)
+          fix_until_green
+        end
         review
         commit
+      end
+
+      # --- agent mode (Agent::Session) ---
+
+      # The task as an agent's work: it reads, edits and runs checks itself until it calls finish. Its finish is a
+      # claim, not a result (I7): the harness then runs the task's gates, and sends any failure back to the same
+      # agent, which keeps what it already read, until the gates pass or agent.maxRounds runs out.
+      # @return [void]
+      # @raise [Blocked]
+      def agent_until_green
+        settings = @ctx.config.agent
+        step("implementing")
+        emit("task.implement", "stage_started")
+        toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
+                                     settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
+                                     writable: true, tests: @task.test_paths)
+        system = Prompts.render("agent_task_system", rules: agent_rules(settings), gates: @ctx.stack.gates.keys.join(", "),
+                                                     notes: @ctx.stack.review_notes)
+        user = Prompts.render("agent_task_user", task: task_text, request: request_text, done: @done)
+        session = Agent::Session.new(client: @ctx.client, role: :implementer, system: system, toolbox: toolbox,
+                                     label: "#{@task.id}.agent", on_step: agent_events(toolbox))
+        result = agent_stretch(session, toolbox) { session.run(user, max_steps: settings.max_steps) }
+        loop do
+          failing = run_gates
+          return if failing.empty?
+
+          if @fix_rounds >= settings.max_rounds
+            emit("task.fix", "rejected", reason: "agent.rounds_exhausted", detail: "#{@fix_rounds} rounds")
+            raise Blocked.new("agent.rounds_exhausted", "the task's checks still fail after #{@fix_rounds} rounds")
+          end
+          @fix_rounds += 1
+          step("fixing")
+          emit("task.fix", "stage_started")
+          note = "The harness ran the task's checks and they fail. Fix the cause, run the checks again with run_gate, " \
+                 "then call finish.\n#{Untrusted.fence(render_diagnostics(trimmed_diagnostics(failing)))}"
+          result = agent_stretch(session, toolbox) { session.continue(note, max_steps: settings.max_steps) }
+        end
+      ensure
+        emit("task.implement", "stage_finished") if result
+      end
+
+      # One stretch of the agent's work, then what it wrote is recorded. Running out of steps without finishing
+      # blocks the task: unfinished work is not offered to the gates as if it were done.
+      # @return [Agent::Session::Result]
+      # @raise [Blocked]
+      def agent_stretch(session, toolbox)
+        result = begin
+          yield
+        rescue ModelOutputError => e
+          emit("task.implement", "rejected", reason: e.reason, detail: e.message[0, 300])
+          raise Blocked.new(e.reason, e.message)
+        ensure
+          @touched.merge(toolbox.touched)
+          @created.merge(toolbox.created)
+        end
+        save("applied")
+        return result if result.finished
+
+        reason = result.exhausted ? "agent.steps_exhausted" : "agent.no_finish"
+        emit("task.implement", "rejected", reason: reason, detail: "#{session.steps} tool calls; #{result.text.to_s.strip[0, 200]}")
+        raise Blocked.new(reason, "the agent stopped after #{session.steps} tool calls without finishing")
+      end
+
+      # Events for the progress view: reading tools under gather, writing tools under apply, gates and commands
+      # under gates, model turns under implement.
+      # @return [Proc]
+      def agent_events(toolbox)
+        lambda do |kind, d|
+          if kind == :turn
+            emit("task.implement", "accepted", subject: "agent turn", model: d[:model], profile: d[:profile],
+                                               tokens: { "in" => d[:tokens][:in], "out" => d[:tokens][:out] }, ms: d[:ms])
+          else
+            stage = if Agent::Toolbox.write_tool?(d[:tool]) then "task.apply"
+                    elsif %w[run_gate run_command].include?(d[:tool]) then "task.gates"
+                    else "task.gather"
+                    end
+            if d[:ok]
+              emit(stage, "accepted", subject: "#{d[:tool]}: #{d[:outcome]}"[0, 160])
+            else
+              emit(stage, "rejected", subject: d[:tool].to_s[0, 40], reason: "agent.tool_error", detail: d[:outcome].to_s[0, 300])
+            end
+            @touched.merge(toolbox.touched)
+          end
+        end
+      end
+
+      # @return [String]
+      def agent_rules(settings)
+        Prompts.render("agent_rules", files: @task.writable.join(", "), tests: @task.test_paths, max_files: settings.max_files_per_task)
       end
 
       # Turn the ways a task can fail into a blocked Outcome.
