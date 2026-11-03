@@ -4,7 +4,6 @@
 
 require "fileutils"
 require "json"
-require "rbconfig"
 require "socket"
 require_relative "config"
 require_relative "errors"
