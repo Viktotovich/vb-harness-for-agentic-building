@@ -770,4 +770,6 @@ changes. The runner now reads "couldn't find an eslint.config" and similar as "t
 this project", a gate that could not run (I6), not one that failed. And gates that check touched files, which
 never ran at baseline, get one trial run at intake on one existing source file: one that could not run is
 recorded in the baseline like any skipped gate, so the planner is told, the plan check refuses it, and a task
-that does not name it is not blocked by it. A trial that passes or finds problems is not recorded.
+that does not name it is not blocked by it. A trial that passes or finds problems is not recorded. A gate configured
+to change files (a formatter with `--write`) would edit the trial's file, so intake undoes any change the trials
+made before a task starts.

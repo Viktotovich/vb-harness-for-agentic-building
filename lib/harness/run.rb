@@ -73,6 +73,12 @@ module Harness
       end
       runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
       baseline = Gates::Baseline.run(runner, stack.gates).merge(Gates::Baseline.probe_touched(runner, stack.gates, root: worktree.root))
+      # A gate configured to change files (a formatter with --write) changed the trial run's file: undo it, so no
+      # task starts from, or commits, an edit nobody asked for.
+      if worktree.dirty?
+        worktree.revert!
+        events.emit(stage: "intake", kind: "retried", subject: "trial runs", detail: "a gate changed files during its trial run; the change was undone")
+      end
       Gates::Baseline.save(store.baseline_path, baseline)
       baseline.each_value do |r|
         next unless r.status == "skipped"

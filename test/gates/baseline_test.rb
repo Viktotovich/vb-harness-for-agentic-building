@@ -45,6 +45,24 @@ class BaselineTest < Minitest::Test
     FileUtils.rm_rf(root) if root
   end
 
+  # A gate configured to rewrite files (a formatter with --write) must not leave its trial run's edit behind.
+  def test_a_trial_run_that_changes_a_file_is_undone_at_intake
+    tmp = Dir.mktmpdir("harness-probe-write-")
+    files = { "astro.config.mjs" => "export default {};\n", "src/lib/a.ts" => "export const a = 1;\n" }
+    repo, env = TestSupport.repo(tmp, files)
+    writer = "File.write(ARGV[0], File.read(ARGV[0]) + '// formatted')"
+    raw = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } }, "gateEnvAllow" => %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM],
+            "stacks" => { "astro" => { "detect" => ["astro.config.mjs"],
+                                       "gates" => { "format" => { "argv" => [RbConfig.ruby, "-e", writer, "{files}"], "scope" => "touched", "blocking" => false } } } } }
+    store = Harness::State::RunStore.new(runs_dir: File.join(tmp, "runs"), run_id: "p1")
+    setup = Harness::Run.intake(config: Harness::Config.parse(raw), repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+    refute setup.worktree.dirty?, "the trial run's edit was undone"
+    assert_equal "export const a = 1;\n", File.read(File.join(setup.worktree.root, "src/lib/a.ts"))
+    assert(Harness::State::Events.read(store.events_path).any? { |e| e["subject"] == "trial runs" && e["kind"] == "retried" })
+  ensure
+    FileUtils.rm_rf(tmp) if tmp
+  end
+
   def test_a_failure_already_present_at_baseline_does_not_block
     cmp = B.compare(result("failed", [diag(*A, line: 9)]), result("failed", [diag(*A, line: 3)]))
     assert_equal "baseline_same", cmp.verdict
