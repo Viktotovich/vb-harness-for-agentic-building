@@ -95,6 +95,42 @@ class AgentToolboxTest < Minitest::Test
     assert_match(/error: no gate named lint/, plain(t.call("run_gate", { "name" => "lint" })))
   end
 
+  # An agent that may edit the checks' own configuration or existing tests could make failing gates pass without
+  # fixing anything. Outside the files the plan names, those writes are refused; inside them, they are allowed.
+  def test_check_configuration_and_existing_tests_are_off_limits_unless_planned
+    { "tsconfig.json" => "{}", "vitest.config.ts" => "export default {};", ".eslintrc.json" => "{}", "tests/price.test.ts" => "test" }.each do |rel, text|
+      FileUtils.mkdir_p(File.dirname(File.join(@root, rel)))
+      File.write(File.join(@root, rel), text)
+    end
+    t = box
+    %w[tsconfig.json vitest.config.ts .eslintrc.json package.json].each do |rel|
+      assert_match(/error: #{Regexp.escape(rel)} is check configuration/, plain(t.call("write_file", { "path" => rel, "content" => "{}" })), rel)
+    end
+    assert_match(/error: tests\/price\.test\.ts is an existing test/, plain(t.call("edit_file", { "path" => "tests/price.test.ts", "search" => "test", "replace" => "skip" })))
+    assert_match(/written/, plain(t.call("write_file", { "path" => "tests/new.test.ts", "content" => "test" })), "a new test is fine")
+    assert_equal "{}", File.read(File.join(@root, "tsconfig.json"))
+    planned = Harness::Agent::Toolbox.new(root: @root, protected: @stack.protected_paths, stack: @stack, settings: @config.agent,
+                                          runner: @runner, writable: true, planned: ["tsconfig.json"])
+    assert_match(/written/, plain(planned.call("write_file", { "path" => "tsconfig.json", "content" => "{\"strict\": true}" })), "the plan may name it")
+  end
+
+  def test_large_files_are_not_read_and_protected_names_are_not_listed
+    File.write(File.join(@root, "src/huge.txt"), "x" * (2 * 1024 * 1024 + 1))
+    t = box
+    assert_match(/error: src\/huge\.txt is 2048 KB; read_file opens files up to 2 MB/, plain(t.call("read_file", { "path" => "src/huge.txt" })))
+    refute_includes plain(t.call("list_dir", { "path" => "." })).lines.map(&:strip), ".env", "a protected file's name is not shown"
+  end
+
+  # A word parameter is not a way out of the worktree.
+  def test_word_parameters_cannot_name_places_outside_the_repository
+    t = box
+    ["/etc/passwd", "C:/Windows/win.ini", "~/secrets", "../outside", "a/../../b"].each do |w|
+      assert_match(/\Aerror: word: /, plain(t.call("run_command", { "name" => "echo", "params" => { "word" => w } })), w)
+    end
+    assert_match(/error: word: must not name a place outside the repository/, plain(t.call("run_command", { "name" => "echo", "params" => { "word" => "/etc/passwd" } })))
+    assert_match(/command:echo: passed/, plain(t.call("run_command", { "name" => "echo", "params" => { "word" => "price doubles" } })))
+  end
+
   def test_commands_are_validated_in_config
     base = { "profiles" => { "default" => { "baseUrl" => "http://127.0.0.1:9/v1" } } }
     err = assert_raises(Harness::ParseError) { Harness::Config.parse(base.merge("agent" => { "commands" => { "x" => { "argv" => ["{prog}"], "params" => { "prog" => "word" } } } })) }

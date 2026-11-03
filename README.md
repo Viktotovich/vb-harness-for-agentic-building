@@ -416,7 +416,9 @@ The safety rules do not change. Writes stay in the worktree and outside `protect
 untrusted; only gates mark a task done. The agent runs only the stack's gates and the commands you declare under
 `agent.commands`, by name: an argument written exactly as `{name}` is filled from a declared parameter, either
 `path` (an existing file in the repository) or `word` (letters, digits and `. _ : / @ -`, never starting with
-`-`). The model never writes a command line.
+`-`, and never an absolute path, drive letter or `..`). The model never writes a command line. Check configuration
+(`package.json`, `tsconfig*.json`, `*.config.*`, linter configs and the like) and tests that already exist can be
+changed only when the plan names them, so an agent cannot make a gate pass by weakening it.
 
 | Key | Default | What it does |
 | --- | --- | --- |

@@ -738,3 +738,13 @@ so no model ever writes a command line (I3). Commands run through `Gates::Runner
 start processes (I4), with the scrubbed environment (I5). Every tool result is fenced (I9). Models without native
 tool calls use a JSON protocol, one tool per reply, and are never offered tools. Older tool results are cut to one
 line when the conversation outgrows half the context, so long tasks still fit.
+
+## What an agent may not touch
+
+A review before merging agent mode found four ways its reach could be misused, all closed before it landed. A
+`word` parameter could name a file outside the worktree (`/etc/passwd`, `C:/...`, `..`) as a command argument:
+words may no longer start with `/` or `~`, name a drive, or contain `..`. An agent could make a failing gate pass by
+editing what the gate checks against (`tsconfig.json`, a test runner's config, `package.json`) or an existing test:
+outside the files the plan names, those writes are refused, so the gates keep judging the code rather than being
+adjusted to it (I7). `read_file` refuses files over 2 MB instead of loading them, and `list_dir` no longer shows the
+names of protected files.

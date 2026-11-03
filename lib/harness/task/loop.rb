@@ -141,7 +141,7 @@ module Harness
         emit("task.implement", "stage_started")
         toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
                                      settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
-                                     writable: true, tests: @task.test_paths)
+                                     writable: true, tests: @task.test_paths, planned: @task.writable)
         system = Prompts.render("agent_task_system", rules: agent_rules(settings), gates: @ctx.stack.gates.keys.join(", "),
                                                      notes: @ctx.stack.review_notes)
         user = Prompts.render("agent_task_user", task: task_text, request: request_text, done: @done)

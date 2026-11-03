@@ -8,6 +8,7 @@ require_relative "../errors"
 require_relative "../gates/gate"
 require_relative "../repo/atomic_file"
 require_relative "../repo/filters"
+require_relative "../plan/checks"
 require_relative "../repo/paths"
 require_relative "../task/edits"
 require_relative "../untrusted"
@@ -28,6 +29,17 @@ module Harness
       # read the file first and its result is checked by the same gates.
       REWRITE_MAX_BYTES = 64 * 1024
       PARAM_WORD = %r{\A[A-Za-z0-9_.:/@][A-Za-z0-9_.:/@ -]{0,119}\z}
+      # A word may not name a place outside the worktree: no absolute path, drive letter, home folder or "..".
+      PARAM_ESCAPE = %r{\A[/~]|\A[A-Za-z]:|(?:\A|/)\.\.(?:/|\z)}
+      # Files read_file opens whole; larger ones are refused rather than loaded.
+      READ_MAX_BYTES = 2 * 1024 * 1024
+      # The project's check configuration: an agent that may edit it could make a failing gate pass without fixing
+      # anything. Outside the files the plan names, it and existing tests are refused (see #guarded?).
+      CHECK_CONFIG = Regexp.union(
+        %r{(?:\A|/)package(?:-lock)?\.json\z}, %r{(?:\A|/)(?:ts|js)config[^/]*\.json\z},
+        %r{\.config\.[cm]?[jt]s\z}, %r{\.config\.json\z}, %r{(?:\A|/)\.(?:eslintrc|prettierrc|babelrc|stylelintrc)[^/]*\z},
+        %r{(?:\A|/)(?:pnpm-workspace\.yaml|\.npmrc|\.nvmrc|Makefile|Rakefile|Gemfile|pyproject\.toml|setup\.cfg|tox\.ini)\z}
+      )
 
       # Every tool call, for the record and the events.
       Call = Data.define(:tool, :args, :ok, :outcome)
@@ -48,7 +60,10 @@ module Harness
       # @param map [Repo::Map, nil] for find_symbol
       # @param writable [Boolean] false for the investigation agent
       # @param tests [Array<String>] the task's test files, for gates with {tests}
-      def initialize(root:, protected:, stack:, settings:, runner: nil, worktree: nil, map: nil, writable: false, tests: [])
+      # @param planned [Array<String>] the files the plan names for the task; only these may be check configuration
+      #   or existing tests
+      def initialize(root:, protected:, stack:, settings:, runner: nil, worktree: nil, map: nil, writable: false, tests: [],
+                     planned: [])
         @root = root
         @protected = protected
         @runner = runner
@@ -58,6 +73,11 @@ module Harness
         @map = map
         @writable = writable
         @tests = tests
+        @planned = planned.filter_map do |p|
+          Repo::Paths.normalize(p)
+        rescue PathError
+          nil
+        end
         @calls = []
         @touched = Set.new
         @created = Set.new
@@ -162,6 +182,10 @@ module Harness
         full = Repo::Paths.resolve_in_worktree(@root, path.to_s, protected: @protected)
         return "error: #{path} does not exist" unless File.file?(full)
 
+        if File.size(full) > READ_MAX_BYTES
+          return "error: #{path} is #{File.size(full) / 1024} KB; read_file opens files up to #{READ_MAX_BYTES / 1024 / 1024} MB"
+        end
+
         lines = File.binread(full).force_encoding(Encoding::UTF_8).scrub.lines
         from = [from.to_i, 1].max
         to = to.to_i.zero? ? from + READ_LINES - 1 : to.to_i
@@ -179,7 +203,10 @@ module Harness
         full = rel.empty? ? File.realpath(@root) : Repo::Paths.resolve_in_worktree(@root, rel, protected: @protected)
         return "error: #{path} is not a folder" unless File.directory?(full)
 
-        entries = Dir.children(full).sort.reject { |e| e == ".git" || generated?(rel.empty? ? e : "#{rel}/#{e}") }
+        entries = Dir.children(full).sort.reject do |e|
+          child = rel.empty? ? e : "#{rel}/#{e}"
+          e == ".git" || generated?(child) || Repo::Paths.protected?(child, @protected)
+        end
         lines = entries.first(LIST_ENTRIES).map { |e| File.directory?(File.join(full, e)) ? "#{e}/" : e }
         more = entries.size > LIST_ENTRIES ? "\n(#{entries.size - LIST_ENTRIES} more)" : ""
         "#{rel.empty? ? '.' : rel}:\n#{lines.join("\n")}#{more}"
@@ -277,6 +304,11 @@ module Harness
       # @return [String]
       def apply(edit, modify:)
         rel = Repo::Paths.normalize(edit.path)
+        if guarded?(rel)
+          return "error: #{rel} is #{CHECK_CONFIG.match?(rel) ? 'check configuration' : 'an existing test'}, which decides whether the " \
+                 "project's checks pass, and this task's plan does not name it. Fix the code instead; if the check itself is " \
+                 "wrong, say so in finish"
+        end
         if !@touched.include?(rel) && @touched.size >= @settings.max_files_per_task
           return "error: this task may change at most #{@settings.max_files_per_task} files (#{@touched.to_a.sort.join(', ')}); " \
                  "finish, and leave the rest to another task"
@@ -289,6 +321,14 @@ module Harness
         @touched.merge(result.written)
         @created.merge(result.created)
         result.written.empty? ? "#{rel}: no change" : "#{rel}: written (#{File.size(File.join(@root, rel))} bytes)"
+      end
+
+      # Check configuration, or a test that already exists, outside the files the plan names for the task.
+      # @return [Boolean]
+      def guarded?(rel)
+        return false if @planned.include?(rel)
+
+        CHECK_CONFIG.match?(rel) || (Plan::Checks::TEST_FILE.match?(rel) && File.exist?(File.join(@root, rel)))
       end
 
       def view_diff
@@ -345,6 +385,7 @@ module Harness
           rel.start_with?("-") ? "./#{rel}" : rel
         else
           raise ArgumentError, "#{key}: letters, digits and . _ : / @ - only, not starting with -" unless value.match?(PARAM_WORD)
+          raise ArgumentError, "#{key}: must not name a place outside the repository" if value.match?(PARAM_ESCAPE)
 
           value
         end
