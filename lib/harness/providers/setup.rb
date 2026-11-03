@@ -52,15 +52,17 @@ module Harness
       # @param path [String] config.json, which must exist
       # @param mode [String, nil] a Modes::ALL key; nil leaves the mode alone
       # @param second [String, nil, false] a profile name; nil for the implementer's own; false leaves it alone
+      # @param run_mode [String, nil] "pipeline" or "agent" (config "mode"); nil leaves it alone
       # @return [Hash] the written config
       # @raise [ParseError] for an unknown mode or profile
       # @raise [ConfigError] when there is no config yet
-      def self.update(path:, mode: nil, second: false)
+      def self.update(path:, mode: nil, second: false, run_mode: nil)
         raise ConfigError, "set up a model provider first (Settings)" unless File.file?(path)
 
         cfg = JSON.parse(File.read(path, encoding: "UTF-8"))
         Modes.apply(cfg, mode) if mode
         Modes.assign_second(cfg, second) unless second == false
+        cfg["mode"] = run_mode if run_mode
         write(path, cfg)
       end
 

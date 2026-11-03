@@ -16,12 +16,14 @@ module Harness
     # The "agent" block of config.json. max_steps: tool calls per task; max_rounds: how often the harness may
     # send a task back after its own gates or review found a problem; max_files_per_task: replaces
     # maxFilesPerTask in agent mode; investigate: explore the repository before planning, within
-    # max_investigate_steps.
-    Settings = Data.define(:max_steps, :max_rounds, :max_files_per_task, :investigate, :max_investigate_steps, :commands)
+    # max_investigate_steps; ask_timeout_sec: how long a task agent's question waits for the user's answer (0: the
+    # agent cannot ask).
+    Settings = Data.define(:max_steps, :max_rounds, :max_files_per_task, :investigate, :max_investigate_steps, :commands,
+                           :ask_timeout_sec)
 
     # Parsing for Settings.
     class Settings
-      KEYS = %w[maxSteps maxRounds maxFilesPerTask investigate maxInvestigateSteps commands].freeze
+      KEYS = %w[maxSteps maxRounds maxFilesPerTask investigate maxInvestigateSteps commands askTimeoutSec].freeze
       COMMAND_KEYS = %w[argv description params timeoutSec].freeze
       PARAM_KINDS = %w[path word].freeze
       NAME = /\A[a-z][a-z0-9_]{0,39}\z/
@@ -40,7 +42,8 @@ module Harness
             max_files_per_task: Parse.int!(h.fetch("maxFilesPerTask", 12), "agent.maxFilesPerTask", min: 1),
             investigate: Parse.bool!(h.fetch("investigate", true), "agent.investigate"),
             max_investigate_steps: Parse.int!(h.fetch("maxInvestigateSteps", 30), "agent.maxInvestigateSteps", min: 1),
-            commands: Parse.hash!(h.fetch("commands", {}), "agent.commands").to_h { |name, c| [name, command(name, c)] }.freeze)
+            commands: Parse.hash!(h.fetch("commands", {}), "agent.commands").to_h { |name, c| [name, command(name, c)] }.freeze,
+            ask_timeout_sec: Parse.int!(h.fetch("askTimeoutSec", 900), "agent.askTimeoutSec", min: 0))
       end
 
       # @return [Command]

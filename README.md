@@ -158,6 +158,7 @@ ruby exe/harness run --repo /path/to/repo --request request.md
 ruby exe/harness status                                 # the newest run: tasks, current step, rejections
 ruby exe/harness status RUN_ID --watch                  # refresh every second until it stops
 ruby exe/harness answer RUN_ID                          # answer the planner's blocking questions
+ruby exe/harness steer RUN_ID "a note"                  # steer a running agent-mode run, or answer its question
 ruby exe/harness resume RUN_ID                          # continue after a stop, a crash or new answers
 ruby exe/harness report RUN_ID                          # (re)write runs/RUN_ID/report.md and print its path
 ```
@@ -428,6 +429,14 @@ changed only when the plan names them, so an agent cannot make a gate pass by we
 | `agent.investigate` | `true` | Explore the repository before planning. |
 | `agent.maxInvestigateSteps` | 30 | Tool calls for that exploration. |
 | `agent.commands` | `{}` | Named commands the agent may run, as above. |
+| `agent.askTimeoutSec` | 900 | How long an agent's question waits for your answer; 0 means it cannot ask. |
+
+**Steering a running agent.** While an agent-mode run works, `harness steer RUN_ID "use the existing Button
+component"` (or the note box on its card in the app) sends it a note, which the agent reads before its next step,
+as your words. An agent can also ask you a question with `ask_user` when the task is ambiguous: the question shows
+on the card, in the events and in `run.json`, and your next note is the answer. If none comes within
+`agent.askTimeoutSec`, the agent decides for itself and says in its summary what it assumed. In the app, Settings
+switches the way of working between Pipeline and Agent, and an agent-mode card's details list each agent's steps.
 
 Agent mode makes many more model calls than the pipeline; with a local model, expect a task to take several
 times longer. Models without native tool calls use a JSON reply protocol, one tool per reply.

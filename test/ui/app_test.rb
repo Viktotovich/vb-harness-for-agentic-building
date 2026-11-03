@@ -316,6 +316,26 @@ data: [DONE]
     assert_empty Dir.glob(File.join(@home, "runs", "*")), "nor their runs"
   end
 
+  # Agent mode in the app: Settings switches the way of working, and a note reaches a run's notes.jsonl.
+  def test_settings_switch_to_agent_mode_and_notes_reach_a_run
+    @model = Fake.new(models: [{ "id" => "m" }])
+    start(config: { "profiles" => { "default" => { "baseUrl" => @model.base_url } } })
+    assert_equal "pipeline", get("/api/settings").json["runMode"]
+    assert_equal "agent", post("/api/settings", { "runMode" => "agent" }).json["runMode"]
+    assert_equal "agent", JSON.parse(File.read(File.join(@home, "config.json")))["mode"]
+    assert_equal 400, post("/api/settings", { "runMode" => "yolo" }).status, "the config rejects an unknown way of working"
+    assert_equal "agent", JSON.parse(File.read(File.join(@home, "config.json")))["mode"], "and nothing is written"
+
+    run = "r20261103-120000-abcd"
+    s = Harness::State::RunStore.new(runs_dir: File.join(@home, "runs"), run_id: run)
+    s.write_run({ "status" => "running", "mode" => "agent" })
+    assert_equal({ "note" => 1 }, post("/api/runs/#{run}/note", { "text" => "Use the existing Button component." }).json)
+    assert_equal ["Use the existing Button component."], Harness::State::Notes.new(s.dir).read.map { |n| n["text"] }
+    assert_equal 400, post("/api/runs/#{run}/note", { "text" => " " }).status
+    assert_equal 403, C.request(@port, "POST", "/api/runs/#{run}/note", body: { "text" => "x" }).status, "notes need the token (I15)"
+    assert_equal 404, post("/api/runs/r20261103-120000-ffff/note", { "text" => "x" }).status
+  end
+
   # Check setup: harness doctor in the app, for the config and a picked project.
   def test_check_setup_runs_the_doctor
     @model = Fake.new(models: [{ "id" => "m" }])

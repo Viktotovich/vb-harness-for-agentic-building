@@ -62,8 +62,9 @@ module Harness
       # @param tests [Array<String>] the task's test files, for gates with {tests}
       # @param planned [Array<String>] the files the plan names for the task; only these may be check configuration
       #   or existing tests
+      # @param ask [#call, nil] (question) -> answer text, for ask_user; nil offers no such tool
       def initialize(root:, protected:, stack:, settings:, runner: nil, worktree: nil, map: nil, writable: false, tests: [],
-                     planned: [])
+                     planned: [], ask: nil)
         @root = root
         @protected = protected
         @runner = runner
@@ -78,6 +79,7 @@ module Harness
         rescue PathError
           nil
         end
+        @ask = ask
         @calls = []
         @touched = Set.new
         @created = Set.new
@@ -111,6 +113,10 @@ module Harness
             defs << tool("run_command", "Run a command the project allows: #{listing}. Give its name and its parameters.",
                          { "name" => str, "params" => { "type" => "object" } }, %w[name])
           end
+        end
+        if @ask
+          defs << tool("ask_user", "Ask the user one short question when the task is ambiguous and the code cannot tell you the " \
+                                   "answer. Their answer comes back as the result; it may take minutes.", { "question" => str }, %w[question])
         end
         defs << tool("finish", @writable ? "Say you are done, with a short summary of what you changed and why. The harness then runs " \
                                            "the project's checks itself." : "Hand in your findings.",
@@ -157,6 +163,11 @@ module Harness
         when "view_diff" then writable { view_diff }
         when "run_gate" then run_gate(args["name"])
         when "run_command" then run_command(args["name"], args["params"])
+        when "ask_user"
+          return "error: there is no one to ask in this run" unless @ask
+          return "error: give the question" if args["question"].to_s.strip.empty?
+
+          @ask.call(args["question"].to_s.strip[0, 600])
         when "finish"
           @finished = args["summary"].to_s.strip.empty? ? "(no summary)" : args["summary"].to_s[0, 4000]
           "finished"

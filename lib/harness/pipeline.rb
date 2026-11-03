@@ -68,7 +68,7 @@ module Harness
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
-        store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review })
+        store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
         next dry_run_result(store, setup, request, plan_hash) if dry_run
 
         red = Array(store.read_run["baselineFailing"])
@@ -162,7 +162,7 @@ module Harness
     # @return [void]
     def identity_changed(store, setup, warnings)
       warnings.each { |w| setup.events.emit(stage: "intake", kind: "accepted", subject: "identity", detail: w[0, 300]) }
-      store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review })
+      store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
     end
 
     # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red.

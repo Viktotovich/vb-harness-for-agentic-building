@@ -145,6 +145,11 @@ details.thinking div { white-space: pre-wrap; padding: 6px 0 0 12px; border-left
 .reasons tr.reason:hover { background: var(--surface-hover); }
 .reason-items td { color: var(--text-muted); white-space: pre-wrap; }
 .question { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: var(--radius); }
+.question .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.question input { flex: 1 1 240px; min-width: 0; }
+.agent-steps { margin-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.agent-steps-head { font-weight: 600; margin-top: 6px; }
+.agent-step { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); overflow-wrap: anywhere; }
 .report { white-space: normal; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
 .table-wrap { overflow-x: auto; margin: 8px 0; max-width: 100%; }
 .table-wrap table { border-collapse: collapse; font-size: 13px; }
