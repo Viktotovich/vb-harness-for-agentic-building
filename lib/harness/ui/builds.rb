@@ -7,6 +7,7 @@ require_relative "../errors"
 require_relative "../report/render"
 require_relative "../state/events"
 require_relative "../state/reasons"
+require_relative "../state/notes"
 require_relative "../state/run_store"
 
 module Harness
@@ -77,6 +78,15 @@ module Harness
         end
       end
 
+      # A note to a running agent-mode run (State::Notes): steering, or the answer to the agent's question.
+      # @param id [String]
+      # @param text [String]
+      # @return [Integer] the note's number
+      # @raise [ConfigError, ParseError]
+      def note(id, text)
+        State::Notes.new(store(id).dir).add(text.to_s)
+      end
+
       # @param id [String]
       # @return [String] report.md
       # @raise [ConfigError]
@@ -96,8 +106,7 @@ module Harness
         store = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
         seq = after
         status = nil
-        shown = nil
-        stopping = false
+        sent = nil
         idle = 0.0
         until sse.closed?
           fresh = State::Events.read(store.events_path, after: seq)
@@ -109,11 +118,12 @@ module Harness
           plan = tasks(store)
           job = @mutex.synchronize { @jobs[id] }
           asked = job ? @mutex.synchronize { job[:stop] } : false
-          if run["status"] != status || plan != shown || asked != stopping
+          # agentQuestion and mode: an agent-mode run's pending question, and whether notes can steer it.
+          view = run.slice("status", "questions", "exitCode", "branch", "agentQuestion", "mode").merge("tasks" => plan, "stopping" => asked)
+          if view != sent
             status = run["status"]
-            shown = plan
-            stopping = asked
-            sse.event("run", run.slice("status", "questions", "exitCode", "branch").merge("tasks" => plan, "stopping" => asked))
+            sent = view
+            sse.event("run", view)
           end
           sse.event("failed", { "error" => job[:error] }) if job && job[:error] && !job[:reported] && (job[:reported] = true)
           running = job && job[:thread].alive?

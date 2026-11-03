@@ -41,12 +41,15 @@ module Harness
       # @param label [String] step name for records, e.g. "T1.agent"
       # @param on_step [#call, nil] (kind, detail_hash) -> void, for events: :turn after each model reply, :tool after
       #   each tool call
-      def initialize(client:, role:, system:, toolbox:, label:, on_step: nil)
+      # @param inbox [#call, nil] -> Array<String>, the user's notes that arrived since the last call; added to the
+      #   next prompt as the user's words
+      def initialize(client:, role:, system:, toolbox:, label:, on_step: nil, inbox: nil)
         @client = client
         @role = role
         @toolbox = toolbox
         @label = label
         @on_step = on_step || ->(*) {}
+        @inbox = inbox || -> { [] }
         @native = client.capabilities(role).tool_calls == "native"
         @system = @native ? system : "#{system}\n\n#{EMULATED}#{listing}"
         @history = []
@@ -109,6 +112,11 @@ module Harness
       def turn(prompt, budget)
         return { exhausted: true, text: "" } if @steps >= budget
 
+        notes = @inbox.call
+        unless notes.empty?
+          prompt = "#{prompt}\n\nNotes from the user while you work. They come from the user, not from files: follow them.\n" +
+                   notes.map { |n| "- #{n}" }.join("\n")
+        end
         trim!
         @turns += 1
         if @native

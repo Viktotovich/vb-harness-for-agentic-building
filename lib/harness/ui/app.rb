@@ -78,6 +78,7 @@ module Harness
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
         ["GET", %r{\A/api/runs/([\w-]+)/events\z}, :run_events], ["GET", %r{\A/api/runs/([\w-]+)/report\z}, :run_report],
         ["POST", %r{\A/api/runs/([\w-]+)/answer\z}, :run_answer], ["POST", %r{\A/api/runs/([\w-]+)/stop\z}, :run_stop],
+        ["POST", %r{\A/api/runs/([\w-]+)/note\z}, :run_note],
         ["GET", %r{\A/api/providers\z}, :providers], ["GET", %r{\A/api/settings\z}, :settings],
         ["POST", %r{\A/api/settings\z}, :settings_post], ["GET", %r{\A/api/doctor\z}, :doctor],
         ["POST", %r{\A/api/demo\z}, :demo],
@@ -118,6 +119,7 @@ module Harness
           builds_for(args[0]).answer(args[0], body(req)["answers"])
           Response.json({ "ok" => true })
         when :run_stop then Response.json({ "stopping" => builds_for(args[0]).stop(args[0]) })
+        when :run_note then Response.json({ "note" => builds_for(args[0]).note(args[0], body(req)["text"]) })
         when :demo then demo(body(req))
         when :providers then Response.json(Providers::Detect.local(http: @http, env: @env, clis: @clis, urls: @urls).map(&:to_json_hash))
         when :provider_post then provider_post(args[0], body(req))
@@ -269,7 +271,7 @@ module Harness
         { "configured" => true, "mode" => Modes.current(cfg), "review" => cfg.fetch("review", "full"),
           "modes" => Modes::ALL.map { |id, (label, text, _)| { "id" => id, "label" => label, "text" => text } },
           "first" => cfg.fetch("roles", {}).fetch("implementer", "default"), "second" => Modes.second(cfg),
-          "secondRoles" => Modes::SECOND_ROLES,
+          "secondRoles" => Modes::SECOND_ROLES, "runMode" => cfg.fetch("mode", "pipeline"),
           "profiles" => cfg.fetch("profiles", {}).map { |name, p| { "profile" => name, "model" => p["model"], "baseUrl" => p["baseUrl"] } } }
       end
 
@@ -302,12 +304,13 @@ module Harness
         { "ready" => Doctor.ready?(checks), "project" => repo && name, "checks" => checks.map(&:to_json_hash) }
       end
 
-      # {"mode": "quick"} and/or {"second": "profile"} ({"second": null} for the implementer's own model).
+      # {"mode": "quick"}, {"second": "profile"} ({"second": null} for the implementer's own model) and/or
+      # {"runMode": "agent"}; Config.parse rejects anything else.
       # @return [Response]
       def settings_post(data)
         mode = data["mode"]&.to_s
         second = data.key?("second") ? data["second"]&.to_s&.then { |v| v.empty? ? nil : v } : false
-        Providers::Setup.update(path: @config_path, mode: mode, second: second)
+        Providers::Setup.update(path: @config_path, mode: mode, second: second, run_mode: data["runMode"]&.to_s)
         load_config
         Response.json(settings)
       end

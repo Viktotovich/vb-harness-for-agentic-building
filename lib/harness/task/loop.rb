@@ -11,6 +11,7 @@ require_relative "../model/tokens"
 require_relative "../prompts"
 require_relative "../repo/paths"
 require_relative "../untrusted"
+require_relative "../agent/mailbox"
 require_relative "../agent/session"
 require_relative "edits"
 require_relative "gather"
@@ -139,14 +140,15 @@ module Harness
         settings = @ctx.config.agent
         step("implementing")
         emit("task.implement", "stage_started")
+        mailbox = Agent::Mailbox.new(store: @ctx.store, events: @ctx.events, task_id: @task.id, timeout: settings.ask_timeout_sec)
         toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
                                      settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
-                                     writable: true, tests: @task.test_paths, planned: @task.writable)
+                                     writable: true, tests: @task.test_paths, planned: @task.writable, ask: mailbox.asker)
         system = Prompts.render("agent_task_system", rules: agent_rules(settings), gates: @ctx.stack.gates.keys.join(", "),
                                                      notes: @ctx.stack.review_notes)
         user = Prompts.render("agent_task_user", task: task_text, request: request_text, done: @done)
         session = Agent::Session.new(client: @ctx.client, role: :implementer, system: system, toolbox: toolbox,
-                                     label: "#{@task.id}.agent", on_step: agent_events(toolbox))
+                                     label: "#{@task.id}.agent", on_step: agent_events(toolbox), inbox: mailbox.inbox)
         result = agent_stretch(session, toolbox) { session.run(user, max_steps: settings.max_steps) }
         loop do
           failing = run_gates

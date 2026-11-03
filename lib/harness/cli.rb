@@ -9,6 +9,7 @@ require_relative "cli/doctor_command"
 require_relative "cli/eval_command"
 require_relative "cli/init"
 require_relative "cli/inspect"
+require_relative "cli/steer_command"
 require_relative "cli/ui_command"
 
 module Harness
@@ -24,6 +25,7 @@ module Harness
       "status" => "where a run is: tasks, current step, rejections",
       "answer" => "answer a run's blocking questions",
       "resume" => "continue a stopped run",
+      "steer" => "send a note to a running agent-mode run",
       "report" => "write a run's report.md",
       "eval" => "run the evaluation tasks"
     }.freeze
@@ -58,6 +60,7 @@ module Harness
       when "status", "report" then Inspect.call(name, args, out: out, err: err)
       when "eval" then EvalCommand.call(args, out: out, err: err, env: env)
       when "init" then init(args, out: out, err: err, env: env, input: input)
+      when "steer" then SteerCommand.call(args, out: out, err: err)
       when "doctor" then DoctorCommand.call(args, out: out, err: err, env: env)
       when "demo" then DemoCommand.call(args, out: out, err: err, env: env)
       when "ui" then UICommand.call(args, out: out, err: err, env: env)

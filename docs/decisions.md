@@ -748,3 +748,15 @@ editing what the gate checks against (`tsconfig.json`, a test runner's config, `
 outside the files the plan names, those writes are refused, so the gates keep judging the code rather than being
 adjusted to it (I7). `read_file` refuses files over 2 MB instead of loading them, and `list_dir` no longer shows the
 names of protected files.
+
+## Steering an agent while it works
+
+An agent works for many steps, and a pipeline-style "answer the planner, then wait" cannot steer that. Notes go
+to `runs/<id>/notes.jsonl`, written by `harness steer` (from another terminal) or the app's note box, and the
+session adds new ones to the agent's next prompt as the user's words: they are the user's, so they are not fenced
+as untrusted. Which notes the agent has seen is kept in `run.json` (`notesRead`), so each reaches it once, across
+tasks and after a resume. With `ask_user` the agent can ask one question when the task is ambiguous; the run keeps
+going in place (no new run status, so resume and answer are unchanged), shows the question in `run.json`
+(`agentQuestion`), the events and the app, and takes the next note as the answer. Without one within
+`agent.askTimeoutSec`, the agent is told to decide and say what it assumed, so an unattended run never hangs. The
+app also gets a Pipeline / Agent switch in Settings and lists each agent's steps in a card's details.

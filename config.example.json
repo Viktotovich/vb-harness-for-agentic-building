@@ -78,6 +78,7 @@
     "maxFilesPerTask": 12,
     "investigate": true,
     "maxInvestigateSteps": 30,
+    "askTimeoutSec": 900,
     "commands": {
       "run_test_file": {
         "description": "run one test file with vitest",
