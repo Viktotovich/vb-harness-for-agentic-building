@@ -28,12 +28,15 @@ module Harness
         text = text.to_s.strip
         raise ParseError, "the note is empty" if text.empty?
 
-        seq = read.size + 1
-        File.open(@path, "a", encoding: "UTF-8") do |f|
+        # Numbered under the lock, so two notes sent at once (the app and harness steer) never share a number.
+        File.open(@path, "a+", encoding: "UTF-8") do |f|
           f.flock(File::LOCK_EX)
+          f.rewind
+          seq = f.each_line.count + 1
+          f.seek(0, IO::SEEK_END)
           f.puts(JSON.generate({ "seq" => seq, "at" => clock.call.utc.iso8601, "text" => text[0, MAX_CHARS] }))
+          seq
         end
-        seq
       end
 
       # @param after [Integer] notes with a higher number only

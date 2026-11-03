@@ -55,6 +55,10 @@ class AgentSteeringTest < Minitest::Test
     assert_match(/\ANo answer came within 2 seconds\. Decide yourself/, quiet.ask("Anything?"))
     assert_nil Harness::Agent::Mailbox.new(store: s, events: events(s), task_id: "T1", timeout: 0).asker, "askTimeoutSec 0 turns asking off"
     assert_raises(Harness::ParseError) { notes.add("   ") }
+
+    many = Harness::State::Notes.new(File.join(@tmp, "many")).tap { FileUtils.mkdir_p(File.join(@tmp, "many")) }
+    8.times.map { |i| Thread.new { many.add("note #{i}") } }.each(&:join)
+    assert_equal (1..8).to_a, many.read.map { |n| n["seq"] }.sort, "notes sent at once never share a number"
   end
 
   def call(name, args, id = "c1")
