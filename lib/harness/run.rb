@@ -72,7 +72,7 @@ module Harness
         events.emit(stage: "intake", kind: "accepted", subject: dir, detail: "#{m.files} files linked into the worktree#{skipped}"[0, 300])
       end
       runner = Gates::Runner.new(root: worktree.root, env: env, max_output: config.limits.max_gate_output_bytes)
-      baseline = Gates::Baseline.run(runner, stack.gates)
+      baseline = Gates::Baseline.run(runner, stack.gates).merge(Gates::Baseline.probe_touched(runner, stack.gates, root: worktree.root))
       Gates::Baseline.save(store.baseline_path, baseline)
       baseline.each_value do |r|
         next unless r.status == "skipped"

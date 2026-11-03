@@ -515,6 +515,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | Not sure what is wrong | `harness doctor --repo PATH` checks Ruby, git, the config, each model server and the repository in one pass, and says what to do for each problem. |
 | "the repository has uncommitted changes" | Commit or stash first. Runs always start from a clean `HEAD`. |
 | "node_modules is missing … the project's dependencies are not installed" | Run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. The harness never installs anything itself. |
+| A gate is **skipped**: "the tool has no configuration in this project" | The tool is installed but its config file is missing (for example ESLint 9+ without `eslint.config.js`). Add the config to your project, or remove the gate from `alwaysGates`. Intake finds this before planning, so tasks are not blocked by it. |
 | A gate is **skipped**: "tool not installed" | Install the project's dependencies in your repository (`npm install`), and keep `node_modules` in `dependencyDirs`. |
 | "model server unavailable" | Check the server is running and `baseUrl` ends in `/v1`. `curl <baseUrl>/models` should list a model. |
 | Tasks blocked with "plan too large for context" | Use a model with a larger context, or ask for a smaller change. |

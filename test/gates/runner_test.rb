@@ -97,6 +97,10 @@ class RunnerTest < Minitest::Test
     parser = @runner.run(ruby_gate("warn '[error] No parser could be inferred for file \"src/a.astro\".'; exit 2"))
     assert_equal "skipped", parser.status
     assert_match(/\Athe tool cannot check these files: \[error\] No parser could be inferred/, parser.reason)
+    # ESLint 9+ in a project without an eslint.config.* file (an eval run counted this as a lint failure).
+    unconfigured = @runner.run(ruby_gate("warn %{Oops! Something went wrong! :(\\n\\nESLint couldn't find an eslint.config.(js|mjs|cjs) file.}; exit 2"))
+    assert_equal "skipped", unconfigured.status, "a tool without its configuration could not run; it did not fail"
+    assert_match(/\Athe tool has no configuration in this project: ESLint couldn't find an eslint\.config/, unconfigured.reason)
   end
 
   def test_placeholders_expand_to_separate_arguments
