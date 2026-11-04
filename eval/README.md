@@ -36,6 +36,10 @@ ruby eval/run_eval.rb --config config.json --profile-map eval/profile-map.exampl
 Options: `--tasks 'eval/tasks/0[1-3]*'` picks tasks, `--keep` keeps the worktrees, `--json` prints the scores as
 JSON. Runs go to `eval-out/<mapping>/runs/` next to the config; open `report.md` in a run for details.
 
+Nobody watches an eval run, so a planner's blocking question gets a fixed reply telling it to decide for itself, up
+to two rounds. The Note column shows when that happened. In agent mode, set `agent.askTimeoutSec` low so `ask_user`
+doesn't sit out its full wait.
+
 ## Metrics
 
 | Column | Meaning |

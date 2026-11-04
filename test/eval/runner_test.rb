@@ -85,6 +85,22 @@ class EvalRunnerTest < Minitest::Test
     assert_match(/repo\.ref pins 0000000000/, scores[1]["note"])
   end
 
+  # An eval run stopped on the planner's question and scored as unsolved; nobody is there to answer one.
+  def test_a_blocking_question_gets_the_standard_reply_and_the_run_goes_on
+    asks = [{ "text" => "Which currency?", "blocking" => true }]
+    server = F.server({ "plan" => [F.plan_reply([TASK], questions: asks), F.plan_reply([TASK])],
+                        "T1 implement" => F.replace(PRICE, "  return n;", "  return n * 2;") })
+    File.write(File.join(@tmp, "config.json"), JSON.generate(RR.raw_config(server.base_url)))
+    FileUtils.rm_rf(File.join(@tasks, "02-pinned"))
+    code, out, err = eval_cli
+    assert_equal 0, code, err
+    assert_match(/^\| 01-double \| yes \| .* \| questions answered for it: 1 \|$/, out)
+    run = Dir.glob(File.join(@tmp, "eval-out", "config", "runs", "*", "run.json")).then { |f| JSON.parse(File.read(f.first)) }
+    assert_equal [["Which currency?", Harness::Eval::Runner::NO_ONE_TO_ASK]], run["answers"]
+  ensure
+    server&.stop
+  end
+
   def test_remote_refs_and_unset_variables_are_refused
     File.write(File.join(@tasks, "01-double", "repo.ref"), "https://example.com/repo.git\nHEAD\n")
     code, _out, err = eval_cli
