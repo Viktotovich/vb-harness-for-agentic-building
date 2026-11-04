@@ -112,6 +112,7 @@ module Harness
         @fix_rounds = 0
         @touched = Set.new
         @created = Set.new
+        @fix_failure = nil
         @last_gates = []
       end
 
@@ -282,6 +283,10 @@ module Harness
 
         kept = edit_set.all - result.rejections.map(&:edit)
         retry_set = ask(role, "task.apply", retry_messages(messages, edit_set, result), "apply_retry")
+        # A model may resend a whole file that was not refused; its newer copy wins, or the file is created twice
+        # in one apply and that refuses it (an eval run lost a task to this on its first attempt).
+        resent = retry_set.all.select { |e| e.op == "create" }.map(&:path)
+        kept = kept.reject { |e| e.op == "create" && resent.include?(e.path) }
         merged = EditSet.new(edits: kept + retry_set.edits, tests: retry_set.tests, notes: retry_set.notes)
         second = apply_once(merged)
         raise Blocked.new(second.rejections.first.reason, rejection_text(second.rejections)) unless second.ok?
@@ -358,8 +363,24 @@ module Harness
             raise Blocked.new("fix.rounds_exhausted", "still failing after #{@fix_rounds} fix rounds")
           end
           previous = key
-          fix(diagnostics)
+          previous = nil unless fix_applied?(diagnostics)
         end
+      end
+
+      # A fix reply that could not be used costs its round, not the task: eval runs lost tasks with fix rounds left
+      # to one reply that ran out of room and to one edit that matched nothing. Nothing was written, so the gates
+      # give the same result, and the next round is told why this one failed. The round limit still ends the task.
+      # @return [Boolean] false when nothing from this round was applied
+      # @raise [Blocked] for anything other than an unusable reply
+      def fix_applied?(diagnostics)
+        fix(diagnostics)
+        @fix_failure = nil
+        true
+      rescue Blocked => e
+        raise unless e.reason.start_with?("model.", "edit.")
+
+        @fix_failure = e.message
+        false
       end
 
       # @return [Array<Array(Gates::Gate, Gates::Baseline::Comparison)>] blocking gates that are not ok
@@ -451,7 +472,9 @@ module Harness
         diff = Untrusted.fence(@ctx.worktree.patch)
         request = request_text
         bundle = gather(system, reserved: [shown, diff, request].compact)
-        user = Prompts.render("fix_user", task: task_text, request: request, diagnostics: shown, diff: diff, sections: bundle.sections)
+        failed = @fix_failure && Untrusted.fence(@fix_failure)
+        user = Prompts.render("fix_user", task: task_text, request: request, diagnostics: shown, diff: diff, failed: failed,
+                                          sections: bundle.sections)
         messages = Model::Messages.new(system: system, user: user)
         apply(ask(:fixer, "task.fix", messages, "fix#{@fix_rounds}"), :fixer, messages)
       end

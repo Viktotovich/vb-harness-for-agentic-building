@@ -246,6 +246,40 @@ class LoopE2ETest < Minitest::Test
     assert_includes retry_user, "matched 0 times"
   end
 
+  # An eval run: the retry resent a whole file that had not been refused, the file was created twice in one apply,
+  # and the task was blocked on its first attempt.
+  def test_a_retry_that_resends_a_kept_file_replaces_it
+    vat = "src/lib/vat.ts"
+    task = F.task("T1", "Add the VAT rate", modify: [])
+    task["files"]["create"] = [vat]
+    create = ->(path, text) { { "op" => "create", "path" => path, "content" => text } }
+    first = TestSupport::FakeLlmServer.ok(JSON.generate({ "edits" => [create.call(vat, "export const vat = 1;\n"), create.call("src/lib/other.ts", "x\n")], "notes" => "edit" }))
+    again = TestSupport::FakeLlmServer.ok(JSON.generate({ "edits" => [create.call(vat, "export const vat = 2;\n")], "notes" => "edit" }))
+    run_plan([task], { "T1 implement" => first, "T1 retry" => again })
+    assert_equal "done", @result.outcome.tasks.first.status
+    assert_equal "export const vat = 2;\n", wt(vat), "the newer copy wins"
+  end
+
+  # Eval runs lost tasks with fix rounds left to one edit that matched nothing and to one reply that ran out of room.
+  def test_a_fix_that_cannot_be_applied_costs_its_round_and_the_next_round_is_told_why
+    broken = F.replace(PRICE, "  return n;", "  return n * 2; // BROKEN")
+    wrong = F.replace(PRICE, "not in the file", "x")
+    run_plan([F.task("T1", "Double the price", modify: [PRICE])],
+             { "T1 implement" => broken, "T1 fix" => [wrong, F.replace(PRICE, "  return n * 2; // BROKEN", "  return n * 2;")], "T1 retry" => wrong })
+    t1 = @result.outcome.tasks.first
+    assert_equal ["done", 2], [t1.status, t1.fix_rounds]
+    second = @result.server.chat_bodies.map { |b| b["messages"].last["content"] }.grep(/could not be used/).first
+    assert_match(/could not be used, and nothing from it was applied:\n<untrusted-data id="\h+">\n- replace src\/lib\/price\.ts: search text matched 0 times/, second)
+  end
+
+  def test_unusable_fix_replies_end_at_the_round_limit
+    broken = F.replace(PRICE, "  return n;", "  return n * 2; // BROKEN")
+    run_plan([F.task("T1", "Double the price", modify: [PRICE])],
+             { "T1 implement" => broken, "T1 fix" => TestSupport::FakeLlmServer.ok("I would edit price.ts") })
+    t1 = @result.outcome.tasks.first
+    assert_equal ["blocked", "fix.rounds_exhausted", 3], [t1.status, t1.reason, t1.fix_rounds]
+  end
+
   def test_an_edit_outside_the_task_files_blocks_after_the_retry
     run_plan([F.task("T1", "Double the price", modify: [PRICE])],
              { "T1 implement" => F.replace(TAX, "0.2", "0.3"), "T1 retry" => F.replace(TAX, "0.2", "0.3") })
