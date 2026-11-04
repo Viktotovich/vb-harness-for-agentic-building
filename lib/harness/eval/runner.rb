@@ -27,6 +27,11 @@ module Harness
     # Runs the eval tasks under each profile mapping and scores them from the run's own files. Hidden tests are
     # copied into the worktree only after the run finishes, and run with the stack's test gate.
     class Runner
+      # Nobody watches an eval run, so a planner's blocking question gets this reply instead of ending the task
+      # unsolved (an eval run stopped on 01-badge that way). It adds no information: the plan is still the model's.
+      NO_ONE_TO_ASK = "Nobody can answer during this evaluation. Choose the option that best fits the request and the repository, and continue."
+      MAX_ANSWER_ROUNDS = 2
+
       # @param raw_config [Hash] the base config as JSON, which mappings override
       # @param env [Hash{String=>String}]
       # @param out_dir [String] where each mapping's runs go
@@ -118,14 +123,27 @@ module Harness
       def score(mapping, config, task)
         check_commit!(config, task)
         home = File.join(@out, mapping)
-        result = @pipeline_for.call(config, home).start(repo: task.repo, request: task.request)
+        pipeline = @pipeline_for.call(config, home)
+        result, rounds = answered(pipeline, pipeline.start(repo: task.repo, request: task.request))
         store = State::RunStore.new(runs_dir: File.join(home, "runs"), run_id: result.run_id)
         run = store.read_run
         solved, note = hidden_tests(config, task, run)
-        finish(mapping, task, store, result, solved, note)
+        finish(mapping, task, store, result, solved, [note, rounds.positive? ? "questions answered for it: #{rounds}" : nil].compact.reject(&:empty?).join("; "))
       rescue ConfigError, GitError, ParseError, ModelUnavailableError, ModelOutputError, ContextOverflowError => e
         Score.new(task: task.id, mapping: mapping, status: "error", solved: false, no_fix: false, regressions: 0, findings: 0,
                   claims: 0, fix_rounds: 0, tokens: 0, ms: 0, roles: {}, note: e.message.gsub(/\s+/, " ")[0, 120].gsub("|", "/"))
+      end
+
+      # @param pipeline [Pipeline]
+      # @param result [Pipeline::Result] what starting the run returned
+      # @return [Array(Pipeline::Result, Integer)] the last result, and how many rounds of questions were answered
+      def answered(pipeline, result)
+        rounds = 0
+        while result.status == "waiting" && rounds < MAX_ANSWER_ROUNDS
+          result = pipeline.answer(result.run_id, result.questions.map { NO_ONE_TO_ASK })
+          rounds += 1
+        end
+        [result, rounds]
       end
 
       # @return [void]
