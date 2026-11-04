@@ -6,6 +6,11 @@ The task, as planned:
 The checks reported these problems:
 <%= diagnostics %>
 
+<% if failed -%>
+Your last fix could not be used, and nothing from it was applied:
+<%= failed %>
+
+<% end -%>
 The change so far (a diff against the last commit):
 <%= diff %>
 

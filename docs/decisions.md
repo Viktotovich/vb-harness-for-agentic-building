@@ -773,3 +773,18 @@ recorded in the baseline like any skipped gate, so the planner is told, the plan
 that does not name it is not blocked by it. A trial that passes or finds problems is not recorded. A gate configured
 to change files (a formatter with `--write`) would edit the trial's file, so intake undoes any change the trials
 made before a task starts.
+
+## A fix reply that cannot be used costs its round, not the task
+
+An eval rerun on a local model failed five of ten tasks, and the logs showed two of those ending for reasons that
+had nothing to do with the code being wrong. A task with fix rounds left was blocked by one reply that ran out of
+room, and another by one edit whose search text matched nothing. An unusable fix reply now uses up its round: nothing
+was written, the gates give the same result, and the next round is told why the last one failed. The round limit
+still ends the task. An implement reply that cannot be used still blocks, because there is no failing check to
+fix yet. A third task was lost to the apply retry: the model resent a file that had not been refused, so the file was
+created twice in one apply. The resent copy now replaces the kept one.
+
+The same eval had two tasks that passed every gate and failed acceptance, because the planner dropped a requirement
+it judged to be a default. The planner is now told to keep every requirement as the request states it. The Astro
+stack also gained fix hints for the repeated mistakes: the `glob` loader's name, `astro:content` outside Astro's
+build, and Node imports in a project without Node types. These are stack data, not prompts (I1).

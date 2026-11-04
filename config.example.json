@@ -48,7 +48,10 @@
         { "match": "Cannot find name 'props'", "hint": "In an .astro file, a component's props are Astro.props, for example: const { block } = Astro.props;" },
         { "match": "Cannot find name 'params'", "hint": "In an .astro page, route parameters are Astro.params." },
         { "match": "Unterminated regular expression literal", "hint": "In .astro markup this usually means an expression { ... } or a .map(...) block is not closed: every { needs its }, every ( its )." },
-        { "match": "Expected corresponding JSX closing tag", "hint": "An element opened inside an { ... } expression must also be closed inside it." }
+        { "match": "Expected corresponding JSX closing tag", "hint": "An element opened inside an { ... } expression must also be closed inside it." },
+        { "match": "globLoader", "hint": "The content loader is called glob: import { glob } from \"astro/loaders\";" },
+        { "match": "Cannot find module 'astro:content'", "hint": "astro:content exists only inside Astro's own build. astro.config must not import src/content.config.ts: a collection needs no entry in astro.config." },
+        { "match": "Do you need to install type definitions for node", "hint": "This project has no Node type definitions and nothing may be installed. Remove the node: import; to render a component in a test, use experimental_AstroContainer from \"astro/container\"." }
       ],
       "reviewNotes": [
         "Astro escapes {expression} output in markup; only set:html inserts raw HTML.",
