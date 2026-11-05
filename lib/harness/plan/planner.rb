@@ -91,6 +91,7 @@ module Harness
                    Prompts.render("planner_output_retry", reason: e.message[0, 300])
             next
           end
+          plan = linked(plan)
           issues = Checks.run(plan, root: root, max_files: @config.limits.max_files_per_task, protected: stack.protected_paths,
                                     gates: stack.gates.keys, budget: check_budget, unavailable: unavailable,
                                     test_gates: test_gates)
@@ -106,6 +107,15 @@ module Harness
       end
 
       private
+
+      # @param plan [Plan]
+      # @return [Plan] with the dependencies the planner left out, which the events record
+      def linked(plan)
+        result = plan.linked
+        added = result.tasks.zip(plan.tasks).flat_map { |now, was| (now.depends_on - was.depends_on).map { |d| "#{now.id} needs #{d}" } }
+        @events.emit(stage: "plan", kind: "accepted", subject: "dependencies added", detail: added.join(", ")) unless added.empty?
+        result
+      end
 
       # @return [String]
       def first_prompt(system, request, root, stack, answers)

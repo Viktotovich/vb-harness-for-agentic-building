@@ -49,4 +49,30 @@ class PlanTest < Minitest::Test
     cyclic = P.parse({ "tasks" => [task("T1", depends: ["T2"]), task("T2", depends: ["T1"])] })
     assert_match(/dependency cycle among T1, T2/, assert_raises(Harness::ParseError) { cyclic.ordered }.message)
   end
+
+  def linked_plan(*tasks)
+    raw = tasks.map do |id, create, read, deps|
+      { "id" => id, "title" => id, "intent" => "#{id}.", "files" => { "create" => create, "modify" => [], "read" => read },
+        "dependsOn" => deps, "acceptance" => [{ "kind" => "gate", "gate" => "typecheck" }] }
+    end
+    P.parse({ "tasks" => raw, "questions" => [] }).linked
+  end
+
+  def test_a_task_gets_the_dependency_on_the_one_task_that_creates_what_it_reads
+    plan = linked_plan(["T1", ["a.ts"], [], []], ["T2", [], ["a.ts"], []], ["T3", [], ["a.ts", "b.ts"], []])
+    assert_equal [[], ["T1"], ["T1"]], plan.tasks.map(&:depends_on)
+  end
+
+  def test_a_dependency_already_implied_is_not_repeated
+    plan = linked_plan(["T1", ["a.ts"], [], []], ["T2", ["b.ts"], [], ["T1"]], ["T3", [], ["a.ts"], ["T2"]])
+    assert_equal ["T2"], plan.task("T3").depends_on
+  end
+
+  def test_two_creators_or_a_cycle_are_left_for_the_checks
+    two = linked_plan(["T1", ["a.ts"], [], []], ["T2", ["a.ts"], [], []], ["T3", [], ["a.ts"], []])
+    assert_empty two.task("T3").depends_on
+    cycle = linked_plan(["T1", ["a.ts"], ["b.ts"], []], ["T2", ["b.ts"], ["a.ts"], []])
+    assert_equal 1, cycle.tasks.sum { |t| t.depends_on.size }, "one way round is fine; the other would be a cycle"
+    assert_equal cycle.tasks.size, cycle.ordered.size
+  end
 end

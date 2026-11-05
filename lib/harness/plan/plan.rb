@@ -47,6 +47,28 @@ module Harness
 
     # A validated plan. Structural checks against the repo (paths, sizes) live in plan/checks.rb.
     Plan = Data.define(:tasks, :questions) do
+      # The plan with each task depending on the task that creates a file it reads or modifies. Eval runs lost whole
+      # tasks to this: told three times to add the dependency, a model sent the same plan back. Only a file exactly one
+      # other task creates is linked, and never when that would make a cycle: those are left for the checks to report.
+      # @return [Plan]
+      def linked
+        creators = tasks.flat_map { |t| t.files.create.map { |rel| [rel, t.id] } }.group_by(&:first)
+        deps = tasks.to_h { |t| [t.id, t.depends_on.dup] }
+        reaches = lambda do |from, to, seen = {}|
+          from == to || deps.fetch(from, []).any? { |d| !seen[d] && (seen[d] = true) && reaches.call(d, to, seen) }
+        end
+        tasks.each do |task|
+          (task.files.modify + task.files.read).each do |rel|
+            found = creators.fetch(rel, [])
+            next unless found.size == 1
+
+            id = found.first.last
+            deps[task.id] << id unless reaches.call(task.id, id) || reaches.call(id, task.id)
+          end
+        end
+        with(tasks: tasks.map { |t| t.with(depends_on: deps[t.id].freeze) })
+      end
+
       # @param id [String]
       # @return [Task, nil]
       def task(id)
