@@ -814,3 +814,11 @@ An agent cannot change tests that existed before its task, or it could make a fa
 anything. The rule asked only whether the file existed, so a test the agent had just written was refused as well. Two
 eval tasks hit this six times each, wrote new copies of the same test instead, and ran out of steps. A test written in
 the current task now stays editable for that task. To the next task it is an existing test like any other.
+
+## The harness adds a dependency the planner left out
+
+A plan that reads a file another task creates has to depend on that task. Two eval tasks were lost before any code
+was written: told exactly what to add, the model sent the same plan back until the replan rounds ran out. There is
+only one possible fix, so the planner's plans are now linked in code before they are checked. Only a file exactly one
+other task creates is linked, and never when that would make a cycle; those still go to the checks. A hand-written
+plan is not changed, because it should run as written.

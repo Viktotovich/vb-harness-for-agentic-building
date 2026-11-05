@@ -59,6 +59,19 @@ class PipelineTest < Minitest::Test
     assert_equal "Make the price double.", store(r).read_request
   end
 
+  # Eval runs: T2 read a file T1 creates, the model was told three times to add the dependency, and the plan was refused.
+  def test_a_dependency_the_planner_left_out_is_added
+    first = F.task("T1", "Add the helper", modify: [])
+    first["files"]["create"] = ["src/lib/helper.ts"]
+    second = F.task("T2", "Use the helper", modify: [PRICE])
+    second["files"]["read"] = ["src/lib/helper.ts"]
+    fixture({ "plan" => F.plan_reply([first, second]) })
+    r = @fx.pipeline.start(repo: @fx.repo, request: "Use a helper.", plan_only: true)
+    plan = JSON.parse(File.read(r.plan_path))
+    assert_equal ["T1"], plan["tasks"].last["dependsOn"]
+    assert_equal 1, bodies("You plan").size, "the model was not asked again"
+  end
+
   # A live run: the planner summarised a theme task as "the required CSS custom properties" and the implementer,
   # seeing only the task, invented every colour. The implementer now sees the request itself.
   def test_the_implementer_sees_the_whole_request_for_exact_values
