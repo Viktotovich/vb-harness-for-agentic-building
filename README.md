@@ -345,7 +345,7 @@ Add a pricing section to the home page, matching https://www.figma.com/design/FI
 
 When the run starts, the harness reads each linked frame once and adds it to the run's `request.md` as a short outline:
 structure, sizes, spacing, colours, type and wording. Pipeline and agent modes both use it, so the model needs no image
-support and no Figma tools. A design that can't be read stops the run before any model is called, with the reason.
+support and no Figma tools. A design that can't be read stops the run before any model is called, and the run shows the reason.
 
 **Limits:** the outline is text, so images and icons appear only as named placeholders, and it stops at 5,000
 characters, so link a section rather than a whole page. It's read once, so later changes in Figma don't reach a

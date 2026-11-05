@@ -67,13 +67,12 @@ module Harness
     def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil, dry_run: false)
       raise ArgumentError, "give a request, a plan, or both" if request.nil? && plan_hash.nil?
 
-      # First, so a design that cannot be read stops the run before anything is spent on it.
-      request = Figma::Designs.new(env: @env, token_env: @config.figma_token_env, http: @figma_http).expand(request) if request
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
         store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
+        request = with_design(store, request)
         next dry_run_result(store, setup, request, plan_hash) if dry_run
 
         red = Array(store.read_run["baselineFailing"])
@@ -312,6 +311,18 @@ module Harness
 
     # @return [Result]
     # @raise [ConfigError] when another process holds the run
+    # Here and not earlier: the app can only show why a run failed once the run exists. No model has been called yet.
+    # @return [String, nil] the request, with any Figma design it links to
+    # @raise [ConfigError] when a linked design cannot be read; the run is marked failed with the reason
+    def with_design(store, request)
+      return request unless request
+
+      Figma::Designs.new(env: @env, token_env: @config.figma_token_env, http: @figma_http).expand(request)
+    rescue ConfigError => e
+      store.update_run({ "status" => "failed", "exitCode" => 1, "error" => e.message })
+      raise
+    end
+
     def locked(store)
       release = State::Lock.acquire(store.lock_path)
       raise ConfigError, "run #{store.run_id} is in use by another harness process" unless release
