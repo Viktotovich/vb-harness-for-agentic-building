@@ -5,6 +5,7 @@
 require "json"
 require_relative "agent/investigator"
 require_relative "errors"
+require_relative "figma/designs"
 require_relative "plan/checks"
 require_relative "plan/plan"
 require_relative "plan/planner"
@@ -38,7 +39,8 @@ module Harness
     # @param home [String] where runs/ lives (next to the config file)
     # @param env [Hash{String=>String}] the process environment
     # @param client_factory [#call] store -> Model::Client (records go into the run's folder)
-    def initialize(config:, home:, env:, client_factory:)
+    # @param figma_http [#get] how linked designs are fetched
+    def initialize(config:, home:, env:, client_factory:, figma_http: Model::Http.new)
       # Agent mode plans larger tasks: an agent reads and checks its way through them instead of answering once.
       @config = if config.mode == "agent"
                   config.with(limits: config.limits.with(max_files_per_task: config.agent.max_files_per_task))
@@ -49,6 +51,7 @@ module Harness
       @cache_dir = File.join(home, ".cache")
       @env = env
       @client_factory = client_factory
+      @figma_http = figma_http
     end
 
     # Start a new run from a request (planner) or a plan.
@@ -69,6 +72,7 @@ module Harness
       locked(store) do
         setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
         store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
+        request = with_design(store, request)
         next dry_run_result(store, setup, request, plan_hash) if dry_run
 
         red = Array(store.read_run["baselineFailing"])
@@ -307,6 +311,18 @@ module Harness
 
     # @return [Result]
     # @raise [ConfigError] when another process holds the run
+    # Here and not earlier: the app can only show why a run failed once the run exists. No model has been called yet.
+    # @return [String, nil] the request, with any Figma design it links to
+    # @raise [ConfigError] when a linked design cannot be read; the run is marked failed with the reason
+    def with_design(store, request)
+      return request unless request
+
+      Figma::Designs.new(env: @env, token_env: @config.figma_token_env, http: @figma_http).expand(request)
+    rescue ConfigError => e
+      store.update_run({ "status" => "failed", "exitCode" => 1, "error" => e.message })
+      raise
+    end
+
     def locked(store)
       release = State::Lock.acquire(store.lock_path)
       raise ConfigError, "run #{store.run_id} is in use by another harness process" unless release

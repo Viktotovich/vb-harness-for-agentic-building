@@ -796,3 +796,14 @@ the cut-off arguments and answered HTTP 500, and the client treats an HTTP error
 being down, which ends the run. That message now counts as unusable output, like the other server messages about a
 reply: the model is asked once more, and if that fails the task is blocked for that reason, while the run goes on.
 Any other HTTP 500 still means the server is unavailable.
+
+## A Figma design is read once, from links in the request
+
+Requests can link to a Figma frame. The harness could have given the agent a tool for this, but it reads each link
+once at the start of a run and adds an outline to the request instead. Every step of both modes already sees the
+request, so pipeline mode gets the design too, and a model that handles tools badly loses nothing. A design that
+cannot be read stops the run before any model is called, because building without it would be guessing.
+
+Only links in the user's own request are read. A tool that took a URL from a model would let repo content steer it
+to any file the token can see. The outline carries its own fence, because the planner sees a request as the user's
+words and a layer name is not (I9). The token comes from a named env var and goes only into the request header (I12).
