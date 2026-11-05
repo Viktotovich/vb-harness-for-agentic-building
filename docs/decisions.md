@@ -807,3 +807,10 @@ cannot be read stops the run before any model is called, because building withou
 Only links in the user's own request are read. A tool that took a URL from a model would let repo content steer it
 to any file the token can see. The outline carries its own fence, because the planner sees a request as the user's
 words and a layer name is not (I9). The token comes from a named env var and goes only into the request header (I12).
+
+## An agent may fix a test it wrote itself
+
+An agent cannot change tests that existed before its task, or it could make a failing check pass without fixing
+anything. The rule asked only whether the file existed, so a test the agent had just written was refused as well. Two
+eval tasks hit this six times each, wrote new copies of the same test instead, and ran out of steps. A test written in
+the current task now stays editable for that task. To the next task it is an existing test like any other.

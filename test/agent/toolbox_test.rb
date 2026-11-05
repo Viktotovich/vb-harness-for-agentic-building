@@ -114,6 +114,21 @@ class AgentToolboxTest < Minitest::Test
     assert_match(/written/, plain(planned.call("write_file", { "path" => "tsconfig.json", "content" => "{\"strict\": true}" })), "the plan may name it")
   end
 
+  # Eval runs: an agent wrote a new test, was refused when it tried to fix it, and spent its steps on new copies.
+  def test_a_test_written_in_this_task_can_be_fixed_and_one_from_before_it_cannot
+    File.write(File.join(@root, "tests-old.test.ts"), "test")
+    t = box
+    assert_match(/written/, plain(t.call("write_file", { "path" => "tests/new.test.ts", "content" => "first" })))
+    assert_match(/written/, plain(t.call("write_file", { "path" => "tests/new.test.ts", "content" => "second" })), "a whole rewrite")
+    assert_match(/written/, plain(t.call("edit_file", { "path" => "tests/new.test.ts", "search" => "second", "replace" => "third" })), "an edit")
+    assert_equal "third", File.read(File.join(@root, "tests/new.test.ts"))
+    assert_match(/is an existing test/, plain(t.call("write_file", { "path" => "tests-old.test.ts", "content" => "skip" })))
+    assert_equal "test", File.read(File.join(@root, "tests-old.test.ts"))
+    assert_match(/is an existing test/, plain(box.call("write_file", { "path" => "tests/new.test.ts", "content" => "skip" })),
+                 "to the next task, it is an existing test")
+    assert_equal "third", File.read(File.join(@root, "tests/new.test.ts"))
+  end
+
   def test_large_files_are_not_read_and_protected_names_are_not_listed
     File.write(File.join(@root, "src/huge.txt"), "x" * (2 * 1024 * 1024 + 1))
     t = box
