@@ -45,7 +45,7 @@ module Harness
         @keep = keep
       end
 
-      # @param tasks_glob [String] e.g. "eval/tasks/*"
+      # @param tasks_glob [String, Array<String>] e.g. "eval/tasks/*"
       # @param root [String] the eval folder, against which repo.ref paths resolve
       # @return [Array<Task>]
       # @raise [ConfigError]

@@ -48,13 +48,13 @@ class EvalRunnerTest < Minitest::Test
     File.write(File.join(dir, "hidden", "tests", "hidden", "#{id}.test.txt"), hidden)
   end
 
-  def eval_cli(*args)
+  def eval_cli(*args, tasks: [File.join(@tasks, "*")])
     out = TestSupport::Sink.new
     err = TestSupport::Sink.new
     factory = lambda do |config, home|
       Harness::Pipeline.new(config: config, home: home, env: @env, client_factory: ->(store) { F.client(config, store) })
     end
-    code = Harness::CLI::EvalCommand.call(["--config", File.join(@tmp, "config.json"), "--tasks", File.join(@tasks, "*"), *args],
+    code = Harness::CLI::EvalCommand.call(["--config", File.join(@tmp, "config.json"), "--tasks", *tasks, *args],
                                           out: out, err: err, env: @env, pipeline_for: factory)
     [code, out.string, err.string]
   end
@@ -74,6 +74,14 @@ class EvalRunnerTest < Minitest::Test
     workspaces = File.join(@tmp, "eval-out", "weak", "workspaces")
     assert(Dir.exist?(workspaces) && Dir.empty?(workspaces), "worktrees were made under the mapping's workspaces/ and removed")
     assert_equal 2, Dir.children(File.join(@tmp, "eval-out", "weak", "runs")).size
+  end
+
+  # Ruby on Windows expands the wildcard first, so --tasks gets one path and the rest arrive as plain arguments.
+  def test_every_task_path_runs_when_the_wildcard_was_expanded_first
+    code, out, err = eval_cli("--profile-map", File.join(@tmp, "map.json"), tasks: Dir.glob(File.join(@tasks, "*")).sort)
+    assert_equal 0, code, err
+    assert_match(/^\| 01-double \| yes \|/, out)
+    assert_match(/^\| 02-pinned \| yes \|/, out)
   end
 
   def test_json_scores_and_a_pinned_commit_that_moved

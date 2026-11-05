@@ -25,7 +25,7 @@ module Harness
       # @return [Integer] exit code: 0 when every task ran, 1 when one could not, 2 on a config problem
       def self.call(args, out:, err:, env:, pipeline_for: nil)
         opts = { config: "config.json", tasks: File.join(ROOT, "tasks", "*"), out: nil, keep: false, json: false }
-        OptionParser.new do |o|
+        extra = OptionParser.new do |o|
           o.banner = USAGE
           o.on("--config FILE", "Base config (default config.json)") { |v| opts[:config] = v }
           o.on("--profile-map FILE", "JSON: mapping name -> {roles, profiles} overrides") { |v| opts[:map] = v }
@@ -34,6 +34,9 @@ module Harness
           o.on("--keep", "Keep worktrees for inspection") { opts[:keep] = true }
           o.on("--json", "Machine-readable output") { opts[:json] = true }
         end.parse(args)
+        # Ruby on Windows expands a wildcard in its own arguments, so --tasks 'eval/tasks/0*' arrives as one path per
+        # match. Only the first would reach --tasks, and the others would be dropped without a word.
+        opts[:tasks] = [opts[:tasks], *extra] unless extra.empty?
         raw = read_json(opts[:config])
         Config.parse(raw, env: env)
         mappings = opts[:map] ? read_json(opts[:map]) : { "config" => {} }
@@ -43,7 +46,7 @@ module Harness
         out_dir = File.expand_path(opts[:out] || File.join(home, "eval-out"))
         pipeline_for ||= ->(config, dir) { Commands.pipeline_for(config, dir, env, err) }
         tasks = Eval::Runner.load_tasks(opts[:tasks], root: ROOT, env: env)
-        raise ConfigError, "no eval tasks match #{opts[:tasks]}" if tasks.empty?
+        raise ConfigError, "no eval tasks match #{Array(opts[:tasks]).join(', ')}" if tasks.empty?
 
         results = Eval::Runner.new(raw_config: raw, env: env, out_dir: out_dir, pipeline_for: pipeline_for, keep: opts[:keep])
                               .call(mappings, tasks)
