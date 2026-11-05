@@ -133,14 +133,16 @@ module TestSupport
 
     # A Pipeline over a fresh fixture repo and a fake model.
     # @return [Setup]
-    def self.pipeline(tmp, replies, files: FILES, extra_gates: {}, top: {})
-      repo, env = TestSupport.repo(tmp, files)
+    def self.pipeline(tmp, replies, files: FILES, extra_gates: {}, top: {}, figma_http: nil, env: {})
+      FileUtils.mkdir_p(tmp)
+      repo, repo_env = TestSupport.repo(tmp, files)
       server = server(replies)
       config = config(server.base_url, extra_gates: extra_gates, top: top)
       home = File.join(tmp, "home")
-      pipeline = Harness::Pipeline.new(config: config, home: home, env: ENV.to_h.merge(env),
-                                       client_factory: ->(store) { client(config, store) })
-      Setup.new(pipeline: pipeline, repo: repo, env: env, server: server, runs_dir: File.join(home, "runs"))
+      pipeline = Harness::Pipeline.new(config: config, home: home, env: ENV.to_h.merge(repo_env).merge(env),
+                                       client_factory: ->(store) { client(config, store) },
+                                       figma_http: figma_http || Harness::Model::Http.new)
+      Setup.new(pipeline: pipeline, repo: repo, env: repo_env, server: server, runs_dir: File.join(home, "runs"))
     end
 
     # @return [Array(Integer, Hash)] a fake planner reply

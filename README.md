@@ -53,6 +53,7 @@ build would not start, each with what to do, without changing anything or asking
 - [Understanding a run](#understanding-a-run)
 - [Cookbook: an Astro landing page](#cookbook-an-astro-landing-page)
 - [Using with Claude](#using-with-claude)
+- [Building from a Figma design](#building-from-a-figma-design)
 - [Configuration](#configuration)
 - [Choosing and checking a model](#choosing-and-checking-a-model)
 - [Safety model](#safety-model)
@@ -328,6 +329,30 @@ writing the code yourself:
 
 Any command works the same from Claude's side: `--json` on every command gives machine-readable output, progress
 goes to stderr, and the exit code says how the run ended (see [Quick start: the command line](#quick-start-the-command-line)).
+
+## Building from a Figma design
+
+Paste a link to a Figma frame into your request, and the run builds from that design:
+
+```text
+Add a pricing section to the home page, matching https://www.figma.com/design/FILE/Name?node-id=1-2
+```
+
+1. In Figma, select the frame and use **Copy link**. A link to a whole file is refused, because it doesn't say what to
+   build.
+2. Create a Figma personal access token with read access to file content, and put it in the `FIGMA_TOKEN` env var. To
+   use another variable, set `"figmaTokenEnv"` in `config.json`.
+
+When the run starts, the harness reads each linked frame once and adds it to the run's `request.md` as a short outline:
+structure, sizes, spacing, colours, type and wording. Pipeline and agent modes both use it, so the model needs no image
+support and no Figma tools. A design that can't be read stops the run before any model is called, with the reason.
+
+**Limits:** the outline is text, so images and icons appear only as named placeholders, and it stops at 5,000
+characters, so link a section rather than a whole page. It's read once, so later changes in Figma don't reach a
+running run.
+
+**Safety:** only links in your request are read, so a model or a repo file can't choose what's fetched. Requests are
+read-only. The token goes only into the request to Figma, and layer names and text reach models as untrusted data.
 
 ## Configuration
 

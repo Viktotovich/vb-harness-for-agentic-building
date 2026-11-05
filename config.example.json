@@ -92,5 +92,6 @@
     }
   },
   "requireGreenBaseline": false,
+  "figmaTokenEnv": "FIGMA_TOKEN",
   "dryRun": false
 }

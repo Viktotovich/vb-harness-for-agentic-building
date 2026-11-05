@@ -5,6 +5,7 @@
 require "json"
 require_relative "agent/investigator"
 require_relative "errors"
+require_relative "figma/designs"
 require_relative "plan/checks"
 require_relative "plan/plan"
 require_relative "plan/planner"
@@ -38,7 +39,8 @@ module Harness
     # @param home [String] where runs/ lives (next to the config file)
     # @param env [Hash{String=>String}] the process environment
     # @param client_factory [#call] store -> Model::Client (records go into the run's folder)
-    def initialize(config:, home:, env:, client_factory:)
+    # @param figma_http [#get] how linked designs are fetched
+    def initialize(config:, home:, env:, client_factory:, figma_http: Model::Http.new)
       # Agent mode plans larger tasks: an agent reads and checks its way through them instead of answering once.
       @config = if config.mode == "agent"
                   config.with(limits: config.limits.with(max_files_per_task: config.agent.max_files_per_task))
@@ -49,6 +51,7 @@ module Harness
       @cache_dir = File.join(home, ".cache")
       @env = env
       @client_factory = client_factory
+      @figma_http = figma_http
     end
 
     # Start a new run from a request (planner) or a plan.
@@ -64,6 +67,8 @@ module Harness
     def start(repo:, request: nil, plan_hash: nil, plan_only: false, run_id: nil, stop: nil, dry_run: false)
       raise ArgumentError, "give a request, a plan, or both" if request.nil? && plan_hash.nil?
 
+      # First, so a design that cannot be read stops the run before anything is spent on it.
+      request = Figma::Designs.new(env: @env, token_env: @config.figma_token_env, http: @figma_http).expand(request) if request
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
