@@ -334,12 +334,13 @@ module Harness
         result.written.empty? ? "#{rel}: no change" : "#{rel}: written (#{File.size(File.join(@root, rel))} bytes)"
       end
 
-      # Check configuration, or a test that already exists, outside the files the plan names for the task.
+      # Check configuration, or a test that was there before this task, outside the files the plan names for it. A test
+      # the agent wrote in this task proves nothing yet, so it may fix it: eval runs ran out of steps writing new copies.
       # @return [Boolean]
       def guarded?(rel)
         return false if @planned.include?(rel)
 
-        CHECK_CONFIG.match?(rel) || (Plan::Checks::TEST_FILE.match?(rel) && File.exist?(File.join(@root, rel)))
+        CHECK_CONFIG.match?(rel) || (Plan::Checks::TEST_FILE.match?(rel) && !@created.include?(rel) && File.exist?(File.join(@root, rel)))
       end
 
       def view_diff
