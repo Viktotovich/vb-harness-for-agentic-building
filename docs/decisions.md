@@ -788,3 +788,11 @@ The same eval had two tasks that passed every gate and failed acceptance, becaus
 it judged to be a default. The planner is now told to keep every requirement as the request states it. The Astro
 stack also gained fix hints for the repeated mistakes: the `glob` loader's name, `astro:content` outside Astro's
 build, and Node imports in a project without Node types. These are stack data, not prompts (I1).
+
+## A tool call the server cannot parse is a bad reply, not an outage
+
+An eval run stopped on a healthy server. A reply hit the output limit inside a tool call, the server could not parse
+the cut-off arguments and answered HTTP 500, and the client treats an HTTP error it does not recognise as the server
+being down, which ends the run. That message now counts as unusable output, like the other server messages about a
+reply: the model is asked once more, and if that fails the task is blocked for that reason, while the run goes on.
+Any other HTTP 500 still means the server is unavailable.

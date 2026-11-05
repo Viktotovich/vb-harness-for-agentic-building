@@ -104,6 +104,21 @@ class ClientTest < Minitest::Test
     refute_kind_of Harness::ModelUnavailableError, err
   end
 
+  # An eval run: a reply hit the output limit inside a tool call, the server answered 500, and the run stopped as if
+  # the server were down.
+  def test_a_tool_call_the_server_could_not_parse_is_unusable_output_not_unavailable
+    cut = Fake.error(500, "Failed to parse tool call arguments as JSON: parse error at line 1")
+    srv = server([cut, cut])
+    err = assert_raises(Harness::ModelOutputError) { ask(client(srv)) }
+    refute_kind_of Harness::ModelUnavailableError, err
+    assert_equal 2, srv.chat_bodies.size, "asked once more"
+  end
+
+  def test_a_tool_call_the_server_could_not_parse_gets_a_second_try
+    srv = server([Fake.error(500, "Failed to parse tool call arguments as JSON"), Fake.ok("{}")])
+    refute_nil ask(client(srv))
+  end
+
   # A live run spent about three minutes on each verifier reply that thought until it ran out of room, then
   # answered in seconds with thinking off. After two of those, the role starts with thinking off.
   def test_a_role_that_keeps_running_out_of_room_thinking_stops_thinking

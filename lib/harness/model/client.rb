@@ -29,7 +29,9 @@ module Harness
     # The robust caller (DESIGN.md 4.4), a port of REVIEWER src/llm/lmstudio.js: fit the request, send,
     # classify, retry once with thinking off, and record every request.
     class Client
-      BAD_OUTPUT_RE = /structured output was incomplete|did not return valid JSON|could not validate structured output/i
+      # A server answers with an HTTP error for these, but the model's reply is at fault, not the server: a tool call
+      # cut off by the output limit cannot be parsed. Treated as an outage, that stopped a whole eval run.
+      BAD_OUTPUT_RE = /structured output was incomplete|did not return valid JSON|could not validate structured output|failed to parse tool call/i
       OVERFLOW_RE = /context (?:size|length|window)[^.]{0,40}exceed|exceed[^.]{0,40}context|too many tokens|n_ctx/i
       AT_MOST_RE = /at most (\d+)/i
       BUSY_STATUSES = [429, 503].freeze
