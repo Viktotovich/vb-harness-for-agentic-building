@@ -9,6 +9,7 @@ require_relative "../model/tokens"
 require_relative "../prompts"
 require_relative "../task/gather"
 require_relative "../untrusted"
+require_relative "coverage"
 require_relative "diff"
 require_relative "findings"
 require_relative "prompt_check"
@@ -85,9 +86,10 @@ module Harness
       # @param diff [String] unified diff
       # @param subject [String] e.g. "task T1: Add the pricing card"
       # @param typecheck_passed [Boolean]
+      # @param scope [Scope, nil] what the change was asked to do; nil skips the check against the request
       # @return [Result]
       # @raise [ModelUnavailableError]
-      def call(diff:, subject:, typecheck_passed:)
+      def call(diff:, subject:, typecheck_passed:, scope: nil)
         failures = []
         @summary = nil
         @suspicious = []
@@ -107,7 +109,8 @@ module Harness
         @ctx.emit("review.reconcile", "stage_finished", detail: "run1=#{runs[0].size} run2=#{runs[1].size} distinct=#{candidates.size}")
         ids = candidates.each_with_index.map { |f, i| ["C#{i + 1}", f] }
         claims = ids.empty? ? [] : Verifier.new(@ctx).call(ids, files, typecheck_passed: typecheck_passed)
-        Result.new(summary: @summary.to_s, claims: claims, suspicious: @suspicious.uniq, failures: failures)
+        gaps = scope ? Coverage.new(@ctx).call(scope, prepared, subject, failures) : []
+        Result.new(summary: @summary.to_s, claims: gaps + claims, suspicious: @suspicious.uniq, failures: failures)
       end
 
       private

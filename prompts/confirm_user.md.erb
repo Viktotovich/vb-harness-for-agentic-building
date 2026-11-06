@@ -10,5 +10,12 @@ The code it is about:
 An existing test in this project, for its style and imports:
 <%= example %>
 <% end -%>
+<% unless notes.empty? -%>
+
+Notes on this project's stack (from the harness configuration):
+<% notes.each do |n| -%>
+- <%= n %>
+<% end -%>
+<% end -%>
 
 Write the test at <%= path %>.
