@@ -18,13 +18,14 @@ module Harness
     # maxFilesPerTask in agent mode; investigate: explore the repository before planning, within
     # max_investigate_steps; ask_timeout_sec: how long a task agent's question waits for the user's answer (0: the
     # agent cannot ask); max_recoveries: how many further tries a task gets when its agent stops without finishing
-    # (see Ladder).
+    # (see Ladder); acceptance_tests: a separate agent writes each task's test from the request before the code exists.
     Settings = Data.define(:max_steps, :max_rounds, :max_files_per_task, :investigate, :max_investigate_steps, :commands,
-                           :ask_timeout_sec, :max_recoveries)
+                           :ask_timeout_sec, :max_recoveries, :acceptance_tests)
 
     # Parsing for Settings.
     class Settings
-      KEYS = %w[maxSteps maxRounds maxFilesPerTask investigate maxInvestigateSteps commands askTimeoutSec maxRecoveries].freeze
+      KEYS = %w[maxSteps maxRounds maxFilesPerTask investigate maxInvestigateSteps commands askTimeoutSec maxRecoveries
+                acceptanceTests].freeze
       COMMAND_KEYS = %w[argv description params timeoutSec].freeze
       PARAM_KINDS = %w[path word].freeze
       NAME = /\A[a-z][a-z0-9_]{0,39}\z/
@@ -45,7 +46,8 @@ module Harness
             max_investigate_steps: Parse.int!(h.fetch("maxInvestigateSteps", 30), "agent.maxInvestigateSteps", min: 1),
             commands: Parse.hash!(h.fetch("commands", {}), "agent.commands").to_h { |name, c| [name, command(name, c)] }.freeze,
             ask_timeout_sec: Parse.int!(h.fetch("askTimeoutSec", 900), "agent.askTimeoutSec", min: 0),
-            max_recoveries: Parse.int!(h.fetch("maxRecoveries", 3), "agent.maxRecoveries", min: 0))
+            max_recoveries: Parse.int!(h.fetch("maxRecoveries", 3), "agent.maxRecoveries", min: 0),
+            acceptance_tests: Parse.bool!(h.fetch("acceptanceTests", false), "agent.acceptanceTests"))
       end
 
       # @return [Command]

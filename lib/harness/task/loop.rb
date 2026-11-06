@@ -118,6 +118,9 @@ module Harness
         @created = Set.new
         @fix_failure = nil
         @last_gates = []
+        @locked = []
+        @proven = false
+        @acceptance_reviewed = false
       end
 
       # @return [Outcome]
@@ -145,18 +148,20 @@ module Harness
         settings = @ctx.config.agent
         step("implementing")
         emit("task.implement", "stage_started")
+        @locked = settings.acceptance_tests ? write_acceptance(settings) : []
         @mailbox = Agent::Mailbox.new(store: @ctx.store, events: @ctx.events, task_id: @task.id, timeout: settings.ask_timeout_sec)
         toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
                                      settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
-                                     writable: true, tests: @task.test_paths, planned: @task.writable, ask: @mailbox.asker)
+                                     writable: true, tests: @task.test_paths, planned: @task.writable - @locked, ask: @mailbox.asker)
         roles = @ctx.config.roles
         @ladder = Agent::Ladder.new(max: settings.max_recoveries, stronger: roles[:rescuer] != roles[:implementer])
         @session = agent_session(:implementer, toolbox, "#{@task.id}.agent")
         user = Prompts.render("agent_task_user", task: task_text, request: request_text, done: @done)
         result = agent_stretch(toolbox) { @session.run(user, max_steps: settings.max_steps) }
         loop do
-          failing = run_gates
+          failing = @proven ? [] : run_gates
           return if failing.empty?
+          next if review_acceptance(settings, failing, result)
 
           if @fix_rounds >= settings.max_rounds
             emit("task.fix", "rejected", reason: "agent.rounds_exhausted", detail: "#{@fix_rounds} rounds")
@@ -184,8 +189,96 @@ module Harness
                            on_step: agent_events(toolbox), inbox: @mailbox.inbox)
       end
 
+      # A separate agent writes the task's test from the request before the code exists, in its own conversation and
+      # on the tester role: an implementer's own tests share its misreading (an eval task passed every check with the
+      # wrong class name). Without a test gate a test proves nothing, and a test that was not finished stays the
+      # implementer's to write, as it would be without this step.
+      # @return [Array<String>] the tests now out of the implementer's reach
+      def write_acceptance(settings)
+        paths = @task.test_paths
+        return [] if paths.empty? || @ctx.stack.gates.values.none? { |g| g.scope == "tests" }
+
+        emit("task.implement", "accepted", subject: "writing the acceptance test")
+        toolbox = acceptance_toolbox(settings, paths, runner: nil)
+        session = acceptance_session(toolbox, paths, "acceptance")
+        user = Prompts.render("agent_acceptance_user", task: task_text, request: request_text, done: @done)
+        result = acceptance_stretch(toolbox) { session.run(user, max_steps: (settings.max_steps / 2.0).ceil) }
+        written = paths.all? { |rel| File.file?(File.join(@ctx.worktree.root, rel)) }
+        return paths if result&.finished && written
+
+        emit("task.implement", "rejected", subject: "acceptance test", reason: "agent.no_acceptance_test", detail: "the implementer writes it")
+        []
+      end
+
+      # Halfway through the rounds, a test the code still fails gets one independent look: the test was written before
+      # the code, by a model that can be wrong too, and nobody else may change it. Its author may correct it only
+      # against the request; a test that is right stays, and the rounds go on.
+      # @return [Boolean] true when the test changed, so the gates must run again
+      def review_acceptance(settings, failing, result)
+        return false if @locked.empty? || @acceptance_reviewed || @fix_rounds < settings.max_rounds / 2
+        return false if failing.none? { |gate, _| gate.scope == "tests" }
+
+        @acceptance_reviewed = true
+        before = locked_tests
+        toolbox = acceptance_toolbox(settings, @locked, runner: @ctx.runner)
+        claim = result&.finished
+        user = Prompts.render("agent_acceptance_review_user", tests: @locked, task: task_text, request: request_text,
+                                                              failure: Untrusted.fence(render_diagnostics(trimmed_diagnostics(failing))),
+                                                              claim: claim && Untrusted.fence(claim.to_s[0, 600]))
+        session = acceptance_session(toolbox, @locked, "acceptance-review")
+        acceptance_stretch(toolbox) { session.run(user, max_steps: (settings.max_steps / 2.0).ceil) }
+        step("gating")
+        changed = locked_tests != before
+        emit("task.implement", "accepted", subject: changed ? "acceptance test corrected" : "acceptance test kept", detail: toolbox.finished.to_s[0, 300])
+        changed
+      end
+
+      # @return [Agent::Toolbox] writes only the acceptance tests
+      def acceptance_toolbox(settings, paths, runner:)
+        Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack, settings: settings,
+                           runner: runner, worktree: @ctx.worktree, map: @ctx.map, writable: true, tests: paths, planned: paths, only: paths)
+      end
+
+      # @return [Agent::Session]
+      def acceptance_session(toolbox, paths, name)
+        system = Prompts.render("agent_acceptance_system", tests: paths, notes: @ctx.stack.review_notes)
+        Agent::Session.new(client: @ctx.client, role: :tester, system: system, toolbox: toolbox, label: "#{@task.id}.#{name}",
+                           on_step: agent_events(toolbox))
+      end
+
+      # A test agent that fails costs the task nothing: the work goes on without its test, or with the test unchanged.
+      # @return [Agent::Session::Result, nil]
+      def acceptance_stretch(toolbox)
+        yield
+      rescue ModelOutputError => e
+        emit("task.implement", "rejected", subject: "acceptance test", reason: e.reason, detail: e.message[0, 300])
+        nil
+      ensure
+        @touched.merge(toolbox.touched)
+        @created.merge(toolbox.created)
+        save("applied")
+      end
+
+      # @return [Array<String, nil>] the acceptance tests' current text
+      def locked_tests
+        @locked.map do |rel|
+          full = File.join(@ctx.worktree.root, rel)
+          File.file?(full) ? File.binread(full) : nil
+        end
+      end
+
+      # A test written apart from the implementer is better evidence than its word, so work that stopped without
+      # finish but passes every check, that test included, is done. Without such a test it stays unfinished work.
+      # @return [Boolean]
+      def proven?
+        return false if @locked.empty? || !run_gates.empty?
+
+        @proven = @last_gates.any? { |c| @ctx.stack.gates[c.gate]&.scope == "tests" && c.current.status == "passed" }
+      end
+
       # One stretch of the agent's work, then what it wrote is recorded. Stopping without finishing goes to the
-      # recovery ladder: unfinished work is not offered to the gates as if it were done.
+      # recovery ladder: unfinished work is not offered to the gates as if it were done, unless an acceptance test
+      # written apart from the implementer is there to judge it (see #proven?).
       # @return [Agent::Session::Result]
       # @raise [Blocked]
       def agent_stretch(toolbox)
@@ -202,6 +295,11 @@ module Harness
         return result if result.finished
 
         reason = result.exhausted ? "agent.steps_exhausted" : "agent.no_finish"
+        if proven?
+          emit("task.implement", "accepted", subject: "passed its acceptance test without calling finish", detail: reason)
+          return result
+        end
+        step("implementing")
         emit("task.implement", "rejected", reason: reason, detail: "#{toolbox.calls.size} tool calls; #{result.text.to_s.strip[0, 200]}")
         recover(toolbox, reason, result)
       end
@@ -276,7 +374,8 @@ module Harness
 
       # @return [String]
       def agent_rules(settings)
-        Prompts.render("agent_rules", files: @task.writable.join(", "), tests: @task.test_paths, max_files: settings.max_files_per_task)
+        Prompts.render("agent_rules", files: (@task.writable - @locked).join(", "), tests: @task.test_paths - @locked, locked: @locked,
+                                      max_files: settings.max_files_per_task)
       end
 
       # Turn the ways a task can fail into a blocked Outcome.

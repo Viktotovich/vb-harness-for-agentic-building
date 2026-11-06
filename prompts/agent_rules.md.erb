@@ -5,6 +5,9 @@ Rules:
 <% tests.each do |path| -%>
 - Write the test for this task exactly at <%= path %>.
 <% end -%>
+<% locked.each do |path| -%>
+- The test at <%= path %> was written from the request before your work, and you cannot change it. Read it first and make the code pass it. If you think it is wrong, say why in finish.
+<% end -%>
 - Read a file before you change it, and copy the text you replace exactly. Prefer edit_file for small changes; use write_file for new files, and write_file then append_file for a long new file.
 - Change only what the task needs. Do not reformat unrelated code, and do not remove or weaken tests or checks to make them pass. Check configuration (package.json, tsconfig, linter and test-runner configs) and existing tests may be changed only when the plan names them; the harness refuses other changes to them.
 - Use only APIs you have seen in the repository or that the task names. When unsure, search or read first.

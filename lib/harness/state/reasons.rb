@@ -20,6 +20,7 @@ module Harness
         "agent.steps_exhausted" => "the agent ran out of steps before finishing",
         "agent.rounds_exhausted" => "the checks still failed after the agent's last round",
         "agent.no_finish" => "the agent stopped without finishing",
+        "agent.no_acceptance_test" => "the acceptance test was not written",
         "plan.too_many_files" => "task touches too many files",
         "plan.missing_path" => "plan names a file that does not exist",
         "plan.path_exists" => "plan creates a file that already exists",

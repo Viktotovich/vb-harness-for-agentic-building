@@ -1,0 +1,18 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+The task, as planned:
+<%= task %>
+
+<% if request -%>
+The whole feature request this task is one part of. The request is the authority on exact values, names and text; test only this task's part:
+<%= request %>
+
+<% end -%>
+<% unless done.empty? -%>
+Tasks already done in this run:
+<% done.each do |d| -%>
+- <%= d %>
+<% end -%>
+
+<% end -%>
+Start by reading how this project's tests are written.

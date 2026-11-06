@@ -184,6 +184,126 @@ class AgentModeTest < Minitest::Test
     assert_equal plain.first(1), names.call(Harness::Agent::Ladder.new(max: 1, stronger: true))
   end
 
+  TESTER = "You write acceptance tests"
+  CHECK = "test/price.test.ts"
+
+  # A stack with a test gate that fails until price.ts doubles, and a plan that asks for a test.
+  def acceptance_run(id, gate_script, agent: {})
+    repo, env = TestSupport.repo(@tmp, F::FILES.merge("tools/unit.rb" => gate_script))
+    gates = { "unit" => { "argv" => [RbConfig.ruby, "tools/unit.rb", "{tests}"], "scope" => "tests", "parser" => "vitest", "costRank" => 5 } }
+    config = F.config(@server.base_url, review: "off", extra_gates: gates, top: { "mode" => "agent", "agent" => { "acceptanceTests" => true }.merge(agent) })
+    store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: id)
+    store.write_request("Double the price.")
+    setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+    task = F.task("T1", "Double the price", modify: ["src/lib/price.ts"]).merge(
+      "acceptance" => [{ "kind" => "test", "path" => CHECK, "write" => true, "describe" => "doubles" }]
+    )
+    outcome = Harness::Run.new(config: config, client: F.client(config, store), setup: setup)
+                          .execute(Harness::Plan::PlanParser.parse({ "tasks" => [task] }))
+    [outcome.tasks.first, setup, store]
+  end
+
+  PASSES_WHEN_DOUBLED = <<~RUBY
+    exit(0) if ARGV.empty?
+    code = File.read("src/lib/price.ts")
+    test = File.read(ARGV.first.to_s) rescue ""
+    exit(code.include?("n * 2") && test.include?("expect") ? 0 : 1)
+  RUBY
+
+  def scripted(tester:, agent:)
+    seen = Hash.new(0)
+    @server = Fake.new do |body, _n|
+      system = body["messages"].first["content"]
+      list = if system.start_with?(TESTER) then tester
+             elsif system.start_with?(TASK_AGENT) then agent
+             end
+      next F::NO_FINDINGS unless list
+
+      reply = list[seen[list.object_id]] || Fake.ok("", tool_calls: [call("finish", { "summary" => "done" })])
+      seen[list.object_id] += 1
+      reply
+    end
+  end
+
+  def write_test = Fake.ok("", tool_calls: [call("write_file", { "path" => CHECK, "content" => "expect(price(2)).toBe(4);\n" })])
+  def double_it = Fake.ok("", tool_calls: [call("edit_file", { "path" => "src/lib/price.ts", "search" => "  return n;", "replace" => "  return n * 2;" })])
+  def finish(text = "Done.") = Fake.ok("", tool_calls: [call("finish", { "summary" => text })])
+
+  def test_the_acceptance_test_is_written_first_and_the_implementer_cannot_change_it
+    weaken = Fake.ok("", tool_calls: [call("write_file", { "path" => CHECK, "content" => "weakened\n" })])
+    scripted(tester: [write_test, finish("Checks the doubled price.")], agent: [weaken, double_it, finish])
+    t1, setup, = acceptance_run("r-acc1", PASSES_WHEN_DOUBLED)
+    assert_equal "done", t1.status
+    assert_equal "expect(price(2)).toBe(4);\n", File.read(File.join(setup.worktree.root, CHECK))
+    agent = @server.chat_bodies.select { |b| b["messages"].first["content"].start_with?(TASK_AGENT) }
+    assert_includes agent.first["messages"].first["content"], "was written from the request before your work"
+    refute_includes agent.first["messages"].first["content"], "Write the test for this task exactly"
+    refused = agent[1]["messages"].find { |m| m["role"] == "tool" }["content"]
+    assert_includes refused, "an existing test"
+    order = @server.chat_bodies.map { |b| b["messages"].first["content"] }
+    assert_operator order.index { |s| s.start_with?(TESTER) }, :<, order.index { |s| s.start_with?(TASK_AGENT) }, "the test comes first"
+  end
+
+  def test_the_test_writer_can_write_only_the_test
+    sneak = Fake.ok("", tool_calls: [call("edit_file", { "path" => "src/lib/price.ts", "search" => "  return n;", "replace" => "  return 4;" })])
+    scripted(tester: [sneak, write_test, finish], agent: [double_it, finish])
+    t1, setup, = acceptance_run("r-acc2", PASSES_WHEN_DOUBLED)
+    assert_equal "done", t1.status
+    refute_includes File.read(File.join(setup.worktree.root, "src/lib/price.ts")), "return 4"
+    tool = @server.chat_bodies.filter_map { |b| b["messages"].find { |m| m["role"] == "tool" } }.first
+    assert_includes tool["content"], "may be changed here"
+  end
+
+  def test_a_test_writer_that_fails_leaves_the_test_to_the_implementer
+    own = Fake.ok("", tool_calls: [call("write_file", { "path" => CHECK, "content" => "expect(1);\n" })])
+    scripted(tester: Array.new(40) { Fake.ok("I cannot do this.") }, agent: [double_it, own, finish])
+    t1, _setup, store = acceptance_run("r-acc3", PASSES_WHEN_DOUBLED)
+    assert_equal "done", t1.status
+    assert(Harness::State::Events.read(store.events_path).any? { |e| e["reason"] == "agent.no_acceptance_test" })
+    agent = @server.chat_bodies.find { |b| b["messages"].first["content"].start_with?(TASK_AGENT) }
+    assert_includes agent["messages"].first["content"], "Write the test for this task exactly at #{CHECK}"
+  end
+
+  def test_work_that_passes_its_acceptance_test_is_done_without_finish
+    scripted(tester: [write_test, finish], agent: [double_it, Fake.ok("It is done."), Fake.ok("It is done.")])
+    t1, _setup, store = acceptance_run("r-acc4", PASSES_WHEN_DOUBLED)
+    assert_equal "done", t1.status
+    events = Harness::State::Events.read(store.events_path)
+    assert(events.any? { |e| e["subject"].to_s.start_with?("passed its acceptance test") })
+    assert_empty recovery_events(store)
+  end
+
+  def test_stopped_work_that_fails_its_acceptance_test_goes_to_the_ladder
+    scripted(tester: [write_test, finish], agent: [Fake.ok("It is done."), Fake.ok("It is done."), double_it, finish])
+    t1, _setup, store = acceptance_run("r-acc5", PASSES_WHEN_DOUBLED)
+    assert_equal "done", t1.status
+    assert_equal ["recovery: fresh start"], recovery_events(store).map { |e| e["subject"] }
+  end
+
+  WANTS_CORRECTED = <<~RUBY
+    exit(0) if ARGV.empty?
+    test = File.read(ARGV.first.to_s) rescue ""
+    exit(test.include?("corrected") ? 0 : 1)
+  RUBY
+
+  def test_a_failing_acceptance_test_gets_one_review_and_may_be_corrected
+    fixed = Fake.ok("", tool_calls: [call("write_file", { "path" => CHECK, "content" => "corrected\n" })])
+    scripted(tester: [write_test, finish, fixed, finish("It loaded the code the wrong way.")], agent: [double_it, finish, finish, finish, finish])
+    t1, setup, store = acceptance_run("r-acc6", WANTS_CORRECTED, agent: { "maxRounds" => 2 })
+    assert_equal "done", t1.status
+    assert_equal "corrected\n", File.read(File.join(setup.worktree.root, CHECK))
+    assert(Harness::State::Events.read(store.events_path).any? { |e| e["subject"] == "acceptance test corrected" })
+    review = @server.chat_bodies.find { |b| b["messages"].last["content"].to_s.include?("Decide whether the test is at fault") }
+    assert_includes review["messages"].last["content"], "A value, name or text that the request states stays in the test exactly"
+  end
+
+  def test_a_right_acceptance_test_is_kept_and_blocks_wrong_work
+    scripted(tester: [write_test, finish, finish("The test is right.")], agent: Array.new(8) { finish })
+    t1, _setup, store = acceptance_run("r-acc7", PASSES_WHEN_DOUBLED, agent: { "maxRounds" => 2 })
+    assert_equal %w[blocked agent.rounds_exhausted], [t1.status, t1.reason]
+    assert_equal 1, Harness::State::Events.read(store.events_path).count { |e| e["subject"] == "acceptance test kept" }
+  end
+
   # Models without native tool calls work by a JSON reply protocol, one tool per reply, and never see tools.
   def test_a_model_without_tool_calls_uses_the_json_protocol
     replies = [Fake.ok(JSON.generate({ "tool" => "list_dir", "args" => { "path" => "." } })),
