@@ -73,7 +73,8 @@ build would not start, each with what to do, without changing anything or asking
    failing there is compared later, not blamed on the model.
 2. **Plan.** A planner model splits the request into small tasks (at most 3 files each, by default), each with
    something that can prove it: a gate (type check, lint, tests) or a test it writes. Plans are checked in code:
-   missing files, cycles, tasks that change nothing, tasks too big for the model's context. Problems go back to the
+   missing files, files the request names that no task builds, cycles, tasks that change nothing, tasks too big for the
+   model's context. Problems go back to the
    planner. Questions that block the plan are asked to you.
 3. **Each task.** The context is packed to fit the model's window: the task's files first, then signatures and
    summaries of the files they import. The model replies with exact search-and-replace edits; edits that do not
@@ -83,7 +84,8 @@ build would not start, each with what to do, without changing anything or asking
 5. **Review.** Two independent review passes propose claims; a verifier checks each against the code it can fetch
    (and, for Astro, version-matched docs); a gate in code rejects or abstains on anything not backed by evidence;
    a challenge argues for the code. A surviving claim becomes a **finding** only if a test the harness writes and
-   runs fails because of it, and then it becomes a fix task. Review never blocks a commit on its own.
+   runs fails because of it, and then it becomes a fix task. A separate check goes through your request item by item;
+   anything missing skips the verifier and goes straight to that test. Review never blocks a commit on its own.
 6. **Report.** Every run ends with `runs/<runId>/report.md`: tasks and commits, gates against the baseline, findings,
    open questions, blocked tasks with their patch, every rejected model output counted by reason, and cost per role.
 

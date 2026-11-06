@@ -70,8 +70,10 @@ module TestSupport
     # "support" and "confirm". Discovery finds nothing unless a test scripts it.
     REVIEW_ROLES = [["You are a careful code reviewer", "review"], ["You are a second, independent code reviewer", "review"],
                     ["You are an independent verifier", "verify"], ["You are the author of the code", "challenge"],
-                    ["You check whether a documentation passage", "support"], ["You write one automated test", "confirm"]].freeze
+                    ["You check whether a documentation passage", "support"], ["You write one automated test", "confirm"],
+                    ["You compare a code change", "request"]].freeze
     NO_FINDINGS = FakeLlmServer.ok(JSON.generate({ "summary" => "A change.", "findings" => [], "suspicious" => [] }))
+    NO_ITEMS = FakeLlmServer.ok(JSON.generate({ "items" => [] }))
 
     Result = Data.define(:outcome, :repo, :env, :store, :server)
 
@@ -111,6 +113,7 @@ module TestSupport
               end
         value = replies.fetch(key) do
           next NO_FINDINGS if key.start_with?("review")
+          next NO_ITEMS if key == "request"
 
           raise "fake model: no reply for #{key}"
         end

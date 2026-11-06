@@ -94,7 +94,7 @@ module Harness
           plan = linked(plan)
           issues = Checks.run(plan, root: root, max_files: @config.limits.max_files_per_task, protected: stack.protected_paths,
                                     gates: stack.gates.keys, budget: check_budget, unavailable: unavailable,
-                                    test_gates: test_gates)
+                                    test_gates: test_gates, request: request)
           report(issues)
           return finish(plan, rounds, issues) if issues.empty? || rounds >= @config.limits.max_replan_rounds
 

@@ -74,6 +74,44 @@ class ChecksTest < Minitest::Test
     assert_equal "T3 creates or modifies 4 files; the limit is 3 per task. Split it into smaller tasks", i.message
   end
 
+  def covered(request, *tasks)
+    plan = Harness::Plan::PlanParser.parse({ "tasks" => tasks })
+    C.run(plan, root: @root, max_files: 3, protected: [".env*", "tools/**"], gates: %w[typecheck lint], request: request)
+  end
+
+  # A field plan dropped the page its request named, and every check passed.
+  def test_a_file_the_request_names_must_be_in_the_plan
+    request = "Add `src/i18n/ui.ts` and `src/pages/[lang]/index.astro`."
+    strings = task("T1", files: { "create" => ["src/i18n/ui.ts"] })
+    i = only(covered(request, strings))
+    assert_equal ["plan.misses_request", nil], [i.reason, i.task]
+    assert_equal "the request names src/pages/[lang]/index.astro, which does not exist, and no task creates it; " \
+                 "list it under files.create of the task that builds it", i.message
+    assert_equal "plan leaves out a file the request names", Harness::State::Reasons.text("plan.misses_request")
+    assert_empty covered(request, task("T1", files: { "create" => ["src/i18n/ui.ts", "src/pages/[lang]/index.astro"] }))
+    assert_empty issues(strings), "a hand-written plan with no request is not checked"
+  end
+
+  def test_a_named_file_that_exists_needs_no_task
+    assert_empty covered("Keep `src/b.ts` as it is and change `src/a.ts`.", task("T1"))
+  end
+
+  def test_a_protected_path_in_a_request_is_left_to_the_other_checks
+    assert_empty covered("Never read `tools/run.rb`, or `../outside/a.ts`.", task("T1"))
+  end
+
+  def test_what_counts_as_a_named_path
+    paths = lambda { |text| C.named_paths(text) }
+    assert_equal ["src/a.ts"], paths.call("Add `src/a.ts`, then `src/a.ts` again.")
+    assert_equal ["src/a.ts"], paths.call("Add `./src/a.ts`.")
+    assert_equal ["src/pages/a.astro", "docs/guides/b.md"], paths.call("Edit src/pages/a.astro (and docs/guides/b.md).")
+    assert_equal [".github/workflows/ci.yml"], paths.call("Add `.github/workflows/ci.yml`.")
+    assert_empty paths.call("Serve `/en/` and `/api/health.json`, use `astro/zod` and `home.title`.")
+    assert_empty paths.call("Use `@scope/pkg.js`, `src/**/*.ts`, `tests/<name>.test.ts` and `src/{a,b}.ts`.")
+    assert_empty paths.call("See https://example.com/a/b/c.png and `example.com/logo.png`.")
+    assert_empty paths.call("Works with React/Next.js.")
+  end
+
   def test_missing_path
     i = only(issues(task("T1", files: { "modify" => ["src/nope.ts"] })))
     assert_equal ["plan.missing_path", "T1: src/nope.ts does not exist (files.modify) and no task it depends on creates it; " \

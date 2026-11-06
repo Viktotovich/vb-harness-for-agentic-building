@@ -81,7 +81,7 @@ module Harness
         f = claim.finding
         claim_text = ["file: #{f.file}", "line: #{f.line}", "problem: #{f.problem}", "trigger: #{claim.verdict&.fetch('trigger', '')}"].join("\n")
         user = Prompts.render("confirm_user", claim: Untrusted.fence(claim_text), code: Untrusted.fence(code_of(f.file)), path: path,
-                                              example: example ? Untrusted.fence(example[1]) : "")
+                                              example: example ? Untrusted.fence(example[1]) : "", notes: @ctx.notes)
         parser = lambda do |obj|
           raise ParseError, "the reply is not a JSON object" unless obj.is_a?(Hash)
           next nil if Array(obj["tests"]).empty? && Array(obj["edits"]).empty?

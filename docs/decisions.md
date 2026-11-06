@@ -851,3 +851,19 @@ exports, then ran out of steps. Facts about a stack are config data, so the exam
 the content collection, API route, dynamic page and component test APIs, and says that `node_modules` cannot be read.
 Calls to `run_command` also failed 30 times on a shell command or missing parameters, so its errors now show
 the commands with their parameters.
+
+## Check the work against the request
+
+In the 0.1.42 rerun, all four failed tasks reported done with an empty final review. No stage compared the result
+with the request: discovery sees only the diff, and plan checks see only what the plan lists. One plan dropped a
+page its request named. One route left out `prerender`. One class held the literal text `{tone}`.
+
+Two checks now do that comparison. A plan check refuses a plan when the request names a file that does not exist and
+no task creates it. A review step goes through the request item by item, for each task and for the whole run. A gap
+skips the verifier and goes to the confirming test, because a failing test is its proof (I8) and code that isn't
+there has no line to verify. A confirmed gap in a task becomes a fix task. In the final review it is only a finding,
+because no tasks run after that point.
+
+The same rerun found a bug in the eval: task 03's hidden test required `<article` and refused `<a`, which `<article`
+contains, so no correct solution could pass. It now refuses only a real `<a>` tag. Scores for 03 before this change
+are not comparable.

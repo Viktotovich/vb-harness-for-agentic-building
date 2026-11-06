@@ -8,7 +8,7 @@ it("renders a title and its slot", async () => {
   expect(html).toMatch(/<article[^>]*class="[^"]*\bcard\b/);
   expect(html).toMatch(/<h2[^>]*>\s*Plans\s*<\/h2>/);
   expect(html.indexOf("Body text")).toBeGreaterThan(html.indexOf("Plans"));
-  expect(html).not.toContain("<a");
+  expect(html).not.toMatch(/<a[\s>]/);
 });
 
 it("links the title when href is given", async () => {

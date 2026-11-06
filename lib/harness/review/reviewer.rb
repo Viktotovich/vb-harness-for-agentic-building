@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require "json"
 require_relative "../errors"
 require_relative "../evidence/local_docs"
 require_relative "../evidence/retrieve"
@@ -52,7 +53,7 @@ module Harness
       # @param gates [Array<Gates::Baseline::Comparison>] the task's last gate results
       # @return [Hash] the review record, also saved as tasks/<id>/review.json
       def call(task:, diff:, gates:)
-        record = review(task.id, diff, "task #{task.id}", typecheck_passed?(gates), task.id)
+        record = review(task.id, diff, "task #{task.id}", typecheck_passed?(gates), task.id, scope_of(task))
         confirmed = record.delete(:confirmed)
         # A follow-up's own confirmed claims are recorded but make no further tasks, so fixes do not chain.
         unless task.id.match?(FOLLOW_UP_ID)
@@ -80,7 +81,8 @@ module Harness
       # @return [Hash] the review record, also saved as final_review.json
       def final(diff:, typecheck_passed:)
         @events.emit(stage: "final_review", kind: "stage_started")
-        record = review(nil, diff, "the whole run", typecheck_passed, "final")
+        request = @store.read_request
+        record = review(nil, diff, "the whole run", typecheck_passed, "final", request && Scope.new(request: request, task: nil, others: []))
         record.delete(:confirmed)
         State.write_json(@store.final_review_path, record)
         @events.emit(stage: "final_review", kind: "stage_finished",
@@ -93,12 +95,32 @@ module Harness
 
       private
 
+      # A follow-up fix has one defect to fix, so it is not held to the whole request.
+      # @return [Scope, nil] nil when the run has no request
+      def scope_of(task)
+        request = @store.read_request
+        return nil if request.nil? || task.id.match?(FOLLOW_UP_ID)
+
+        Scope.new(request: request, task: task.prompt_text, others: other_tasks(task))
+      end
+
+      # @return [Array<String>] the plan's other tasks, with the files each one owns
+      def other_tasks(task)
+        return [] unless File.file?(@store.plan_path)
+
+        tasks = Array(JSON.parse(File.read(@store.plan_path, encoding: "UTF-8"))["tasks"])
+        tasks.reject { |t| t["id"] == task.id || t["id"].to_s.match?(FOLLOW_UP_ID) }.map do |t|
+          files = t["files"].to_h.values_at("create", "modify").flatten.compact
+          "#{t['id']}: #{t['title']} (#{files.join(', ')})"
+        end
+      end
+
       # @return [Hash]
-      def review(task_id, diff, subject, typecheck_passed, name)
+      def review(task_id, diff, subject, typecheck_passed, name, scope)
         ctx = Context.new(client: @client, config: @config, events: @events, task: task_id, label: "#{name}.review",
                           root: @worktree.root, protected: @stack.protected_paths, map: @map, framework: @framework, notes: @stack.review_notes,
                           retriever: @retriever)
-        result = Pipeline.new(ctx).call(diff: diff, subject: subject, typecheck_passed: typecheck_passed)
+        result = Pipeline.new(ctx).call(diff: diff, subject: subject, typecheck_passed: typecheck_passed, scope: scope)
         confirm = Confirm.new(ctx: ctx, stack: @stack, runner: @runner, baseline: @baseline, root: @worktree.root, name: name)
         confirmations = result.accepted.map { |c| confirm.call(c) }
         confirmed = confirmations.select { |c| c.status == "confirmed" }

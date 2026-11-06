@@ -20,6 +20,10 @@ module Harness
       # tests, test, __tests__, spec or e2e folder. A field plan once named a page as its own test, and the unit
       # gate then ran the test runner on the page.
       TEST_FILE = %r{(?:\A|/)(?:tests?|__tests__|spec|e2e)/|[._](?:test|spec)\.[A-Za-z0-9]+\z}
+      # A relative file path: at least one folder and an extension. The first folder has no inner dot, which leaves
+      # out domains.
+      QUOTED = /\x60([^\x60\n]+)\x60/ # text in backticks
+      NAMED_PATH = %r{\A\.?[\w\[\]()-]+/(?:[\w.\[\]()-]+/)*[\w.\[\]()-]+\.[A-Za-z0-9]+\z}
       # @param plan [Plan]
       # @param root [String] worktree root
       # @param max_files [Integer] maxFilesPerTask
@@ -28,9 +32,11 @@ module Harness
       # @param budget [Integer, nil] the implementer's token budget for the task and its files; nil skips the size check
       # @param unavailable [Hash{String=>String}] gates the baseline could not run here, with why
       # @param test_gates [Array<String>] gates that run a task's tests (scope "tests")
+      # @param request [String, nil] the request the plan answers; nil skips the check that it covers the request's files
       # @return [Array<Issue>] empty when the plan passes
-      def self.run(plan, root:, max_files:, protected:, gates:, budget: nil, unavailable: {}, test_gates: [])
+      def self.run(plan, root:, max_files:, protected:, gates:, budget: nil, unavailable: {}, test_gates: [], request: nil)
         issues = cycle(plan)
+        issues.concat(uncovered(plan, request, root, protected)) if request
         plan.tasks.each do |t|
           path_issues = paths(t, root, protected, created_before(plan, t))
           issues.concat(writes_nothing(t))
@@ -50,6 +56,32 @@ module Harness
         ids = plan.tasks.reject { |t| t.depends_on.empty? }.map(&:id)
         [Issue.new(task: nil, reason: "plan.cycle",
                    message: "tasks #{ids.join(', ')} depend on each other in a cycle; remove a dependency so they can run in order")]
+      end
+
+      # Paths a request names: anything in backticks that looks like one, and plain words two folders deep. One
+      # folder is not enough in plain text, where "React/Next.js" looks the same as a path.
+      # @param request [String]
+      # @return [Array<String>]
+      def self.named_paths(request)
+        quoted = request.scan(QUOTED).flatten
+        plain = request.gsub(QUOTED, " ").split(/[\s"'<>,;:!?]+/).map { |w| w.sub(/\A\(/, "").sub(/[.)]+\z/, "") }
+        (quoted + plain.select { |w| w.count("/") >= 2 }).map { |w| w.delete_prefix("./") }.grep(NAMED_PATH).uniq
+      end
+
+      # A file the request names that is not in the repository and that no task creates. A field plan dropped the
+      # page its request named, and every check still passed, because each one looks only at what the plan lists.
+      # @return [Array<Issue>]
+      def self.uncovered(plan, request, root, protected)
+        created = plan.tasks.flat_map { |t| t.files.create }
+        (named_paths(request) - created).filter_map do |rel|
+          next if File.exist?(Repo::Paths.resolve_in_worktree(root, rel, protected: protected))
+
+          Issue.new(task: nil, reason: "plan.misses_request",
+                    message: "the request names #{rel}, which does not exist, and no task creates it; " \
+                             "list it under files.create of the task that builds it")
+        rescue PathError
+          nil
+        end
       end
 
       # A task that only inspects or analyses has nothing a gate can prove; its reading belongs to the task that
@@ -165,7 +197,7 @@ module Harness
       rescue TaskTooLargeError => e
         [Issue.new(task: task.id, reason: "plan.too_large_for_context", message: e.message)]
       end
-      private_class_method :cycle, :writes_nothing, :files_count, :created_before, :paths, :acceptance, :size
+      private_class_method :cycle, :uncovered, :writes_nothing, :files_count, :created_before, :paths, :acceptance, :size
     end
   end
 end
