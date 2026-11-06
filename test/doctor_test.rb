@@ -100,7 +100,7 @@ class DoctorTest < Minitest::Test
     write_config(profile: { "apiKeyEnv" => "DOCTOR_TEST_KEY" })
     code, result = doctor(repo: repo, env: { "DOCTOR_TEST_KEY" => "" })
     assert_equal 2, code
-    assert_equal "default (planner, implementer, fixer, reviewer, verifier, summarizer): DOCTOR_TEST_KEY is not set",
+    assert_equal "default (planner, implementer, fixer, reviewer, verifier, summarizer, rescuer): DOCTOR_TEST_KEY is not set",
                  by_area(result, "model").first["detail"]
     format = by_area(result, "gate").find { |c| c["detail"].start_with?("format") }
     assert_equal [true, "format: prettier is not installed in the project"], format.values_at("ok", "detail"),

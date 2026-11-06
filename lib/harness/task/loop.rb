@@ -11,6 +11,7 @@ require_relative "../model/tokens"
 require_relative "../prompts"
 require_relative "../repo/paths"
 require_relative "../untrusted"
+require_relative "../agent/ladder"
 require_relative "../agent/mailbox"
 require_relative "../agent/session"
 require_relative "edits"
@@ -102,6 +103,9 @@ module Harness
       end
 
       CONTINUE_AT_GATES = %w[applied gating fixing reviewing committing].freeze
+      # How much of the last attempt a recovery try is shown.
+      RESUME_CALLS = 10
+      RESUME_DIFF_CHARS = 6000
 
       private
 
@@ -141,16 +145,15 @@ module Harness
         settings = @ctx.config.agent
         step("implementing")
         emit("task.implement", "stage_started")
-        mailbox = Agent::Mailbox.new(store: @ctx.store, events: @ctx.events, task_id: @task.id, timeout: settings.ask_timeout_sec)
+        @mailbox = Agent::Mailbox.new(store: @ctx.store, events: @ctx.events, task_id: @task.id, timeout: settings.ask_timeout_sec)
         toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
                                      settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
-                                     writable: true, tests: @task.test_paths, planned: @task.writable, ask: mailbox.asker)
-        system = Prompts.render("agent_task_system", rules: agent_rules(settings), gates: @ctx.stack.gates.keys.join(", "),
-                                                     notes: @ctx.stack.review_notes)
+                                     writable: true, tests: @task.test_paths, planned: @task.writable, ask: @mailbox.asker)
+        roles = @ctx.config.roles
+        @ladder = Agent::Ladder.new(max: settings.max_recoveries, stronger: roles[:rescuer] != roles[:implementer])
+        @session = agent_session(:implementer, toolbox, "#{@task.id}.agent")
         user = Prompts.render("agent_task_user", task: task_text, request: request_text, done: @done)
-        session = Agent::Session.new(client: @ctx.client, role: :implementer, system: system, toolbox: toolbox,
-                                     label: "#{@task.id}.agent", on_step: agent_events(toolbox), inbox: mailbox.inbox)
-        result = agent_stretch(session, toolbox) { session.run(user, max_steps: settings.max_steps) }
+        result = agent_stretch(toolbox) { @session.run(user, max_steps: settings.max_steps) }
         loop do
           failing = run_gates
           return if failing.empty?
@@ -164,17 +167,28 @@ module Harness
           emit("task.fix", "stage_started")
           note = "The harness ran the task's checks and they fail. Fix the cause, run the checks again with run_gate, " \
                  "then call finish.\n#{Untrusted.fence(render_diagnostics(trimmed_diagnostics(failing)))}"
-          result = agent_stretch(session, toolbox) { session.continue(note, max_steps: settings.max_steps) }
+          result = agent_stretch(toolbox) { @session.continue(note, max_steps: settings.max_steps) }
         end
       ensure
         emit("task.implement", "stage_finished") if result
       end
 
-      # One stretch of the agent's work, then what it wrote is recorded. Running out of steps without finishing
-      # blocks the task: unfinished work is not offered to the gates as if it were done.
+      # @param role [Symbol]
+      # @param toolbox [Agent::Toolbox]
+      # @param label [String]
+      # @return [Agent::Session] a new conversation on the task
+      def agent_session(role, toolbox, label)
+        system = Prompts.render("agent_task_system", rules: agent_rules(@ctx.config.agent), gates: @ctx.stack.gates.keys.join(", "),
+                                                     notes: @ctx.stack.review_notes)
+        Agent::Session.new(client: @ctx.client, role: role, system: system, toolbox: toolbox, label: label,
+                           on_step: agent_events(toolbox), inbox: @mailbox.inbox)
+      end
+
+      # One stretch of the agent's work, then what it wrote is recorded. Stopping without finishing goes to the
+      # recovery ladder: unfinished work is not offered to the gates as if it were done.
       # @return [Agent::Session::Result]
       # @raise [Blocked]
-      def agent_stretch(session, toolbox)
+      def agent_stretch(toolbox)
         result = begin
           yield
         rescue ModelOutputError => e
@@ -188,8 +202,53 @@ module Harness
         return result if result.finished
 
         reason = result.exhausted ? "agent.steps_exhausted" : "agent.no_finish"
-        emit("task.implement", "rejected", reason: reason, detail: "#{session.steps} tool calls; #{result.text.to_s.strip[0, 200]}")
-        raise Blocked.new(reason, "the agent stopped after #{session.steps} tool calls without finishing")
+        emit("task.implement", "rejected", reason: reason, detail: "#{toolbox.calls.size} tool calls; #{result.text.to_s.strip[0, 200]}")
+        recover(toolbox, reason, result)
+      end
+
+      # The next try after an agent stopped, each one different from the last (Agent::Ladder). The files stay; the
+      # conversation does not, since a long one that has stalled tends to stall again. When the tries run out the task
+      # is blocked, and the report says what was tried.
+      # @return [Agent::Session::Result]
+      # @raise [Blocked]
+      def recover(toolbox, reason, stopped)
+        rung = @ladder.next
+        unless rung
+          tried = @ladder.used.empty? ? "" : "; also tried: #{@ladder.used.join(', ')}"
+          raise Blocked.new(reason, "the agent stopped after #{toolbox.calls.size} tool calls without finishing#{tried}")
+        end
+        emit("task.implement", "retried", subject: "recovery: #{rung.name}", detail: reason)
+        checks = rung.checks ? checks_now : nil
+        step("implementing")
+        toolbox.reset_finish
+        @session = agent_session(rung.role, toolbox, "#{@task.id}.agent.#{rung.name.tr(' ', '-')}")
+        prompt = resume_prompt(toolbox, reason, stopped, checks)
+        steps = (@ctx.config.agent.max_steps * rung.share).ceil
+        agent_stretch(toolbox) { @session.run(prompt, max_steps: steps) }
+      end
+
+      # @return [String] what the task's checks say about the work so far, for a narrowed try
+      def checks_now
+        failing = run_gates
+        failing.empty? ? "All of the task's checks pass." : render_diagnostics(trimmed_diagnostics(failing))
+      end
+
+      # What a new conversation needs from the last one, written by the harness from its own records: a model that has
+      # just stalled is a poor witness to its own progress.
+      # @return [String]
+      def resume_prompt(toolbox, reason, stopped, checks)
+        calls = toolbox.calls.last(RESUME_CALLS).map do |c|
+          "#{c.tool} #{c.args['path'] || c.args['name']}: #{c.ok ? 'ok' : 'failed'}: #{c.outcome}"
+        end
+        diff = @ctx.worktree.patch(context: 1)
+        diff = "#{diff[0, RESUME_DIFF_CHARS]}\n[diff cut at #{RESUME_DIFF_CHARS} characters]" if diff.size > RESUME_DIFF_CHARS
+        said = stopped.text.to_s.strip
+        Prompts.render("agent_resume_user", task: task_text, request: request_text, done: @done,
+                                            out_of_steps: reason == "agent.steps_exhausted",
+                                            last_words: said.empty? ? nil : Untrusted.fence(said[0, 600]),
+                                            files: @touched.to_a.sort, diff: diff.strip.empty? ? nil : Untrusted.fence(diff),
+                                            calls: calls.empty? ? nil : Untrusted.fence(calls.join("\n")),
+                                            checks: checks && Untrusted.fence(checks))
       end
 
       # Events for the progress view: reading tools under gather, writing tools under apply, gates and commands

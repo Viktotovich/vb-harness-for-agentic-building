@@ -187,7 +187,7 @@ module Harness
 
     # The stage each role's discarded replies are counted under (DESIGN.md 10.3).
     DISCARD_STAGE = { planner: "plan", implementer: "task.implement", fixer: "task.fix", reviewer: "review.discover",
-                      verifier: "review.verify", summarizer: "map" }.freeze
+                      verifier: "review.verify", summarizer: "map", rescuer: "task.implement" }.freeze
 
     # Connect a client's discarded replies to the run's event log, so the report counts them.
     # @param client [Model::Client]

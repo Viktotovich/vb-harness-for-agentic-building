@@ -729,7 +729,8 @@ list, search, find symbols, edit (exact replace, whole files, and long new files
 view its diff, run the stack's gates and run commands declared in config. The agent's `finish` is a claim: the
 harness runs the task's gates itself (I7) and sends a failure back into the same conversation, so the agent keeps
 what it read, for up to `agent.maxRounds` rounds. Review and its follow-up fix tasks work as before. An agent that
-runs out of steps without finishing blocks its task; unfinished work is never offered to the gates as done.
+runs out of steps without finishing goes to the recovery ladder and then blocks its task; unfinished work is never
+offered to the gates as done.
 
 The invariants hold by construction. Every write goes through `Task::Edits`, so I2 and `protectedPaths` apply.
 Commands are declared in config with fixed argv; the model picks one by name and fills declared parameters, each
@@ -822,3 +823,13 @@ was written: told exactly what to add, the model sent the same plan back until t
 only one possible fix, so the planner's plans are now linked in code before they are checked. Only a file exactly one
 other task creates is linked, and never when that would make a cycle; those still go to the checks. A hand-written
 plan is not changed, because it should run as written.
+
+## An agent that stops early gets a few different tries
+
+Four eval tasks ended with the agent out of steps or stopped without calling `finish`, often with most of the work
+on disk. The task used to block at once. Sending the same conversation back would mostly fail the same way, so every
+try changes something: a new conversation, then a smaller job built from the checks' current result, then a stronger
+model if `roles.rescuer` names one. The harness writes the summary of the earlier attempt from its own records, because
+a model that has just stalled is a poor witness to its own progress. The ladder is short on purpose: some tasks are
+beyond the model, and a clear stop is better than hours of retries. Work is still never offered to the gates as done
+without a `finish`.
