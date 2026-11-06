@@ -58,7 +58,14 @@
         "An .astro file's frontmatter (between the --- lines) runs on the server; browser code goes in a <script> tag.",
         "Component props are Astro.props; a bare props is an undefined name.",
         "A request body from request.json() can be any JSON value, including a number, a string or null: check it is an object before using in, Reflect.has or property access, or the route answers 500 instead of 400.",
-        "A form field or editor wired to a callback (such as onChange) must call it on every change, or the edit is never saved."
+        "A form field or editor wired to a callback (such as onChange) must call it on every change, or the edit is never saved.",
+        "A content collection lives in src/content.config.ts: import { defineCollection } from \"astro:content\"; import { glob } from \"astro/loaders\"; import { z } from \"astro/zod\"; export const collections = { blog: defineCollection({ loader: glob({ pattern: \"*.md\", base: \"./src/content/blog\" }), schema: z.object({ ... }) }) };",
+        "Read a collection with getCollection(\"blog\") from \"astro:content\". An entry has id and data. Render one with const { Content } = await render(entry), render also coming from \"astro:content\". Entries have no slug.",
+        "An API route exports its method by name: import type { APIRoute } from \"astro\"; export const GET: APIRoute = () => new Response(JSON.stringify(body), { headers: { \"Content-Type\": \"application/json\" } }); add export const prerender = false; when the route must not be prerendered. A test imports GET and calls it directly.",
+        "A dynamic page such as src/pages/[lang]/index.astro exports getStaticPaths, returning [{ params: { lang } }], and reads Astro.params.",
+        "To test an .astro component: import { experimental_AstroContainer } from \"astro/container\"; const container = await experimental_AstroContainer.create(); const html = await container.renderToString(Component, { props: { ... } }); Import the component by its path, with the .astro extension.",
+        "astro:content exists only inside Astro's own build: plain test code cannot import a file that imports it. Put logic that needs testing in a file that does not.",
+        "node_modules cannot be read. Do not look for an API there, and do not write throwaway test files to find out what a package exports: use these facts and the code in the repository."
       ]
     }
   },

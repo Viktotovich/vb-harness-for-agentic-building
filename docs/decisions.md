@@ -843,3 +843,11 @@ correct it only against the request. Writing the test can fail without costing t
 it, as before. Such a test is also better evidence than a `finish` call, so work that passes it counts as done even
 if the agent never called `finish`. Without one, unfinished work is still never offered to the gates as done. This
 is off by default until the eval has measured it.
+
+## Stack facts stop agents probing for an API
+
+In the eval, agents tried to read `node_modules` 17 times and wrote throwaway tests to find out what Astro
+exports, then ran out of steps. Facts about a stack are config data, so the example config's Astro stack now states
+the content collection, API route, dynamic page and component test APIs, and says that `node_modules` cannot be read.
+Calls to `run_command` also failed 30 times on a shell command or missing parameters, so its errors now show
+the commands with their parameters.
