@@ -103,6 +103,87 @@ class AgentModeTest < Minitest::Test
     assert_equal "the agent ran out of steps before finishing", Harness::State::Reasons.text("agent.steps_exhausted")
   end
 
+  def run_with(id, agent: {})
+    repo, env = TestSupport.repo(@tmp, F::FILES)
+    config = F.config(@server.base_url, review: "off", top: { "mode" => "agent", "agent" => agent })
+    store = Harness::State::RunStore.new(runs_dir: File.join(@tmp, "runs"), run_id: id)
+    setup = Harness::Run.intake(config: config, repo: repo, store: store, parent_env: ENV.to_h.merge(env))
+    outcome = Harness::Run.new(config: config, client: F.client(config, store), setup: setup)
+                          .execute(Harness::Plan::PlanParser.parse({ "tasks" => [F.task("T1", "Double the price", modify: ["src/lib/price.ts"])] }))
+    [outcome.tasks.first, setup, store]
+  end
+
+  def recovery_events(store)
+    Harness::State::Events.read(store.events_path).select { |e| e["kind"] == "retried" && e["subject"].to_s.start_with?("recovery") }
+  end
+
+  # An agent that says it is done in plain text, ignoring the nudge; only a new conversation gets it to finish.
+  def test_an_agent_that_stops_without_finishing_gets_a_new_conversation_with_its_progress
+    @server = Fake.new do |body, _n|
+      system = body["messages"].first["content"]
+      next F::NO_FINDINGS unless system.start_with?(TASK_AGENT)
+
+      fresh = body["messages"].any? { |m| m["content"].to_s.start_with?("An earlier attempt") }
+      edited = body["messages"].any? { |m| m["role"] == "tool" }
+      if !fresh && !edited then Fake.ok("", tool_calls: [call("edit_file", { "path" => "src/lib/price.ts", "search" => "  return n;", "replace" => "  return n * 2;" })])
+      elsif !fresh then Fake.ok("All done, the price is doubled.")
+      else Fake.ok("", tool_calls: [call("finish", { "summary" => "Doubled the price." })])
+      end
+    end
+    t1, setup, store = run_with("r-rec1")
+    assert_equal "done", t1.status
+    assert_includes File.read(File.join(setup.worktree.root, "src/lib/price.ts")), "  return n * 2;\n"
+    assert_equal ["recovery: fresh start"], recovery_events(store).map { |e| e["subject"] }
+    resumed = @server.chat_bodies.find { |b| b["messages"].last["content"].to_s.start_with?("An earlier attempt") }
+    assert_equal %w[system user], resumed["messages"].map { |m| m["role"] }, "the stalled conversation is left behind"
+    text = resumed["messages"].last["content"]
+    assert_includes text, "It stopped calling tools without calling finish."
+    assert_includes text, "Files it changed: src/lib/price.ts"
+    assert_includes text, "return n * 2;"
+    assert_includes text, "All done, the price is doubled."
+  end
+
+  def test_each_recovery_differs_and_the_block_says_what_was_tried
+    @server = Fake.new do |body, _n|
+      body["messages"].first["content"].start_with?(TASK_AGENT) ? Fake.ok("", tool_calls: [call("list_dir", { "path" => "." })]) : F::NO_FINDINGS
+    end
+    t1, _setup, store = run_with("r-rec2", agent: { "maxSteps" => 4 })
+    assert_equal %w[blocked agent.steps_exhausted], [t1.status, t1.reason]
+    assert_includes t1.detail, "also tried: fresh start, narrower task"
+    assert_equal ["recovery: fresh start", "recovery: narrower task"], recovery_events(store).map { |e| e["subject"] }
+    prompts = @server.chat_bodies.map { |b| b["messages"].find { |m| m["role"] == "user" }["content"] }.uniq.select { |t| t.start_with?("An earlier attempt") }
+    assert_equal 2, prompts.size
+    refute_includes prompts[0], "ran the task's checks just now"
+    assert_includes prompts[1], "ran the task's checks just now"
+    assert_includes prompts[1], "Do only what these results and the task still need."
+    asked = @server.chat_bodies.count { |b| b["messages"].first["content"].start_with?(TASK_AGENT) }
+    assert_equal 4 + 4 + 2, asked, "the narrower try gets half the steps"
+  end
+
+  def test_max_recoveries_zero_blocks_at_once
+    @server = Fake.new do |body, _n|
+      body["messages"].first["content"].start_with?(TASK_AGENT) ? Fake.ok("", tool_calls: [call("list_dir", { "path" => "." })]) : F::NO_FINDINGS
+    end
+    t1, _setup, store = run_with("r-rec3", agent: { "maxSteps" => 2, "maxRecoveries" => 0 })
+    assert_equal %w[blocked agent.steps_exhausted], [t1.status, t1.reason]
+    refute_includes t1.detail, "also tried"
+    assert_empty recovery_events(store)
+  end
+
+  def test_the_ladder_offers_a_stronger_model_only_when_one_is_configured
+    names = lambda do |ladder|
+      out = []
+      while (rung = ladder.next)
+        out << [rung.name, rung.role]
+      end
+      out
+    end
+    plain = [["fresh start", :implementer], ["narrower task", :implementer]]
+    assert_equal plain, names.call(Harness::Agent::Ladder.new(max: 3, stronger: false))
+    assert_equal plain + [["stronger model", :rescuer]], names.call(Harness::Agent::Ladder.new(max: 3, stronger: true))
+    assert_equal plain.first(1), names.call(Harness::Agent::Ladder.new(max: 1, stronger: true))
+  end
+
   # Models without native tool calls work by a JSON reply protocol, one tool per reply, and never see tools.
   def test_a_model_without_tool_calls_uses_the_json_protocol
     replies = [Fake.ok(JSON.generate({ "tool" => "list_dir", "args" => { "path" => "." } })),

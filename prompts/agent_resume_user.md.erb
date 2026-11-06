@@ -1,0 +1,50 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+An earlier attempt at this task stopped before it was done. <%= out_of_steps ? "It used all of its tool calls." : "It stopped calling tools without calling finish." %> This is a new conversation, but its changes are still in the repository: build on them and do not start again.
+
+The task, as planned:
+<%= task %>
+
+<% if request -%>
+The whole feature request this task is one part of. Take exact values, names and text from it; build only this task's part:
+<%= request %>
+
+<% end -%>
+<% unless done.empty? -%>
+Tasks already done in this run:
+<% done.each do |d| -%>
+- <%= d %>
+<% end -%>
+
+<% end -%>
+<% if files.empty? -%>
+It changed no files.
+
+<% else -%>
+Files it changed: <%= files.join(", ") %>
+
+<% end -%>
+<% if diff -%>
+Its changes:
+<%= diff %>
+
+<% end -%>
+<% if calls -%>
+Its last tool calls. Do not repeat what did not work:
+<%= calls %>
+
+<% end -%>
+<% if last_words -%>
+Its last message:
+<%= last_words %>
+
+<% end -%>
+<% if checks -%>
+The harness ran the task's checks just now:
+<%= checks %>
+
+Do only what these results and the task still need. Add nothing else.
+<% else -%>
+Find what is still missing and do only that. Run the checks that apply.
+<% end -%>
+The task ends only when you call the finish tool. Saying that you are done in a message does not finish it.
