@@ -369,7 +369,11 @@ module Harness
 
       def run_command(name, params)
         command = @settings.commands[name.to_s]
-        return "error: no command named #{name.to_s[0, 40]}; use one of #{@settings.commands.keys.join(', ')}" unless command
+        unless command
+          listing = @settings.commands.values.map { |c| "#{c.name}(#{c.params.keys.join(', ')})" }.join(", ")
+          return "error: no command named #{name.to_s[0, 40]}; use one of #{listing}. name is one of these, never a shell command, " \
+                 "and its values go in params. To look around, use list_dir, search and read_file"
+        end
 
         values = params.is_a?(Hash) ? params : {}
         argv = command.argv.map do |a|
@@ -390,7 +394,7 @@ module Harness
       def param(command, key, value)
         kind = command.params.fetch(key)
         value = value.to_s.strip
-        raise ArgumentError, "#{command.name} needs #{key}" if value.empty?
+        raise ArgumentError, "#{command.name} needs #{key}: call run_command with params {\"#{key}\": ...}" if value.empty?
 
         case kind
         when "path"
