@@ -63,8 +63,9 @@ module Harness
       # @param planned [Array<String>] the files the plan names for the task; only these may be check configuration
       #   or existing tests
       # @param ask [#call, nil] (question) -> answer text, for ask_user; nil offers no such tool
+      # @param only [Array<String>, nil] the only files that may be written; nil: no such limit
       def initialize(root:, protected:, stack:, settings:, runner: nil, worktree: nil, map: nil, writable: false, tests: [],
-                     planned: [], ask: nil)
+                     planned: [], ask: nil, only: nil)
         @root = root
         @protected = protected
         @runner = runner
@@ -80,6 +81,7 @@ module Harness
           nil
         end
         @ask = ask
+        @only = only
         @calls = []
         @touched = Set.new
         @created = Set.new
@@ -315,6 +317,8 @@ module Harness
       # @return [String]
       def apply(edit, modify:)
         rel = Repo::Paths.normalize(edit.path)
+        return "error: only #{@only.join(', ')} may be changed here" if @only && !@only.include?(rel)
+
         if guarded?(rel)
           return "error: #{rel} is #{CHECK_CONFIG.match?(rel) ? 'check configuration' : 'an existing test'}, which decides whether the " \
                  "project's checks pass, and this task's plan does not name it. Fix the code instead; if the check itself is " \

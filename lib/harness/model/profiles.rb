@@ -6,9 +6,10 @@ require_relative "../parse"
 
 module Harness
   module Model
-    ROLES = %i[planner implementer fixer reviewer verifier summarizer rescuer].freeze
+    ROLES = %i[planner implementer fixer reviewer verifier summarizer rescuer tester].freeze
     # Roles that fall back to another role when config["roles"] does not name them (DESIGN.md 4.1).
-    ROLE_DEFAULTS = { fixer: :implementer, verifier: :reviewer, summarizer: :implementer, rescuer: :implementer }.freeze
+    ROLE_DEFAULTS = { fixer: :implementer, verifier: :reviewer, summarizer: :implementer, rescuer: :implementer,
+                      tester: :reviewer }.freeze
 
     THINKING_CONTROLS = %w[probe chat_template_kwargs reasoning_effort budget none].freeze
     STRUCTURED_MODES = %w[probe json_schema json_object prompt].freeze

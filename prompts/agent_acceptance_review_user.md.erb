@@ -1,0 +1,25 @@
+<%# SPDX-License-Identifier: Apache-2.0 -%>
+<%# Copyright 2026 V and Bruno LLC -%>
+The acceptance test you are responsible for, at <%= tests.join(", ") %>, still fails after several rounds of work on the code. Decide whether the test is at fault. The code now exists: read it, and read the test.
+
+The task, as planned:
+<%= task %>
+
+<% if request -%>
+The feature request, the authority on what is right:
+<%= request %>
+
+<% end -%>
+The failure:
+<%= failure %>
+
+<% if claim -%>
+What the engineer said about their work. This is a claim, not evidence:
+<%= claim %>
+
+<% end -%>
+Change the test only when one of these is true:
+- It checks something that contradicts the request, or that the request never states.
+- It cannot work in this project, for example it loads the code in a way the project's test setup does not support.
+
+Do not change it because the code does something else. A value, name or text that the request states stays in the test exactly. If the test is right, change nothing and call finish saying so. If you change it, run the test, then call finish saying what was wrong.

@@ -831,5 +831,15 @@ on disk. The task used to block at once. Sending the same conversation back woul
 try changes something: a new conversation, then a smaller job built from the checks' current result, then a stronger
 model if `roles.rescuer` names one. The harness writes the summary of the earlier attempt from its own records, because
 a model that has just stalled is a poor witness to its own progress. The ladder is short on purpose: some tasks are
-beyond the model, and a clear stop is better than hours of retries. Work is still never offered to the gates as done
-without a `finish`.
+beyond the model, and a clear stop is better than hours of retries.
+
+## Acceptance tests are written apart from the implementer
+
+An eval task passed every check with the wrong class name, because the model wrote the code and the test from the same
+misreading. With `agent.acceptanceTests` on, a separate conversation on the `tester` role writes the task's test from
+the request before the code exists, and the implementer cannot change it. A test written first can be wrong too, and
+then a correct task would fail with no way out, so its author gets one look once the rounds are half used, and may
+correct it only against the request. Writing the test can fail without costing the task: the implementer then writes
+it, as before. Such a test is also better evidence than a `finish` call, so work that passes it counts as done even
+if the agent never called `finish`. Without one, unfinished work is still never offered to the gates as done. This
+is off by default until the eval has measured it.
