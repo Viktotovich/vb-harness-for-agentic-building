@@ -37,9 +37,12 @@ On the command line instead, `ruby exe/harness init` asks a few questions (Enter
 Stuck? `ruby exe/harness doctor --repo ../my-site` (or **Check setup** at the top of Settings) lists every reason a
 build would not start, each with what to do, without changing anything or asking a model to write.
 
-[![An animated walkthrough of a run: a request, the live progress card, rejected outputs and why, the evidence-gated review, a claim confirmed by a failing test, and the finished Badge component rendered on the pricing page](docs/media/demo-preview.webp)](docs/media/demo.mp4)
+[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent, an agent investigates the repository and the plan is checked, four tasks are worked by agents with a note sent to steer them, rejected outputs are counted by reason, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
-*An animated illustration of a run in the app, ending with the component it built, rendered (not a screen recording). Click it for the 1080p, 60 fps video.*
+*An animated illustration of a run in the app (not a screen recording). The plan, code, numbers, review claims and
+pages come from a real agent-mode run of evaluation task 10 with a local model on a 6 GB laptop GPU, which took
+3 hours 28 minutes. The steering note shows the feature and was not part of that run. Click it for the 1080p,
+60 fps video.*
 
 ## Contents
 
