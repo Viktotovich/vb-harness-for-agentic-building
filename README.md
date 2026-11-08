@@ -41,8 +41,8 @@ build would not start, each with what to do, without changing anything or asking
 
 *An animated illustration of a run in the app (not a screen recording). The plan, code, numbers, review claims and
 pages come from a real agent-mode run of evaluation task 10 with a local model on a 6 GB laptop GPU, which took
-3 hours 28 minutes. The steering note shows the feature and was not part of that run. Click it for the 1080p,
-60 fps video.*
+3 hours 28 minutes. The steering note shows the feature and was not part of that run, and the pages are shown in a
+layout with cover art made for the video; the run's own files are unchanged. Click it for the 1080p, 60 fps video.*
 
 ## Contents
 
