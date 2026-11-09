@@ -34,6 +34,7 @@ module Harness
           "tasks" => { "type" => "array", "items" => {
             "type" => "object", "required" => %w[id title intent files acceptance],
             "properties" => { "id" => { "type" => "string" }, "title" => { "type" => "string" }, "intent" => { "type" => "string" },
+                              "type" => { "type" => "string", "enum" => COMMIT_TYPES },
                               "files" => { "type" => "object", "properties" => { "create" => STRINGS, "modify" => STRINGS, "read" => STRINGS } },
                               "dependsOn" => STRINGS, "acceptance" => { "type" => "array", "items" => ACCEPTANCE_SCHEMA } }
           } },

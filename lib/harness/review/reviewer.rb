@@ -154,7 +154,7 @@ module Harness
                              intent: "A review of #{task.id} found this defect, and the test #{confirmation.test_path} confirms it: " \
                                      "#{c.finding.problem} Make that test pass without weakening it.",
                              files: Plan::Files.new(create: [], modify: [c.finding.file], read: []),
-                             depends_on: [task.id], acceptance: acceptance)
+                             depends_on: [task.id], acceptance: acceptance, type: "fix")
         FollowUp.new(task: fix, test_path: confirmation.test_path, test_content: confirmation.test_content)
       end
 
