@@ -14,9 +14,10 @@ module Harness
     THINKING_CONTROLS = %w[probe chat_template_kwargs reasoning_effort budget none].freeze
     STRUCTURED_MODES = %w[probe json_schema json_object prompt].freeze
     TOOL_MODES = %w[probe native none].freeze
+    CONTINUE_MODES = %w[probe prefill continue_final_message none].freeze
 
     PROFILE_KEYS = %w[baseUrl model apiKeyEnv contextTokens maxOutputTokens temperature thinking structuredOutput
-                      toolCalls concurrency timeoutSec promptNotes swap fallback].freeze
+                      toolCalls continuation concurrency timeoutSec promptNotes swap fallback].freeze
     ENV_NAME = /\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
 
     Thinking = Data.define(:control, :effort, :budget_tokens)
@@ -25,7 +26,7 @@ module Harness
     # One model endpoint and how to talk to it (DESIGN.md 4.2). Values set to "probe" come from the probe.
     Profile = Data.define(
       :name, :base_url, :model, :api_key_env, :context_tokens, :max_output_tokens, :temperature, :thinking,
-      :structured_output, :tool_calls, :concurrency, :timeout_sec, :prompt_notes, :swap, :fallback
+      :structured_output, :tool_calls, :continuation, :concurrency, :timeout_sec, :prompt_notes, :swap, :fallback
     ) do
       # Parse one entry of config["profiles"].
       # @param name [String] profile name
@@ -48,6 +49,7 @@ module Harness
           structured_output: Parse.enum!(h.fetch("structuredOutput", "probe"), "#{path}.structuredOutput",
                                          STRUCTURED_MODES),
           tool_calls: Parse.enum!(h.fetch("toolCalls", "probe"), "#{path}.toolCalls", TOOL_MODES),
+          continuation: Parse.enum!(h.fetch("continuation", "probe"), "#{path}.continuation", CONTINUE_MODES),
           concurrency: Parse.int!(h.fetch("concurrency", 1), "#{path}.concurrency", min: 1),
           timeout_sec: Parse.int!(h.fetch("timeoutSec", 900), "#{path}.timeoutSec", min: 1),
           prompt_notes: h["promptNotes"].nil? ? nil : Parse.str!(h["promptNotes"], "#{path}.promptNotes"),

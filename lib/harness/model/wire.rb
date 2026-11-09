@@ -17,6 +17,13 @@ module Harness
         "none" => {}
       }.freeze
       THINKING_KEYS = %w[chat_template_kwargs reasoning_effort thinking_budget_tokens].freeze
+      # Request fields that make a server continue a final assistant message instead of starting a new reply, per
+      # continuation mode. "prefill" servers do it when the last message is the assistant's; "none" cannot.
+      CONTINUE = {
+        "prefill" => {},
+        "continue_final_message" => { "continue_final_message" => true, "add_generation_prompt" => false },
+        "none" => nil
+      }.freeze
       THINK_BLOCK = %r{<think>.*?</think>}m
       # A Markdown code fence (three backticks, written as \x60 so lib/ has no backtick characters, I3).
       CODE_FENCE = /\x60{3}(?:json)?\s*\n(.*?)\n?\x60{3}/m
@@ -40,6 +47,29 @@ module Harness
       # @return [Hash] the body with thinking turned off through control
       def thinking_off(body, control)
         body.except(*THINKING_KEYS).merge(THINKING_OFF.fetch(control, {}))
+      end
+
+      # A request that asks the model to go on with a reply it started: the partial reply becomes the last message,
+      # as the assistant's, and thinking is off, since the model had finished thinking before it began answering.
+      # The response format is dropped: a grammar would start again at its root instead of mid-answer.
+      # @param body [Hash] the request that was cut off
+      # @param partial [String] the answer so far
+      # @param mode [String] a key of CONTINUE other than "none"
+      # @param control [String] the thinking control
+      # @return [Hash]
+      def continuation(body, partial, mode, control)
+        messages = [*body["messages"], { "role" => "assistant", "content" => partial }]
+        thinking_off(body.except("response_format"), control).merge("messages" => messages).merge(CONTINUE.fetch(mode))
+      end
+
+      # The answer part of a reply's content, with think blocks removed and its end kept exactly as sent, so a
+      # continuation joins it without losing or adding a space.
+      # @param content [String, nil]
+      # @return [String]
+      def raw_answer(content)
+        text = content.to_s.gsub(THINK_BLOCK, "")
+        open = text.index("<think>")
+        (open ? text[0...open] : text).lstrip
       end
 
       # Separate inline reasoning from the answer.

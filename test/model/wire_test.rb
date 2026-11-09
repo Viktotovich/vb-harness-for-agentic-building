@@ -47,6 +47,25 @@ class WireTest < Minitest::Test
   end
 
   # Port of REVIEWER flattenToolHistory.
+  def test_raw_answer_keeps_the_end_exactly_and_drops_thinking
+    assert_equal "{\"a\": \"x ", W.raw_answer("<think>hm</think>\n{\"a\": \"x ")
+    assert_equal "abc ", W.raw_answer("abc <think>still going")
+    assert_equal "", W.raw_answer(nil)
+  end
+
+  def test_continuation_appends_the_partial_answer_as_the_assistant
+    body = { "messages" => [{ "role" => "user", "content" => "q" }], "max_tokens" => 9,
+             "response_format" => { "type" => "json_object" }, "reasoning_effort" => "low" }
+    c = W.continuation(body, "{\"a\": ", "prefill", "reasoning_effort")
+    assert_equal [{ "role" => "user", "content" => "q" }, { "role" => "assistant", "content" => "{\"a\": " }], c["messages"]
+    assert_nil c["response_format"]
+    assert_equal "none", c["reasoning_effort"]
+    assert_equal 9, c["max_tokens"]
+    assert_equal 1, body["messages"].size, "the original request is unchanged"
+    c = W.continuation(body, "x", "continue_final_message", "none")
+    assert_equal [true, false], [c["continue_final_message"], c["add_generation_prompt"]]
+  end
+
   def test_flatten_tool_history
     history = [
       { "role" => "assistant", "content" => "checking",

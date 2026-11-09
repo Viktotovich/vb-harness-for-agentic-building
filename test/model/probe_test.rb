@@ -16,11 +16,17 @@ class ProbeTest < Minitest::Test
 
   # A configurable fake: which response formats it honours, whether it calls tools, how it thinks,
   # and what it says about an oversize prompt.
-  def fake(schema: true, object: true, tools: true, thinking: nil, overflow: nil, models: [{ "id" => "test-model" }])
+  # continuation: nil (restarts a started reply), "prefill" (continues one) or "continue_final_message" (continues
+  # one when asked with that field).
+  def fake(schema: true, object: true, tools: true, thinking: nil, overflow: nil, continuation: nil,
+           models: [{ "id" => "test-model" }])
     Fake.new(models: models) do |body, _n|
       prompt = body["messages"].last["content"]
       fmt = body.dig("response_format", "type")
-      if prompt.start_with?("x x x")
+      if body["messages"].last["role"] == "assistant"
+        goes_on = continuation == "prefill" || (continuation && body["continue_final_message"] == true)
+        Fake.ok(goes_on ? "13 14 15 16" : "1 2 3 4 5 6")
+      elsif prompt.start_with?("x x x")
         overflow ? Fake.error(400, overflow) : Fake.ok("fine")
       elsif fmt == "json_schema"
         schema ? Fake.ok('{"yes":true}') : Fake.error(400, "response_format json_schema is not supported")
@@ -180,5 +186,46 @@ class ProbeTest < Minitest::Test
   def test_describe_in_plain_words
     r = M::Probe::Result.new(**TestSupport::CAPS, structured_output: "json_object", tool_calls: "none")
     assert_equal "16K context, JSON mode: yes, tools: no, thinking can be turned off", r.describe
+    assert_equal "16K context, JSON mode: yes, tools: yes, thinking can be turned off, long replies can be continued",
+                 r.with(tool_calls: "native", continuation: "prefill").describe
+  end
+
+  # --- continuing a started reply ---
+
+  def test_a_server_that_continues_a_started_reply_is_prefill
+    srv = fake(continuation: "prefill")
+    assert_equal "prefill", probe_for(srv).continuation
+    asked = srv.chat_bodies.find { |b| b["messages"].last["role"] == "assistant" }
+    assert_equal M::Probe::COUNT_START, asked["messages"].last["content"]
+    assert_equal M::Probe::COUNT_PROMPT, asked["messages"][-2]["content"]
+  end
+
+  def test_a_server_that_needs_the_continue_field_gets_it
+    assert_equal "continue_final_message", probe_for(fake(continuation: "continue_final_message")).continuation
+  end
+
+  def test_a_server_that_restarts_the_reply_cannot_continue
+    assert_equal "none", probe_for(fake).continuation
+  end
+
+  def test_a_server_that_rejects_a_started_reply_cannot_continue
+    srv = Fake.new do |body, _n|
+      body["messages"].last["role"] == "assistant" ? Fake.error(400, "prefill not supported") : Fake.ok("OK")
+    end
+    @servers << srv
+    assert_equal "none", probe_for(srv).continuation
+  end
+
+  def test_the_profile_can_turn_continuation_off
+    assert_equal "none", probe_for(fake(continuation: "prefill"), continuation: "none").continuation
+  end
+
+  def test_a_cache_from_before_continuation_was_probed_is_probed_again
+    srv = fake(continuation: "prefill")
+    probe_for(srv)
+    path = Dir.glob(File.join(@dir, ".cache", "probe", "*.json")).first
+    File.write(path, JSON.generate(JSON.parse(File.read(path)).except("continuation")))
+    assert_equal "prefill", probe_for(srv).continuation
+    assert_equal "prefill", JSON.parse(File.read(path))["continuation"], "the new result is cached"
   end
 end
