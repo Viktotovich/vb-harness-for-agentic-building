@@ -377,6 +377,7 @@ read-only. The token goes only into the request to Figma, and layer names and te
     "thinking": { "control": "probe", "effort": "low", "budgetTokens": null },
     "structuredOutput": "probe",  // json_schema | json_object | prompt
     "toolCalls": "probe",         // native | none
+    "continuation": "probe",      // prefill | continue_final_message | none
     "timeoutSec": 900
   }
 },
@@ -502,14 +503,16 @@ from the gates' environment otherwise.
 ## Choosing and checking a model
 
 Nothing about specific models is built in. On first use, the harness probes each model: its context size, whether
-it can return JSON or call tools, whether its thinking can be turned off, and how fast it is. Values you set in a
-profile override the probe. Results are cached in `.cache/probe/`.
+it can return JSON or call tools, whether its thinking can be turned off, whether it can continue a reply it
+started, and how fast it is. Values you set in a profile override the probe. Results are cached in `.cache/probe/`.
 
 Practical advice:
 
 - A coding model with 16K context or more, instruction-tuned, at a quantization that still follows JSON reliably.
-- If a reasoning model spends its whole budget thinking, the harness retries once with thinking off. Setting
-  `thinking.control` explicitly avoids the retry.
+- A reply cut off at `maxOutputTokens` is not thrown away. When the server can continue a reply, the harness asks
+  the model to go on from where it stopped, up to three times, and checks the joined answer as usual. When a reasoning
+  model spends its whole budget thinking, the harness retries once with thinking off and gives the model its reasoning
+  so far, so the thinking is not lost. Set `continuation` to `none` to turn continuing off.
 - Compare models with the [evaluation](#evaluation): the same ten tasks, one table per profile mapping.
 
 ## Safety model

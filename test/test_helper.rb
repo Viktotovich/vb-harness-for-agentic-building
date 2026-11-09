@@ -37,7 +37,8 @@ module TestSupport
   # Capabilities a test client starts with; override per test with caps:.
   CAPS = {
     model_id: "test-model", context_tokens: 16_384, context_source: "models", structured_output: "json_schema",
-    tool_calls: "native", thinking_control: "chat_template_kwargs", reasoning: "separate", prompt_tps: nil, gen_tps: nil
+    tool_calls: "native", thinking_control: "chat_template_kwargs", reasoning: "separate", prompt_tps: nil, gen_tps: nil,
+    continuation: "none"
   }.freeze
 
   # @param base_url [String]

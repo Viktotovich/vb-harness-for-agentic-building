@@ -18,12 +18,12 @@ module Harness
       DEFAULT_CONTEXT = 8192
 
       Result = Data.define(:model_id, :context_tokens, :context_source, :structured_output, :tool_calls,
-                           :thinking_control, :reasoning, :prompt_tps, :gen_tps)
+                           :thinking_control, :reasoning, :prompt_tps, :gen_tps, :continuation)
 
       # Cache (de)serialisation and the plain-words summary shown after onboarding.
       class Result
         KEYS = %w[modelId contextTokens contextSource structuredOutput toolCalls thinkingControl reasoning
-                  promptTps genTps].freeze
+                  promptTps genTps continuation].freeze
 
         # @param raw [Hash] cached JSON
         # @return [Result]
@@ -38,7 +38,9 @@ module Harness
               tool_calls: Parse.enum!(h["toolCalls"], "probe.toolCalls", %w[native none]),
               thinking_control: Parse.enum!(h["thinkingControl"], "probe.thinkingControl", Wire::THINKING_OFF.keys),
               reasoning: Parse.enum!(h["reasoning"], "probe.reasoning", %w[separate inline none]),
-              prompt_tps: tps.call("promptTps"), gen_tps: tps.call("genTps"))
+              prompt_tps: tps.call("promptTps"), gen_tps: tps.call("genTps"),
+              # A cache written before this field existed fails here and is probed again.
+              continuation: Parse.enum!(h["continuation"], "probe.continuation", Wire::CONTINUE.keys))
         end
 
         # @return [Hash] JSON form, camelCase keys
@@ -51,7 +53,8 @@ module Harness
           ctx = context_tokens >= 1024 ? "#{context_tokens / 1024}K" : context_tokens.to_s
           json = structured_output == "prompt" ? "no (JSON by instruction)" : "yes"
           think = thinking_control == "none" ? "no thinking control found" : "thinking can be turned off"
-          "#{ctx} context, JSON mode: #{json}, tools: #{tool_calls == 'native' ? 'yes' : 'no'}, #{think}"
+          more = continuation == "none" ? "" : ", long replies can be continued"
+          "#{ctx} context, JSON mode: #{json}, tools: #{tool_calls == 'native' ? 'yes' : 'no'}, #{think}#{more}"
         end
       end
 
@@ -70,6 +73,8 @@ module Harness
                           "required" => ["value"] }
       } }.freeze
       FILLER = "The quick brown fox jumps over the lazy dog near the quiet river bank. "
+      COUNT_PROMPT = "Count from 1 to 30, separated by single spaces. Reply with only the numbers."
+      COUNT_START = "1 2 3 4 5 6 7 8 9 10 11 12"
 
       # @param http [Http]
       # @param cache_dir [String] directory holding probe/<sha256>.json
@@ -134,7 +139,8 @@ module Harness
         prompt_tps, gen_tps = throughput(profile, id, off)
         Result.new(model_id: id, context_tokens: context, context_source: source,
                    structured_output: structured_of(profile, id, off), tool_calls: tools_of(profile, id, off),
-                   thinking_control: control, reasoning: reasoning, prompt_tps: prompt_tps, gen_tps: gen_tps)
+                   thinking_control: control, reasoning: reasoning, prompt_tps: prompt_tps, gen_tps: gen_tps,
+                   continuation: continuation_of(profile, id, off))
       end
 
       # @return [Result]
@@ -145,15 +151,18 @@ module Harness
           context_source: ctx == "probe" ? r.context_source : "profile",
           structured_output: profile.structured_output == "probe" ? r.structured_output : profile.structured_output,
           tool_calls: profile.tool_calls == "probe" ? r.tool_calls : profile.tool_calls,
-          thinking_control: profile.thinking.control == "probe" ? r.thinking_control : profile.thinking.control
+          thinking_control: profile.thinking.control == "probe" ? r.thinking_control : profile.thinking.control,
+          continuation: profile.continuation == "probe" ? r.continuation : profile.continuation
         )
       end
 
       # One chat request; nil when the server could not be reached.
+      # @param prefill [String, nil] the start of the assistant's reply, sent as a final assistant message
       # @return [Http::Response, nil]
-      def chat(profile, id, prompt, extra, max_tokens)
-        body = { "model" => id, "messages" => [{ "role" => "user", "content" => prompt }],
-                 "max_tokens" => max_tokens, "stream" => false }.merge(extra)
+      def chat(profile, id, prompt, extra, max_tokens, prefill: nil)
+        messages = [{ "role" => "user", "content" => prompt }]
+        messages << { "role" => "assistant", "content" => prefill } if prefill
+        body = { "model" => id, "messages" => messages, "max_tokens" => max_tokens, "stream" => false }.merge(extra)
         @http.post("#{profile.base_url}/chat/completions", body, headers: Probe.headers(profile, @env), timeout: @timeout)
       rescue ModelUnavailableError
         nil
@@ -241,6 +250,20 @@ module Harness
         calls = msg && msg["tool_calls"]
         ok = calls.is_a?(Array) && calls.any? { |c| c.is_a?(Hash) && c.dig("function", "name") == "record_value" }
         ok ? "native" : "none"
+      end
+
+      # Whether the server goes on with a started reply: the start of a count is sent as the assistant's message, and
+      # the reply must carry on from the next number rather than start again. A server that ignores the started reply,
+      # repeats it, or rejects the fields cannot continue a cut-off reply.
+      # @return [String] a key of Wire::CONTINUE
+      def continuation_of(profile, id, off)
+        Wire::CONTINUE.each do |mode, fields|
+          next if fields.nil?
+
+          msg = message(chat(profile, id, COUNT_PROMPT, off.merge(fields), 60, prefill: COUNT_START))
+          return mode if msg && Wire.split_thinking(msg["content"]).first.match?(/\A13\b/)
+        end
+        "none"
       end
 
       # @return [Array(Float, Float)] prompt and generation tokens per second (nil when unknown)

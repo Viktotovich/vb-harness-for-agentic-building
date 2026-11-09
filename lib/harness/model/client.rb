@@ -38,7 +38,17 @@ module Harness
       TRIES = 3
 
       Good = Data.define(:text, :value, :tool_calls)
-      Bad = Data.define(:reason, :message)
+      # A reply that cannot be used. answer is the start of an answer that was cut off at the output limit (kept to
+      # continue it); reasoning is what the model thought before the reply ended (kept for the retry).
+      Bad = Data.define(:reason, :message, :answer, :reasoning) do
+        # @param reason [String]
+        # @param message [String]
+        # @param answer [String, nil]
+        # @param reasoning [String, nil]
+        def initialize(reason:, message:, answer: nil, reasoning: nil)
+          super
+        end
+      end
       Call = Data.define(:role, :label, :profile, :caps)
       # A label that starts with a task id ("T1.implement", "T1R1.fix2") names that task in log lines.
       TASK_LABEL = /\A(T\d+(?:R\d+)?)\./
@@ -46,6 +56,14 @@ module Harness
       # thinking off from the start: each one had cost a whole output allowance of thinking before the retry.
       OUT_OF_ROOM = %w[model.thinking_exhausted model.truncated].freeze
       THINKING_STRIKES = 2
+      # A cut-off answer is continued at most this many times (each one a whole output allowance) before the
+      # client falls back to asking again.
+      MAX_CONTINUATIONS = 3
+      # Reasoning shorter than this is not worth carrying into the retry.
+      MIN_CARRIED_BYTES = 600
+      CARRY_NOTE = "Your previous reply ran out of output room while you were still thinking, so it was not used. " \
+                   "Your reasoning from it is below (its start may be left out). Do not start over: build on it and " \
+                   "give your answer now."
 
       # @param config [Config]
       # @param probe [Probe, #call] returns a Probe::Result for a profile
@@ -112,12 +130,20 @@ module Harness
         started = @clock.call
         usage = { in: 0, out: 0, thinking: 0 }
         outcome = attempt(call, body, usage, json, parser, native)
+        outcome = continue_answer(call, body, usage, parser, outcome) if continuable?(caps, outcome)
         retried = outcome.is_a?(Bad)
-        strike(call, outcome.reason) if retried && thinking
-        @on_discard&.call(role: role, label: label, reason: outcome.reason,
-                          message: "#{outcome.message[0, 200]}; #{thinking ? 'retried with thinking off' : 'retried'}") if retried
         first = outcome
-        outcome = attempt(call, Wire.thinking_off(body, caps.thinking_control), usage, json, parser, native) if retried
+        if retried
+          plain = Wire.thinking_off(body, caps.thinking_control)
+          retry_body = with_reasoning(call, plain, first.reasoning)
+          carried = !retry_body.equal?(plain)
+          how = thinking ? "retried with thinking off" : "retried"
+          @on_discard&.call(role: role, label: label, reason: first.reason,
+                            message: "#{first.message[0, 200]}; #{how}#{carried ? ', keeping its reasoning' : ''}")
+          outcome = attempt(call, retry_body, usage, json, parser, native)
+          # Thinking that ran out of room cost nothing extra when the retry built on it and answered.
+          strike(call, first.reason) if thinking && !(carried && outcome.is_a?(Good))
+        end
         raise out_of_room(label, first, outcome) if outcome.is_a?(Bad) && OUT_OF_ROOM.include?(first.reason)
         raise ModelOutputError.new("#{label}: #{outcome.message}", reason: outcome.reason) if outcome.is_a?(Bad)
 
@@ -271,17 +297,23 @@ module Harness
 
           return Bad.new(reason: "model.schema_mismatch", message: "a tool call where an answer was required")
         end
+        separate = [msg["reasoning_content"], msg["reasoning"]].find { |r| r.is_a?(String) && !r.empty? }
+        reasoning = separate || inline.gsub(%r{</?think>}, "").strip
+        reasoning = nil if reasoning.empty?
         if answer.empty?
-          separate = [msg["reasoning_content"], msg["reasoning"]].any? { |r| r.is_a?(String) && !r.empty? }
-          thinking = open || !inline.empty? || separate
-          reason = if finish == "length" then thinking ? "model.thinking_exhausted" : "model.truncated"
+          thought = open || !inline.empty? || !separate.nil?
+          reason = if finish == "length" then thought ? "model.thinking_exhausted" : "model.truncated"
                    else "model.empty"
                    end
-          return Bad.new(reason: reason, message: "no answer (finish_reason=#{finish.inspect})")
+          return Bad.new(reason: reason, message: "no answer (finish_reason=#{finish.inspect})",
+                         reasoning: finish == "length" ? reasoning : nil)
         end
         return Good.new(text: answer, value: nil, tool_calls: []) unless json
 
-        parse_answer(answer, finish, parser)
+        outcome = parse_answer(answer, finish, parser)
+        return outcome unless outcome.is_a?(Bad) && finish == "length"
+
+        outcome.with(answer: Wire.raw_answer(msg["content"]), reasoning: reasoning)
       end
 
       # @return [Good, Bad]
@@ -293,6 +325,74 @@ module Harness
         Bad.new(reason: finish == "length" ? "model.truncated" : "model.invalid_json", message: "the reply is not valid JSON")
       rescue ParseError => e
         Bad.new(reason: "model.schema_mismatch", message: e.message)
+      end
+
+      # @return [Boolean] the reply was cut off mid-answer and the server can continue it
+      def continuable?(caps, outcome)
+        outcome.is_a?(Bad) && !outcome.answer.to_s.strip.empty? && !Wire::CONTINUE[caps.continuation].nil?
+      end
+
+      # Ask the model to go on with an answer cut off at the output limit, up to MAX_CONTINUATIONS times, and parse
+      # the joined answer. The model finishes its own reply, so nothing it wrote is lost or rewritten. Stops early
+      # when the joined reply would not fit the context or the server refuses; the caller then asks again.
+      # @return [Good, Bad] the parsed answer, or the cut-off reply when it could not be finished
+      # @raise [ModelUnavailableError]
+      def continue_answer(call, body, usage, parser, cut)
+        text = cut.answer
+        tools = body["tools"] ? Tokens.estimate(JSON.generate(body["tools"])) : 0
+        MAX_CONTINUATIONS.times do
+          cbody = Wire.continuation(body, text, call.caps.continuation, call.caps.thinking_control)
+          prompt = Tokens.estimate_messages(cbody["messages"]) + tools
+          break if Tokens.budget(context: call.caps.context_tokens, prompt: prompt, reserved: cbody["max_tokens"]).negative?
+
+          res, started = post_with_retry(call, cbody, usage)
+          piece, finish = continued_piece(res)
+          if piece.nil?
+            record(call, cbody, res, started, "continue:refused", nil)
+            break
+          end
+          text = piece.start_with?(text) ? piece : text + piece
+          if finish == "length"
+            record(call, cbody, res, started, "continue:cut", nil)
+            next
+          end
+          outcome = parse_answer(text.strip, finish, parser)
+          record(call, cbody, res, started, outcome.is_a?(Bad) ? "continue:#{outcome.reason}" : "continue:ok", nil)
+          return outcome.is_a?(Bad) ? outcome.with(reasoning: cut.reasoning) : outcome
+        end
+        cut.with(answer: nil, message: "#{cut.message}; continuing it did not finish the answer")
+      end
+
+      # @return [Array(String, String), nil] the new text of a continuation and its finish reason; nil when the
+      #   server refused or started thinking again
+      def continued_piece(res)
+        return nil unless res.ok? && res.json.is_a?(Hash)
+
+        choice = res.json.dig("choices", 0)
+        msg = choice.is_a?(Hash) ? choice["message"] : nil
+        return nil unless msg.is_a?(Hash) && msg["content"].is_a?(String) && !msg["content"].empty?
+        return nil if Wire.split_thinking(msg["content"])[2]
+
+        [msg["content"].gsub(Wire::THINK_BLOCK, ""), choice["finish_reason"]]
+      end
+
+      # The retry's request with the reasoning of the cut-off reply added to the last message, cut from the start to
+      # fit the context. The same object when there is no reasoning or too little room for it.
+      # @return [Hash]
+      def with_reasoning(call, body, reasoning)
+        return body if reasoning.nil? || reasoning.bytesize < MIN_CARRIED_BYTES
+
+        prompt = Tokens.estimate_messages(body["messages"]) + Tokens.estimate(CARRY_NOTE) + 16 +
+                 (body["tools"] ? Tokens.estimate(JSON.generate(body["tools"])) : 0)
+        room = Tokens.budget(context: call.caps.context_tokens, prompt: prompt, reserved: body["max_tokens"])
+        keep = (room * Tokens::BYTES_PER_TOKEN).floor
+        return body if keep < MIN_CARRIED_BYTES
+
+        notes = reasoning.bytesize > keep ? "...#{reasoning.byteslice(-(keep - 3)..).scrub('')}" : reasoning
+        messages = body["messages"].dup
+        last = messages.last
+        messages[-1] = last.merge("content" => "#{last['content']}\n\n#{CARRY_NOTE}\n<reasoning>\n#{notes}\n</reasoning>")
+        body.merge("messages" => messages)
       end
 
       # @return [#call] parses {"items": [...]} with exactly n entries, each through parser
