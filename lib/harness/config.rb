@@ -7,6 +7,7 @@ require_relative "agent/settings"
 require_relative "parse"
 require_relative "model/profiles"
 require_relative "gates/gate"
+require_relative "task/commit_message"
 
 module Harness
   # Limits with their defaults from DESIGN.md section 14.
@@ -22,8 +23,9 @@ module Harness
   # mode: "pipeline" (one structured reply per task step) or "agent" (a tool-using agent per task, see
   # Agent::Worker); agent: its Agent::Settings.
   # figma_token_env: the env var that holds a Figma token, for requests that link to a design (Figma::Designs).
+  # commit_trailer: the text under each task commit's subject (Task::CommitMessage placeholders).
   Config = Data.define(:profiles, :roles, :limits, :stack, :stacks, :gate_env_allow, :dry_run, :projects, :review,
-                       :require_green_baseline, :mode, :agent, :figma_token_env) do
+                       :require_green_baseline, :mode, :agent, :figma_token_env, :commit_trailer) do
     # @param role [Symbol] one of Model::ROLES
     # @return [Model::Profile]
     # @raise [ArgumentError] on an unknown role
@@ -48,7 +50,7 @@ module Harness
     }.freeze
     REVIEW_MODES = %w[full light off].freeze
     MODES = %w[pipeline agent].freeze
-    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review requireGreenBaseline mode agent figmaTokenEnv] +
+    TOP_KEYS = (%w[profiles roles stack stacks gateEnvAllow dryRun projects review requireGreenBaseline mode agent figmaTokenEnv commit] +
                 LIMIT_DEFAULTS.keys).freeze
     PROJECT_NAME = /\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
@@ -87,8 +89,21 @@ module Harness
         require_green_baseline: Parse.bool!(h.fetch("requireGreenBaseline", false), "requireGreenBaseline"),
         mode: Parse.enum!(h.fetch("mode", "pipeline"), "mode", MODES),
         agent: Agent::Settings.parse(h.fetch("agent", {})),
-        figma_token_env: Parse.str!(h.fetch("figmaTokenEnv", "FIGMA_TOKEN"), "figmaTokenEnv")
+        figma_token_env: Parse.str!(h.fetch("figmaTokenEnv", "FIGMA_TOKEN"), "figmaTokenEnv"),
+        commit_trailer: parse_commit(h.fetch("commit", {}))
       )
+    end
+
+    # @param raw [Hash] config["commit"]: {"trailer": "..."}
+    # @return [String] the trailer template
+    # @raise [ParseError] on unknown keys or placeholders
+    def self.parse_commit(raw)
+      h = Parse.hash!(raw, "commit")
+      Parse.known_keys!(h, %w[trailer], "commit")
+      trailer = Parse.str!(h.fetch("trailer", Task::CommitMessage::DEFAULT_TRAILER), "commit.trailer")
+      unknown = trailer.scan(/\{(\w+)\}/).flatten - Task::CommitMessage::PLACEHOLDERS
+      Parse.fail!("commit.trailer", "placeholders from #{Task::CommitMessage::PLACEHOLDERS.join(', ')}", "{#{unknown.first}}") if unknown.any?
+      trailer.dup.freeze
     end
 
     # @return [Hash{String=>String}] name => absolute path

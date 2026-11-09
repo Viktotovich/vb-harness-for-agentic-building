@@ -60,7 +60,7 @@ class FollowUpTest < Minitest::Test
     log = TestSupport.git!(out.worktree, @env, "log", "--format=%s", "main..HEAD").lines.map(&:strip)
     assert_equal 2, log.size
     assert_equal "T1: Double the price", log.last, "the reviewed task was committed first: review does not block"
-    assert_match(/\AT1R1: Fix: Prices are not rounded/, log.first)
+    assert_match(/\Afix: prices are not rounded/, log.first, "a review fix is committed as a fix")
     assert_equal "expect_includes src/lib/price.ts Math.round\n", File.read(File.join(out.worktree, TEST)), "the test is committed with the fix"
     assert_includes File.read(File.join(out.worktree, PRICE)), "Math.round"
 

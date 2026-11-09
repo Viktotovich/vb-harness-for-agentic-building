@@ -16,6 +16,8 @@ require_relative "../agent/mailbox"
 require_relative "../agent/session"
 require_relative "edits"
 require_relative "gather"
+require_relative "commit_message"
+require_relative "../version"
 
 module Harness
   module Task
@@ -713,7 +715,9 @@ Hint: #{h['hint']}" }
         step("committing")
         emit("task.commit", "stage_started")
         passed = @last_gates.select(&:ok?).map(&:gate)
-        sha = @ctx.worktree.dirty? ? @ctx.worktree.commit("#{@task.id}: #{@task.title}\n\nGates passed: #{passed.join(', ')}") : nil
+        message = CommitMessage.build(task: @task, template: @ctx.config.commit_trailer, gates: passed,
+                                      model: @ctx.config.profile_for(:implementer).model, version: VERSION)
+        sha = @ctx.worktree.dirty? ? @ctx.worktree.commit(message) : nil
         emit("task.commit", "done", subject: "task", detail: sha ? sha[0, 12] : "no changes")
         save("done", commit: sha)
         Outcome.new(id: @task.id, status: "done", commit: sha, fix_rounds: @fix_rounds, reason: nil, detail: nil, gates: passed)

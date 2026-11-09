@@ -9,6 +9,8 @@ module Harness
   module Plan
     TASK_ID = /\A[A-Za-z][A-Za-z0-9_-]{0,15}\z/
     ACCEPTANCE_KINDS = %w[gate test assert].freeze
+    # Conventional Commits types a task's commit can carry.
+    COMMIT_TYPES = %w[feat fix chore docs test refactor style perf].freeze
 
     # kind gate: gate; kind test: path, write, describe; kind assert: text.
     Acceptance = Data.define(:kind, :gate, :path, :write, :describe, :text) do
@@ -24,8 +26,13 @@ module Harness
 
     Files = Data.define(:create, :modify, :read)
 
-    # One small task (DESIGN.md 5.3).
-    Task = Data.define(:id, :title, :intent, :files, :depends_on, :acceptance) do
+    # One small task (DESIGN.md 5.3). type: a COMMIT_TYPES entry for its commit, or nil when the plan gave none.
+    Task = Data.define(:id, :title, :intent, :files, :depends_on, :acceptance, :type) do
+      # @param type [String, nil] optional, so tasks built before it existed still work
+      def initialize(type: nil, **rest)
+        super
+      end
+
       # @return [Array<String>] test paths the task may write
       def test_paths
         acceptance.select { |a| a.kind == "test" && a.write }.map(&:path)
@@ -125,7 +132,7 @@ module Harness
       # @return [Task]
       def self.parse_task(raw, path)
         h = Parse.hash!(raw, path)
-        Parse.known_keys!(h, %w[id title intent files dependsOn acceptance], path)
+        Parse.known_keys!(h, %w[id title intent files dependsOn acceptance type], path)
         id = Parse.str!(h["id"], "#{path}.id")
         Parse.fail!("#{path}.id", "id like T1", id) unless id.match?(TASK_ID)
         files = Parse.hash!(h["files"], "#{path}.files")
@@ -143,7 +150,8 @@ module Harness
           id: id, title: Parse.str!(h["title"], "#{path}.title"), intent: Parse.str!(h["intent"], "#{path}.intent"),
           files: Files.new(**lists.transform_values(&:freeze)),
           depends_on: Parse.strings!(h.fetch("dependsOn", []), "#{path}.dependsOn").dup.freeze,
-          acceptance: items
+          acceptance: items,
+          type: h.key?("type") ? Parse.enum!(h["type"], "#{path}.type", COMMIT_TYPES) : nil
         )
       end
 
@@ -201,7 +209,7 @@ module Harness
         end
         { "id" => t.id, "title" => t.title, "intent" => t.intent,
           "files" => { "create" => t.files.create, "modify" => t.files.modify, "read" => t.files.read },
-          "dependsOn" => t.depends_on, "acceptance" => acc }
+          "dependsOn" => t.depends_on, "acceptance" => acc }.merge(t.type ? { "type" => t.type } : {})
       end
       private_class_method :parse_task, :parse_acceptance, :parse_question, :check_ids!
     end

@@ -415,6 +415,13 @@ pitfalls the reviewer and verifier are given). The example's Astro stack has a f
 `maxLookups` 6, `maxReviewFixTasks` 2, `wholeFileRewriteMaxBytes` 4096, `maxGateOutputBytes` 204800,
 `maxVerifierCalls` 60 (per run), `maxRefutedInARow` 3.
 
+**Commits**: each task is committed as `<type>: <title>` in Conventional Commits form, with the type (`feat`, `fix`,
+`chore`, `docs`, `test`, `refactor`, `style`, `perf`) chosen by the planner. A plan without a type falls back to
+`T1: <title>`. The lines under the subject come from `"commit": {"trailer": "..."}`, default
+`Gates passed: {gates}`. The placeholders are `{model}` (the implementer's model id), `{version}` (the harness
+version), `{checks}` (how many gates passed) and `{gates}` (their names), for example
+`"Commit by {model} from vb-harness {version}. {checks} checks passed"`.
+
 **Review** (`review`, default `full`): `full` reviews every task and the whole run; `light` skips the per-task
 review of a small change (80 changed lines or fewer) whose gates passed first time, and keeps the final review;
 `off` skips review. In every mode the verifier stops when the run has used `maxVerifierCalls`, or after
