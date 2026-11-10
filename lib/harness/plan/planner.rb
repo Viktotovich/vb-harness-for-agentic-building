@@ -32,7 +32,7 @@ module Harness
         "type" => "object", "required" => ["tasks"],
         "properties" => {
           "tasks" => { "type" => "array", "items" => {
-            "type" => "object", "required" => %w[id title intent files acceptance],
+            "type" => "object", "required" => %w[id title intent type files acceptance],
             "properties" => { "id" => { "type" => "string" }, "title" => { "type" => "string" }, "intent" => { "type" => "string" },
                               "type" => { "type" => "string", "enum" => COMMIT_TYPES },
                               "files" => { "type" => "object", "properties" => { "create" => STRINGS, "modify" => STRINGS, "read" => STRINGS } },

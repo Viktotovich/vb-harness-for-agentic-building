@@ -34,6 +34,12 @@ class CommitMessageTest < Minitest::Test
     assert_equal "fix: prices are rounded", M.subject(task(type: "fix", title: "Fix: Prices are rounded"))
   end
 
+  def test_the_planner_schema_requires_a_commit_type
+    item = Harness::Plan::Planner::SCHEMA.dig("properties", "tasks", "items")
+    assert_includes item["required"], "type"
+    assert_equal Harness::Plan::COMMIT_TYPES, item.dig("properties", "type", "enum")
+  end
+
   def test_the_trailer_fills_every_placeholder
     msg = build(task(type: "fix"), "Commit by {model} from vb-harness {version}. {checks} checks passed ({gates})")
     assert_equal "Commit by some-model from vb-harness 9.9.9. 2 checks passed (typecheck, build)", msg.lines.last
