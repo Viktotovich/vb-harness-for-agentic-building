@@ -108,7 +108,7 @@ module Harness
           defs << tool("view_diff", "Show your changes so far as a diff.", {}, [])
         end
         if @runner
-          defs << tool("run_gate", "Run one of the project's checks on your changes: #{@stack.gates.keys.join(', ')}. Returns pass or " \
+          defs << tool("run_gate", "Run one of the project's checks on your changes: #{gate_listing}. Returns pass or " \
                                    "fail, the problems found and the end of the output.", { "name" => str }, %w[name])
           unless @settings.commands.empty?
             listing = @settings.commands.values.map { |c| "#{c.name}(#{c.params.keys.join(', ')}): #{c.description}" }.join("; ")
@@ -358,13 +358,24 @@ module Harness
 
       # --- checking (I3: configured gates and commands only) ---
 
+      # Added to a failing result of a gate configured with blocking: false. Without it an agent can spend its
+      # whole budget on a check that could never stop the task (seen in the field: hours on a formatter).
+      OPTIONAL_NOTE = "This check is optional: it never blocks the task. Fix it only when the fix is small and certain; " \
+                      "otherwise leave it and go on."
+
       def run_gate(name)
         gate = @stack.gates[name.to_s]
         return "error: no gate named #{name.to_s[0, 40]}; use one of #{@stack.gates.keys.join(', ')}" unless gate
 
         files = @touched.select { |rel| File.file?(File.join(@root, rel)) }.sort
         result, output = @runner.run_with_output(gate, files: files, tests: @tests)
-        describe(result, output)
+        text = describe(result, output)
+        gate.blocking == false && result.status != "passed" ? "#{text}\n#{OPTIONAL_NOTE}" : text
+      end
+
+      # @return [String] the gate names, with the ones that never block a task marked
+      def gate_listing
+        @stack.gates.map { |name, gate| gate.blocking == false ? "#{name} (optional)" : name }.join(", ")
       end
 
       def run_command(name, params)
