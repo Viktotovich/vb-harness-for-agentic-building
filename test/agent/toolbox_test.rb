@@ -26,7 +26,8 @@ class AgentToolboxTest < Minitest::Test
                                                                                "params" => { "file" => "path" }, "description" => "print a file" },
                                                                    "echo" => { "argv" => [ruby, "-e", "puts ARGV[0]", "{word}"], "params" => { "word" => "word" } } } },
                                       "stacks" => { "astro" => { "detect" => ["astro.config.mjs"], "protectedPaths" => [".env*", "tools/**"],
-                                                                 "gates" => { "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check" } } } }
+                                                                 "gates" => { "typecheck" => { "argv" => [ruby, "tools/typecheck.rb"], "parser" => "astro_check" },
+                                                                              "format" => { "argv" => [ruby, "-e", "exit 1"], "blocking" => false } } } }
                                     })
     @stack = @config.stacks["astro"]
     @runner = Harness::Gates::Runner.new(root: @root, env: ENV.to_h)
@@ -93,6 +94,15 @@ class AgentToolboxTest < Minitest::Test
     assert_match(/error: no command named rm/, plain(t.call("run_command", { "name" => "rm", "params" => {} })))
     assert_match(/typecheck: passed/, plain(t.call("run_gate", { "name" => "typecheck" })))
     assert_match(/error: no gate named lint/, plain(t.call("run_gate", { "name" => "lint" })))
+  end
+
+  # A gate with blocking: false cannot stop a task, so the agent is told: a field run spent hours on a formatter.
+  def test_a_failing_optional_gate_says_it_does_not_block
+    t = box
+    assert_match(/format: failed.*optional: it never blocks the task/m, plain(t.call("run_gate", { "name" => "format" })))
+    refute_match(/optional/, plain(t.call("run_gate", { "name" => "typecheck" })))
+    listing = t.definitions.find { |d| d["function"]["name"] == "run_gate" }["function"]["description"]
+    assert_includes listing, "typecheck, format (optional)"
   end
 
   # An agent that may edit the checks' own configuration or existing tests could make failing gates pass without
