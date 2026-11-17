@@ -1,56 +1,68 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright 2026 V and Bruno LLC -->
-<html lang="en">
+<html lang="en" data-mode="{{MODE}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="harness-token" content="{{TOKEN}}">
   <title>vb-harness</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/theme.css" id="theme-css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">vb-harness</div>
-      <button id="new-chat" class="btn primary wide" type="button">+ New chat</button>
-      <h2 class="side-title">Chats</h2>
-      <nav id="chat-list" class="chat-list" aria-label="Chats"></nav>
-      <button id="open-settings" class="btn ghost wide" type="button">Settings · providers</button>
+  <div class="app" id="app">
+    <div id="side-scrim" class="side-scrim"></div>
+    <aside class="side" id="side" aria-label="Chats">
+      <div class="brand"><span class="logo" aria-hidden="true">vb</span>harness</div>
+      <button id="new-chat" class="btn soft wide" type="button"><span data-icon="plus"></span>New chat</button>
+      <nav id="chat-list" class="chats" aria-label="Chat list"></nav>
+      <div class="side-foot">
+        <button id="model-status" class="model-status" type="button" title="Models"><span id="status-dot" class="dot"></span><span id="status-name" class="name"></span><span id="status-text" class="faint">starting…</span></button>
+        <button id="open-settings" class="btn ghost wide" type="button"><span data-icon="sliders"></span>Settings</button>
+      </div>
     </aside>
-    <main class="main">
-      <header class="topbar">
-        <label class="picker">Model <select id="model-picker" aria-label="Model"></select></label>
-        <span class="status" aria-live="polite"><span id="status-dot" class="dot"></span><span id="status-text">idle</span></span>
-        <span class="chat-actions">
-          <button id="rename-chat" class="btn ghost small" type="button">Rename</button>
-          <button id="delete-chat" class="btn ghost small danger" type="button">Delete</button>
-        </span>
-      </header>
-      <section id="transcript" class="transcript" aria-live="polite"></section>
-      <section id="settings" class="settings" hidden></section>
-      <footer class="composer">
-        <div id="answering" class="answering" hidden></div>
-        <textarea id="input" rows="6" placeholder="Ask something, or switch to Build and describe a feature." aria-label="Message"></textarea>
-        <div class="composer-row">
-          <div class="mode" role="radiogroup" aria-label="Mode">
-            <button type="button" data-mode="chat" class="active" role="radio" aria-checked="true">Chat</button>
-            <button type="button" data-mode="build" role="radio" aria-checked="false">Build</button>
+    <main class="main" id="main">
+      <header class="top">
+        <button id="side-toggle" class="btn ghost icon-only side-toggle" type="button" aria-label="Chats and settings" aria-controls="side" aria-expanded="false"><span data-icon="menu"></span></button>
+        <h1 id="view-title" class="title">vb-harness</h1>
+        <span id="view-sub" class="sub"></span>
+        <span class="grow"></span>
+        <label id="model-box" class="chip model-chip"><span id="chip-dot" class="dot ok"></span><select id="model-picker" aria-label="Model"></select><span data-icon="down"></span></label>
+        <div class="menu-wrap">
+          <button id="chat-menu" class="btn ghost icon-only" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><span data-icon="more"></span></button>
+          <div id="chat-menu-list" class="menu" role="menu" hidden>
+            <button id="rename-chat" type="button" role="menuitem"><span data-icon="note"></span>Rename</button>
+            <button id="delete-chat" type="button" role="menuitem" class="danger"><span data-icon="x"></span>Delete chat</button>
           </div>
-          <div id="project-box" class="project-box">
-            <label class="project">Project <select id="project-picker" aria-label="Project"></select></label>
-            <button id="project-add" class="btn ghost small" type="button">+ Add project</button>
-          </div>
-          <span class="spacer"></span>
-          <button id="stop" class="btn" type="button" hidden>Stop</button>
-          <button id="send" class="btn primary" type="button">Send ▶</button>
         </div>
-        <div id="project-status" class="project-status" aria-live="polite" hidden></div>
-        <div id="project-panel" class="project-panel" hidden></div>
-        <div class="hint">Enter adds a line · Ctrl+Enter (⌘+Enter) sends</div>
+      </header>
+      <section id="transcript" class="scroll" aria-live="polite"></section>
+      <section id="settings" class="scroll" hidden></section>
+      <footer id="composer-wrap" class="composer-wrap">
+        <div class="composer">
+          <textarea id="input" rows="3" placeholder="Ask anything: plan a feature, compare approaches…" aria-label="Message"></textarea>
+          <div class="composer-row">
+            <div class="seg" role="radiogroup" aria-label="Mode">
+              <button type="button" data-mode="chat" class="on" role="radio" aria-checked="true"><span data-icon="chat"></span>Chat</button>
+              <button type="button" data-mode="build" role="radio" aria-checked="false"><span data-icon="build"></span>Build</button>
+            </div>
+            <div id="project-box" class="project-box" hidden>
+              <label class="project-chip"><span data-icon="folder"></span><select id="project-picker" aria-label="Project"></select><span id="project-state" class="pstate"></span></label>
+              <button id="project-add" class="btn ghost sm" type="button"><span data-icon="plus"></span>Add project</button>
+            </div>
+            <span class="grow"></span>
+            <span class="kbd" aria-hidden="true"><kbd>Ctrl</kbd> + <kbd>Enter</kbd></span>
+            <button id="stop" class="btn sm" type="button" hidden><span data-icon="stop"></span>Stop</button>
+            <button id="send" class="send" type="button" aria-label="Send"><span data-icon="up"></span><span id="send-label"></span></button>
+          </div>
+        </div>
+        <div id="composer-note" class="composer-note" aria-live="polite"></div>
       </footer>
+      <aside id="drawer" class="drawer" hidden aria-label="Report"></aside>
     </main>
   </div>
+  <div id="modal-root"></div>
 </body>
 </html>

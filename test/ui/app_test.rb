@@ -260,11 +260,16 @@ data: [DONE]
     assert_equal ["stopped", 2], store.read_run.values_at("status", "exitCode")
     assert_equal "done", store.read_task_state("T1")["state"], "the task in progress finished and was committed"
     assert_equal({ "stopping" => false }, post("/api/runs/#{run}/stop").json, "a stopped build has nothing to stop")
+    listed = get("/api/chats").json.find { |c| c["id"] == id }
+    assert_equal [run, "stopped"], listed.values_at("run", "runStatus"), "the sidebar learns the chat's build stopped"
 
-    config = Harness::Config.load(File.join(@home, "config.json"), env: env)
-    pipeline = Harness::Pipeline.new(config: config, home: @home, env: env, client_factory: ->(s) { F.client(config, s) })
-    out = pipeline.resume(run)
-    assert_equal [0, "done"], [out.exit_code, out.status]
+    assert_equal 403, C.request(@port, "POST", "/api/runs/#{run}/resume", body: {}).status, "a resume needs the token"
+    assert_equal({ "run" => run }, post("/api/runs/#{run}/resume").json)
+    events = get("/api/runs/#{run}/events?after=0").events
+    assert_equal ["end", { "status" => "done" }], events.last
+    assert_equal [0, "done"], store.read_run.values_at("exitCode", "status")
+    assert_equal 404, post("/api/runs/r20260101-000000-abcd/resume").status
+    assert_match(/cannot be resumed/, post("/api/runs/#{run}/resume").json["error"], "a finished run is not resumed again")
     assert_equal "export const rate = 0.25;
 ", File.read(File.join(store.read_run["worktree"], "src/lib/tax.ts"))
   end

@@ -16,6 +16,7 @@ require_relative "../providers/actions"
 require_relative "../providers/detect"
 require_relative "../providers/setup"
 require_relative "../state/reasons"
+require_relative "appearance"
 require_relative "builds"
 require_relative "chats"
 require_relative "conversation"
@@ -72,7 +73,9 @@ module Harness
       private
 
       ROUTES = [
-        ["GET", %r{\A/\z}, :index], ["GET", %r{\A/api/state\z}, :state], ["GET", %r{\A/api/chats\z}, :chat_list],
+        ["GET", %r{\A/\z}, :index], ["GET", %r{\A/theme\.css\z}, :theme], ["GET", %r{\A/api/state\z}, :state],
+        ["GET", %r{\A/api/chats\z}, :chat_list], ["GET", %r{\A/api/appearance\z}, :appearance],
+        ["POST", %r{\A/api/appearance\z}, :appearance_post], ["POST", %r{\A/api/runs/([\w-]+)/resume\z}, :run_resume],
         ["POST", %r{\A/api/chats\z}, :chat_create], ["GET", %r{\A/api/chats/([\w-]+)\z}, :chat_get],
         ["POST", %r{\A/api/chats/([\w-]+)/(rename|delete|model|send)\z}, :chat_action],
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
@@ -103,8 +106,12 @@ module Harness
       def dispatch(handler, req, args)
         case handler
         when :index then index
+        when :theme then Response.text(Appearance.css(Appearance.load(@home)), type: "text/css; charset=utf-8")
+        when :appearance then Response.json(Appearance.load(@home).to_json_hash)
+        when :appearance_post then Response.json(Appearance.save(@home, body(req)).to_json_hash)
         when :state then Response.json(state)
-        when :chat_list then Response.json(@chats.list)
+        when :chat_list then Response.json(chat_list)
+        when :run_resume then Response.json({ "run" => builds_for(args[0]).resume(args[0]) })
         when :chat_create then Response.json(@chats.create(model: model_choice(body(req)["model"])))
         when :chat_get then Response.json(@chats.get(args[0]))
         when :chat_action then chat_action(args[0], args[1], body(req))
@@ -172,9 +179,21 @@ module Harness
         end
       end
 
+      # The shell, with the token and the chosen mode (system, dark or light) filled in, so the page opens in its
+      # colours without a flash. Both values come from fixed sets, never from a request.
       def index
-        html = File.read(File.join(PUBLIC, "index.html"), encoding: "UTF-8").sub("{{TOKEN}}", @token)
+        html = File.read(File.join(PUBLIC, "index.html"), encoding: "UTF-8")
+                   .sub("{{TOKEN}}", @token).sub("{{MODE}}", Appearance.load(@home).mode)
         Response.text(html, type: "text/html; charset=utf-8")
+      end
+
+      # The chats for the sidebar, each with the status of its latest build ("runStatus"), so the list can show which
+      # chat is building or waiting for an answer.
+      # @return [Array<Hash>]
+      def chat_list
+        @chats.list.map do |c|
+          c["run"] ? c.merge("runStatus" => builds_for(c["run"]).status(c["run"])) : c
+        end
       end
 
       def static(file, type)
@@ -184,8 +203,9 @@ module Harness
 
       # @return [Hash]
       def state
-        { "configured" => !@config.nil?, "configPath" => @config_path, "chats" => @chats.list,
-          "models" => @conversation ? @conversation.models : [], "reasons" => State::Reasons::TEXT }
+        { "configured" => !@config.nil?, "configPath" => @config_path, "chats" => chat_list,
+          "models" => @conversation ? @conversation.models : [], "reasons" => State::Reasons::TEXT,
+          "appearance" => Appearance.load(@home).to_json_hash }
       end
 
       # @return [Response]

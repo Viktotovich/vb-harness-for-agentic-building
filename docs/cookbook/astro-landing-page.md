@@ -12,6 +12,13 @@ each one taught.
 
 ![The finished Tidewater Clay landing page](../media/cookbook/page-final.png)
 
+> **About the screenshots.** The app screenshots in this recipe were taken during the real runs, with an earlier
+> version of the app: darker, with a run id as the card's title and a text strip for progress. The app now looks
+> like the [README's screenshots](../../README.md#quick-start-the-app), and some names changed: **Add project** is a
+> dialog, the run card has a progress bar and a **Now** line, rejected outputs are shown as "caught by the
+> harness's checks" under **Why?**, and **Show report** is **View report**. The steps, the requests and the results
+> are the same.
+
 **Contents**
 
 1. [What you need](#1-what-you-need)
@@ -55,22 +62,21 @@ each one taught.
 
 ## 2. A new Astro project
 
-In the app, choose **+ Add project → New Astro project** and type the folder name, `tidewater-clay`. The app does
-not download anything yet. It shows the exact command and asks first:
+In the app, choose **Add project** (on the start page, or next to the project picker in Build mode), then **New
+Astro site**, and type the folder name, `tidewater-clay`. **Continue** does not download anything yet. The dialog
+shows the exact command first:
 
 ```text
-This downloads code from the internet and runs:
+Before anything runs, this is exactly what will happen:
 
 npm create astro@latest tidewater-clay -- --template minimal --install --no-git --yes
 
-Into: projects/tidewater-clay
-
-Continue?
+Into projects/tidewater-clay.
 ```
 
-After you confirm, it runs the command, writes a `.gitignore`, makes a git repository and commits
-"New Astro project". The composer then shows the project's state: git ✓, branch `main`, clean, and the Astro
-version it found.
+After you choose **Create project**, it runs the command, writes a `.gitignore`, makes a git repository and commits
+"New Astro project". The project chip under the text box then shows the project's state: its branch, `main`, and
+✓ clean; the line under the box names the Astro version it found.
 
 ![The app with the new project selected: git, branch main, clean, astro 7.4.0](../media/cookbook/01-new-project.png)
 
@@ -189,7 +195,7 @@ no components; each component is its own task; and one last task composes the pa
 
 ## 6. Write the Build request
 
-Switch the composer to **Build**, pick the project and send this:
+Switch the text box to **Build**, pick the project and choose **Start build** with this request:
 
 ```text
 Build the landing page for Tidewater Clay, a small pottery studio. Static page only: no client JavaScript, no
@@ -240,8 +246,8 @@ Why each part is there:
 | "The cards are not links" | Answers the question the model asked at the end of the chat. |
 | index.astro last | The only file that imports everything, so it is the only task that has to wait for all the others. |
 
-The app adds a build card under the request and streams the run into it: plan, tasks, integration, final review
-and report.
+The app adds a build card under the request and streams the run into it: its progress bar moves through Plan,
+Tasks, Final checks, Review and Report, and the **Now** line says in plain words what the model is doing.
 
 ![The Build request sent, with its build card starting](../media/cookbook/05-build-started.png)
 

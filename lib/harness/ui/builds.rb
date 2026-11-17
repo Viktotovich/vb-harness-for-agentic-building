@@ -63,6 +63,31 @@ module Harness
         background(id) { |stop| @pipeline.call.answer(id, answers, stop: stop) }
       end
 
+      # Continue a stopped or failed run where it left off (harness resume, from the app). Committed tasks are kept.
+      # @param id [String]
+      # @return [String] the run id
+      # @raise [ConfigError] when there is no such run, it is still going, or it cannot be resumed
+      def resume(id)
+        status = store(id).read_run["status"]
+        unless %w[stopped failed].include?(status)
+          raise ConfigError, "run #{id} cannot be resumed (status: #{status}); only a stopped or failed run can"
+        end
+
+        background(id) { |stop| @pipeline.call.resume(id, stop: stop) }
+        id
+      end
+
+      # @param id [String]
+      # @return [String, nil] the run's status ("running", "waiting", "done", ...), or nil when there is no such run
+      def status(id)
+        return nil unless id.is_a?(String) && id.match?(RUN_ID)
+
+        s = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
+        s.exist? ? s.read_run["status"] : nil
+      rescue JSON::ParserError, SystemCallError
+        nil
+      end
+
       # Ask a run going in this process to stop at its next safe point (between tasks, see Run#execute). It then
       # ends "stopped" with its committed tasks kept, and harness resume continues it.
       # @param id [String]
