@@ -867,3 +867,41 @@ because no tasks run after that point.
 The same rerun found a bug in the eval: task 03's hidden test required `<article` and refused `<a`, which `<article`
 contains, so no correct solution could pass. It now refuses only a real `<a>` tag. Scores for 03 before this change
 are not comparable.
+
+## A calmer app, colours of your own
+
+The app's first look followed DESIGN.md 11.4 closely: solid brand purple for buttons, the user's messages and the
+active chat, on near-black, with pure white text and 3-4px corners. In use it read as harsh, and some of its words
+did not help a newcomer: a build card was titled by its run id, progress was a text strip of stage codes, a
+successful run said "7 rejected", answers to the planner went into the main text box "one per line", and a stopped
+run said to type `harness resume` in a terminal.
+
+The app now departs from 11.4, on purpose:
+
+- **Colour carries meaning, not slabs.** A soft charcoal with a violet hint, a muted lavender accent used for the
+  one primary action and the active state, and gentle green, amber and rose for done, needs-you and problem. Body
+  text is 14.7:1 against the background (it was 18.8:1); every text colour pair still meets WCAG AA. Cards and
+  inputs have 10-16px corners.
+- **Seven colours define a look.** Every other shade is mixed from them in CSS (`color-mix`), so a custom look stays
+  consistent. Settings → Appearance chooses System, Dark or Light and each look's seven colours, with presets and a
+  live contrast check. The choice is `appearance.json` next to `config.json` (git-ignored), served as `/theme.css`
+  built from validated `#rrggbb` values only, so `style-src 'self'` holds and nothing typed becomes CSS syntax. The
+  mode is filled into the page on the server, so it opens without a flash. Only colours change: Inter, the sizes and
+  the layout stay fixed.
+- **Words for people.** The card's title is the request; a progress bar shows Plan, Tasks, Final checks, Review and
+  Report; a **Now** line says in plain words what is happening and how long ago it last moved (a local model can
+  be quiet for minutes while it writes a long answer); thrown-away output is "caught by the harness's checks", with
+  the reasons under **Why?**. Questions are answered in the card, one field each. Stopped and failed runs have
+  **Resume** (`POST /api/runs/:id/resume`, the same `Pipeline#resume` as the CLI). Rename and delete use the app's
+  own dialogs instead of `window.prompt` and `window.confirm`; Add project is a dialog that shows the exact command
+  before it runs anything, as before.
+- **A start page** with three steps (connect a model, add a project, describe what to build) and the demo, instead
+  of opening Settings with the text box still active below it.
+- **The sidebar shows each chat's latest build** (Building, Needs you, Failed, Stopped, done), from a `run` and
+  `runStatus` the chat list now carries.
+- **Phones.** Below 760px the sidebar slides in behind a menu button, the card stacks, and inputs use 16px text so
+  mobile browsers do not zoom.
+
+Fixed on the way: the top bar kept saying "building" after a run finished (the collapsed card returned before the
+status was reset), and a re-render of a running card cleared a half-typed note to the agent; inputs in a card are
+now the same elements across renders and keep their focus.

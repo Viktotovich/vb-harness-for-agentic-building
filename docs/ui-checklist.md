@@ -16,8 +16,8 @@ before a release, with a model server running, and note the browser and date.
 
 ## Chat
 
-- [ ] "+ New chat" creates a chat; the first message becomes its title; newest chats are on top.
-- [ ] Rename works; Delete asks first and removes the chat.
+- [ ] "New chat" creates a chat; the first message becomes its title (the top bar updates too); newest chats are on top, grouped Today and Earlier.
+- [ ] The ⋯ menu renames (in the app's own dialog) and deletes (asks first, in the app's own dialog).
 - [ ] The model picker lists "provider · model id" for every configured provider; switching mid-chat adds a note.
 - [ ] Enter adds a newline; Ctrl+Enter (⌘+Enter on macOS) sends. The box shows 6 lines and grows to 40% of the
       window.
@@ -30,17 +30,29 @@ before a release, with a model server running, and note the browser and date.
 ## Build
 
 - [ ] Build mode shows the repo box; Send starts a run and a card appears.
-- [ ] The card shows the stage strip, task rows with ✓ ● ○ ✕ ↷ marks, sub-stages of the active task, and the
+- [ ] The card shows the progress bar, the Now line ("updated … ago"), task rows with ✓ ● ○ ✕ ↷ marks, the steps of the active task, and the
       counters. Marks are readable without colour.
-- [ ] "details" shows the reasons table; clicking a reason lists its items as plain text.
-- [ ] A blocking question turns the card's border purple; answering in the text box continues the run.
+- [ ] "Why?" shows the reasons; clicking a reason lists its items as plain text.
+- [ ] A blocking question turns the card amber and asks it in the card, one field per question; "Answer and continue" continues the run.
 - [ ] A blocked task shows its reason and patch path.
 - [ ] Reloading the page during a run replays the card without gaps or duplicates.
-- [ ] A finished run collapses to one line and expands on click; "Show report" renders the report, with its tables as tables (not raw `|` text).
+- [ ] A finished run shows a summary, the branch with "Copy branch", "View report" (the report opens beside the chat, tables as tables) and "Show details". A stopped or failed run has "Resume".
 
 ## Look
 
 - [ ] Inter is used everywhere (DevTools: computed font); code uses the monospace stack at 13.5px.
-- [ ] Colours match DESIGN.md 11.4; body text is readable (WCAG AA); the focus ring is visible on every control.
+- [ ] Colours match docs/decisions.md ("A calmer app"); body text is readable (WCAG AA); the focus ring is visible on every control.
 - [ ] With "reduce motion" on, nothing pulses.
 - [ ] DevTools console: no CSP violations, no errors.
+
+## Appearance and phones
+
+- [ ] Settings → Appearance: System follows the computer's setting; Dark and Light stick after a reload, with no flash
+      of the other look on load.
+- [ ] A preset or a colour picker changes the page at once; "Discard changes" and leaving the tab undo an unsaved
+      change; "Save colours" keeps it after a reload. The dark look's colours never show in the light look.
+- [ ] Text that is hard to read (below 4.5:1) is flagged under the colour pickers.
+- [ ] The sidebar shows Building, Needs you, Failed, Stopped or ✓ for a chat's latest build, and the top bar stops
+      saying "working" when a run ends.
+- [ ] At phone width (375px): the menu button opens the chat list over the page and choosing a chat closes it; no
+      sideways scrolling anywhere; the build card, Settings and the dialogs fit; typing does not zoom the page.

@@ -24,20 +24,21 @@ cd vb-harness-for-agentic-building
 ruby exe/harness
 ```
 
-The app opens in your browser. To see a whole build before setting anything up, choose **Try the demo** in
-Settings (or run `ruby exe/harness demo`): a scripted model builds a tiny sample project, with a failed check, its
-fix and a review, in under a minute. Then, in **Settings · providers**, choose **Use** on a model. Switch to **Build**, pick
-your project, describe the feature, and send. Two things stop a run before it starts, each with a message saying
-what to do: a project without its dependencies installed (run `npm install` in it first) and uncommitted changes
-(commit or stash them).
+The app opens in your browser on a start page with three steps: connect a model, add a project, describe what to
+build. To see a whole build before setting anything up, choose **Try the demo** there (or run
+`ruby exe/harness demo`): a scripted model builds a tiny sample project, with a failed check, its fix and a review,
+in under a minute. Then **Connect** opens **Settings → Models**, where you choose **Use** on a model. Switch the text
+box to **Build**, pick your project, describe the feature, and choose **Start build**. Two things stop a run before
+it starts, each with a message under the text box saying what to do: a project without its dependencies installed
+(run `npm install` in it first) and uncommitted changes (commit or stash them).
 
 On the command line instead, `ruby exe/harness init` asks a few questions (Enter accepts each default), and
 `ruby exe/harness run --repo ../my-site --request request.md` builds what `request.md` describes.
 
-Stuck? `ruby exe/harness doctor --repo ../my-site` (or **Check setup** at the top of Settings) lists every reason a
+Stuck? `ruby exe/harness doctor --repo ../my-site` (or **Settings → Check setup**) lists every reason a
 build would not start, each with what to do, without changing anything or asking a model to write.
 
-[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent, an agent investigates the repository and the plan is checked, four tasks are worked by agents with a note sent to steer them, rejected outputs are counted by reason, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
+[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
 *An animated illustration of a run in the app (not a screen recording). The plan, code, numbers, review claims and
 pages come from a real agent-mode run of evaluation task 10 with a local model on a 6 GB laptop GPU, which took
@@ -128,31 +129,61 @@ and `workspaces/` are created next to it. All of them are git-ignored.
 ruby exe/harness
 ```
 
-This starts the local app on `http://127.0.0.1:4567/` and, on first start, opens your browser.
+This starts the local app on `http://127.0.0.1:4567/` and, on first start, opens your browser on the start page.
+The sidebar lists your chats, newest first; a chat that started a build shows its state there (**Building**,
+**Needs you**, **Failed**, **Stopped** or ✓), so a waiting build is easy to spot. The model in use and whether it is
+working sit at the bottom of the sidebar, next to **Settings**.
 
-1. **Connect a model (Settings · providers).** The app looks for LM Studio and Ollama on this machine. You can
-   start LM Studio's server, load a downloaded model, or pull an Ollama model, each with one click. For any other
-   server, enter its OpenAI-compatible URL and, if it needs a key, the *name* of the environment variable that holds
-   the key (never the key itself). Choose **Use** on a model: the harness probes it and tells you what it found, for
-   example "16K context, JSON mode: yes, tools: no, thinking can be turned off". Once a model is set up, the top of
-   Settings has **How runs work**: the [mode](#configuration) (Careful, Balanced or Quick), and which model the
-   planner, reviewer and verifier use. **Plan & review** on any model makes it that second model, even on the same
-   server as the first.
+![The start page: connect a model (done), add a project (done) and describe what to build, plus a card to watch a 20-second demo build](docs/media/app-home.png)
 
-   ![Settings · providers: the app looks for LM Studio and Ollama on this machine; a custom OpenAI-compatible server at 127.0.0.1:8080 has been checked and offers one model to use](docs/media/app-connect-a-model.png)
+1. **Connect a model (Settings → Models).** The app looks for LM Studio and Ollama on this machine. You can start
+   LM Studio's server, load a downloaded model, or pull an Ollama model, each with one click. For any other server,
+   enter its OpenAI-compatible URL under **Another server** and, if it needs a key, the *name* of the environment
+   variable that holds the key (never the key itself). Choose **Use** on a model: the harness probes it and shows
+   what it found as plain labels, for example "48K context · JSON mode: yes · tools: yes · thinking can be turned
+   off". **Plan & review** on any model makes it the model the planner, reviewer and verifier use, even on the same
+   server as the first. **Settings → How runs work** picks the [mode](#configuration) (Careful, Balanced or Quick)
+   and the way of working (Pipeline or Agent).
+
+   ![Settings → Models: the model in use with its probed abilities as labels, the planning-and-review picker, and LM Studio and Ollama as found on this machine](docs/media/app-connect-a-model.png)
 2. **Chat.** Chat mode is a planning conversation: work out what to build, compare approaches, sketch the steps.
    Ctrl+Enter (⌘+Enter on macOS) sends; Enter adds a line. Replies stream, and thinking text sits in a collapsed
-   block. Chat changes no files.
+   **Thinking** block. Chat changes no files. **Use as build request** under a reply copies it into the text box in
+   Build mode, for you to edit and send: nothing starts until you do.
 
-   ![A planning chat: asked about a Badge component for an Astro site, the local model replies with a plan, a sketch of the component and the decisions to make first](docs/media/app-chat.png)
-3. **Build.** Switch to Build, pick a project (or **+ Add project**), describe the feature, and send. A live card
-   shows where the run is, how many model outputs were thrown away and why. If the planner asks a blocking
-   question, the card turns purple: answer in the text box, one answer per line. When the run ends, **Show report**
-   opens the report.
+   ![A planning chat: asked about a Badge component for an Astro site, the local model replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
+3. **Build.** Switch the text box to **Build**, pick a project (or **Add project**), describe the feature, and choose
+   **Start build**. The line under the text box says what will happen, or what stops the build (uncommitted changes,
+   a project with a problem). A live card in the chat shows the run:
+   - a progress bar, **Plan → Tasks → Final checks → Review → Report**;
+   - a **Now** line in plain words ("T1 Double the price: running your checks") with how long ago it last moved, so a
+     model that is still writing a long answer is not mistaken for a hang;
+   - every task with its state, its commit, and for the active one its steps (Read, Write, Apply, Check, Fix, Review,
+     Commit);
+   - how many model answers were kept and how many the harness's checks caught. **Why?** lists the reasons in plain
+     words; catching bad output is the harness doing its job, and none of it reaches your code;
+   - in agent mode, a box to send the agent a note, and **Stop after this task**.
 
-   ![Build mode: the request, and a finished run card showing every stage done, task T1 committed, and 9 model outputs produced, 9 accepted and 0 rejected; below, the project picker shows astro-site with its branch, a clean tree and Astro 7.4.0](docs/media/app-build.png)
+   If the planner has blocking questions, the card turns amber and asks them in the card itself, one field per
+   question, with **Answer and continue**. When the run ends, the card shows a short summary, the branch with
+   **Copy branch**, and **View report**, which opens the report beside the chat. A stopped or failed run has
+   **Resume**, which continues where it left off and keeps what was committed.
+
+   ![A build in progress: the request as the card's title, the progress bar at Tasks, the Now line, task T1 at its Check step and T2 waiting for it, and the kept and caught model answers](docs/media/app-build.png)
 
 The app only listens on `127.0.0.1`, refuses other host names, and needs a per-start token for every change.
+
+### Appearance
+
+**Settings → Appearance** chooses the look: **System** (follows your computer's light or dark setting), **Dark** or
+**Light**. Each look has a few colour presets, and you can pick your own colours for the background, cards, text,
+accent and the three status colours. The app shows the text contrast as you go and warns when it gets hard to read.
+Only colours change; the font and layout stay the same. The choice is saved in `appearance.json` next to
+`config.json`.
+
+![Settings → Appearance: System, Dark or Light, colour presets for the dark look, and a colour picker for each of the seven colours with a text contrast check](docs/media/app-appearance.png)
+
+![The same finished build in the light look](docs/media/app-light.png)
 
 ## Quick start: the command line
 
@@ -223,7 +254,8 @@ your answers.
 
 ## Projects and workspaces
 
-In the app, Build mode works on **projects**:
+In the app, Build mode works on **projects**. **Add project** (next to the project picker under the text box, or on
+the start page) offers three ways:
 
 - **Link an existing folder.** Paste its full path once. The harness checks it is the top folder of a git
   repository and shows its branch, whether it is clean, and the detected stack and version, or exactly what is
@@ -231,10 +263,10 @@ In the app, Build mode works on **projects**:
 - **Clone from a git URL.** A shallow clone of an `https://` URL into `projects/<name>`.
 - **New Astro project.** `npm create astro@latest` into `projects/<name>`, then a first commit.
 
-Clone and New Astro project download code, so the app first shows you the exact command and runs it only after you
-confirm. The app never lists folders on your disk.
+Clone and New Astro project download code, so the dialog first shows you the exact command and runs it only after
+you choose **Clone project** or **Create project**. The app never lists folders on your disk.
 
-![The Add a project panel: link an existing folder by its full path, clone from a git URL into projects/, or create a new Astro project in projects/; above it, the selected project's status line](docs/media/app-projects.png)
+![The Add a project dialog: Link a folder, Clone from Git (selected) and New Astro site; for the clone, the exact git command it would run, and Cancel or Clone project](docs/media/app-projects.png)
 
 Every run works in its own worktree under `workspaces/<runId>` in the harness's home, on branch `harness/<runId>`.
 Folders listed in the stack's `dependencyDirs` (for Astro, `node_modules`) are mirrored into the worktree with hard
@@ -269,7 +301,7 @@ changed while the run was paused. Each line says what to do about it.
 Replies that were discarded and retried with thinking off count too. Rejections show where a model struggles, and
 they are how you compare models.
 
-![A report in the app: the tasks table with T1 done and its commit, gates compared with the baseline, and empty Findings, Questions and Suspicious text sections](docs/media/app-report.png)
+![A report in the app, open beside the chat: the demo run's summary, the tasks table with both tasks done and their commits, gates compared with the baseline, and empty Findings and Questions](docs/media/app-report.png)
 
 **Findings** in the report are only claims confirmed by a failing test. Everything else the review raised is under
 **Questions**, clearly marked as unconfirmed.
@@ -489,7 +521,7 @@ component"` (or the note box on its card in the app) sends it a note, which the 
 as your words. An agent can also ask you a question with `ask_user` when the task is ambiguous: the question shows
 on the card, in the events and in `run.json`, and your next note is the answer. If none comes within
 `agent.askTimeoutSec`, the agent decides for itself and says in its summary what it assumed. In the app, Settings
-switches the way of working between Pipeline and Agent, and an agent-mode card's details list each agent's steps.
+switches the way of working between Pipeline and Agent, and an agent-mode card's **Agent activity** lists each agent's steps.
 
 Agent mode makes many more model calls than the pipeline; with a local model, expect a task to take several
 times longer. Models without native tool calls use a JSON reply protocol, one tool per reply.

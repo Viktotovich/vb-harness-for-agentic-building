@@ -17,3 +17,6 @@ Thumbs.db
 eval-out/
 workspaces/
 projects/
+
+# The app's look (Settings · Appearance)
+appearance.json

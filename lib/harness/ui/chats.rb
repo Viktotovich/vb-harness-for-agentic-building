@@ -25,12 +25,13 @@ module Harness
         @mutex = Mutex.new
       end
 
-      # @return [Array<Hash>] id, title and updated, newest first
+      # @return [Array<Hash>] id, title and updated, newest first; a chat that started a build also has "run", the id
+      #   of its latest build
       def list
         return [] unless File.directory?(@dir)
 
         Dir.glob(File.join(@dir, "*.json")).filter_map { |f| read_file(f) }
-           .map { |c| c.slice("id", "title", "updated") }.sort_by { |c| c["updated"].to_s }.reverse
+           .map { |c| summary(c) }.sort_by { |c| c["updated"].to_s }.reverse
       end
 
       # @param model [Hash, nil] {"profile", "model"}
@@ -103,6 +104,14 @@ module Harness
       private
 
       def path(id) = File.join(@dir, "#{id}.json")
+
+      # @return [Hash] what the sidebar needs of a chat
+      def summary(chat)
+        out = chat.slice("id", "title", "updated")
+        build = Array(chat["messages"]).reverse.find { |m| m.is_a?(Hash) && m["role"] == "build" }
+        out["run"] = build["runId"] if build && build["runId"].is_a?(String)
+        out
+      end
 
       def save(chat)
         State.write_json(path(chat["id"]), chat)
