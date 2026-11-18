@@ -1,7 +1,12 @@
 # VB Harness
 
-**A small model on your own laptop builds real features, and nothing it writes counts until your project's own
-checks pass.**
+**Verified agentic development for local models.** Models write code; your project's own checks decide whether it
+survives.
+
+VB Harness is an engineering harness that makes local coding agents accountable for their changes. It doesn't try to
+make the model smarter: it breaks your request into small tasks, has the model write each one in an isolated copy,
+and keeps a change only when your type check, lint, build and tests pass and an independent review can't prove it
+wrong.
 
 [![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
@@ -19,6 +24,11 @@ unchanged. Click it for the 1080p, 60 fps video.*
   without your OK, git hooks off. You review the branch like any pull request.
 - **Built for small models.** Small tasks, exact edits instead of whole files, JSON checked on every reply, and
   context fitted to the model's window. Any OpenAI-compatible server works: LM Studio, Ollama, llama.cpp, vLLM.
+- **Small, verifiable tasks.** A feature becomes a plan of small tasks, each with the files it may touch and how it
+  will be proved; the plan is checked before any code is written.
+- **You see what it cost.** Every model call is counted by role (planner, implementer, fixer, reviewer), so you know
+  where the time and tokens went.
+- **Nothing to install but Ruby.** Zero gem dependencies; the harness is plain Ruby and git.
 - **A calm app for all of it.** Plan in Chat and watch the model think, start a build, steer it with a note, preview
   the result, even from your phone.
 
@@ -34,6 +44,31 @@ vLLM, or a hosted API.
 decisions.
 
 **Status: early development.** Everything below works and is tested, but expect rough edges and changes.
+
+## Never coded? Build your own website
+
+You don't need to write code: you describe the website in plain words, a model on your own computer builds it, and
+one click shows it in your browser. Setup takes about 30 minutes, once.
+
+1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/). It runs AI models on your computer.
+   [This video](https://www.youtube.com/watch?v=396Xg5ZSL80) shows the next two steps.
+2. **Download a coding model** in LM Studio's **Discover** tab (the models come from
+   [Hugging Face](https://huggingface.co/models?library=gguf&sort=trending)). Pick one that fits your computer's
+   memory; LM Studio marks the ones that fit.
+3. **Start LM Studio's server** in its **Developer** tab, and leave LM Studio open.
+4. **Install three free tools**, accepting the defaults:
+   [Ruby](https://www.ruby-lang.org/en/documentation/installation/) (on Windows,
+   [RubyInstaller](https://rubyinstaller.org/)), [Git](https://git-scm.com/downloads) and
+   [Node.js](https://nodejs.org/) (for the website itself).
+5. **Download VB Harness:** on GitHub, **Code → Download ZIP**, and unzip it.
+6. **Start it:** open a terminal in that folder (on Windows, right-click the folder → *Open in Terminal*) and type
+   `ruby exe/harness`. The app opens in your browser.
+7. **In the app:** **Models** finds LM Studio, choose **Use**. Then **Add project → New Astro site**, switch the text
+   box to **Build**, describe your website ("a page for my bakery with opening hours and a menu…") and choose
+   **Start build**. When it's done, **Preview** shows your site.
+
+If something is missing, the app says what and usually offers a **Fix** button. Local models make mistakes, so look
+over the result before you publish it.
 
 ## Fastest path
 
@@ -69,6 +104,7 @@ build would not start, each with what to do, without changing anything or asking
 
 ## Contents
 
+- [Never coded? Build your own website](#never-coded-build-your-own-website)
 - [Fastest path](#fastest-path)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
