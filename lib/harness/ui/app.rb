@@ -308,6 +308,14 @@ module Harness
         end
       end
 
+      # Whether a chat's latest build is still going: deleting the chat then would leave the build with no card.
+      # @param id [String] chat id
+      # @return [Boolean]
+      def building?(id)
+        run = chat_list.find { |c| c["id"] == id }&.fetch("runStatus", nil)
+        !run.nil? && !Builds::FINISHED.include?(run) && !Builds::WAITING.include?(run)
+      end
+
       def static(file, type)
         Response.new(status: 200, headers: { "Content-Type" => type, "Cache-Control" => "no-cache" },
                      body: File.binread(File.join(PUBLIC, file)), stream: nil)
@@ -325,6 +333,8 @@ module Harness
         case action
         when "rename" then Response.json(@chats.rename(id, data["title"]))
         when "delete"
+          return Response.error(409, "this chat's build is still going: stop it first, then delete the chat") if building?(id)
+
           @chats.delete(id)
           Response.json({ "deleted" => id })
         when "model"
