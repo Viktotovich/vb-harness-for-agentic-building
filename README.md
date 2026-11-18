@@ -175,7 +175,7 @@ working sit at the bottom of the sidebar, next to **Settings**.
    the reply, and a click opens the whole thought process so you can judge how it got there. Chat changes no files. **Use as build request** under a reply copies it into the text box in
    Build mode, for you to edit and send: nothing starts until you do.
 
-   ![A planning chat: asked about a Badge component for an Astro site, the local model replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
+   ![A planning chat: asked about a Badge component for an Astro site, the local model thought for 15 seconds (folded under "Thought for 15s") and replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
 3. **Build.** Switch the text box to **Build**, pick a project (or **Add project**), describe the feature, and choose
    **Start build**. The line under the text box says what will happen, or what stops the build (uncommitted changes,
    a project with a problem). A live card in the chat shows the run:
