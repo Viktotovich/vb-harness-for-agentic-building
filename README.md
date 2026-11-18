@@ -739,3 +739,9 @@ and paste its summary, as described in [CONTRIBUTING.md](CONTRIBUTING.md). Desig
 
 Apache-2.0, by [V and Bruno LLC](https://vandbruno.net/). See [LICENSE](LICENSE) and [NOTICE](NOTICE). The bundled
 Inter font is under the SIL Open Font License ([OFL.txt](lib/harness/ui/public/fonts/OFL.txt)).
+
+## Disclaimer
+
+All local AI models are prone to mistakes: always check their output before you use it. VB Harness is for
+experimentation only. It is provided as is, with no warranty or guarantee of any kind (see the
+[Apache-2.0 license](LICENSE)); you run it at your own risk, and using it means you accept that.
