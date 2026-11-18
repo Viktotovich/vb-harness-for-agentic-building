@@ -29,9 +29,9 @@ module Harness
       LAN_POST = [%r{\A/api/chats\z}, %r{\A/api/chats/[\w-]+/(?:rename|delete|model|send)\z}, %r{\A/api/streams/\h{16}/stop\z},
                   %r{\A/api/runs/[\w-]+/(?:answer|stop|note|resume)\z}, %r{\A/api/demo\z}].freeze
       # What a LAN device may not even read: model servers and their commands, settings, the setup check.
-      LAN_GET_DENIED = %r{\A/api/(?:providers|settings|doctor|lan|previews)(?:/|\z)}
+      LAN_GET_DENIED = %r{\A/api/(?:providers|settings|config|doctor|lan|previews)(?:/|\z)}
       # What an unpaired LAN device may load: the pairing page and what it needs.
-      PAIRING_FILES = %w[/pair.js /app.css /theme.css /favicon.svg /fonts/InterVariable.woff2 /fonts/InterVariable-Italic.woff2].freeze
+      PAIRING_FILES = %w[/pair.js /app.css /theme.css /favicon.png /fonts/InterVariable.woff2 /fonts/InterVariable-Italic.woff2].freeze
       PUBLIC = File.expand_path("public", __dir__)
 
       attr_reader :port, :token, :lan

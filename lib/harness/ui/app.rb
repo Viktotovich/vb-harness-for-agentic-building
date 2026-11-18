@@ -40,7 +40,7 @@ module Harness
                  "/fonts/InterVariable.woff2" => ["fonts/InterVariable.woff2", "font/woff2"],
                  "/fonts/InterVariable-Italic.woff2" => ["fonts/InterVariable-Italic.woff2", "font/woff2"],
                  "/fonts/OFL.txt" => ["fonts/OFL.txt", "text/plain; charset=utf-8"],
-                 "/favicon.svg" => ["favicon.svg", "image/svg+xml"] }.freeze
+                 "/favicon.png" => ["favicon.png", "image/png"] }.freeze
       MODES = %w[chat build].freeze
 
       # @param config_path [String] config.json; chats/, runs/ and .cache/ live next to it
@@ -102,6 +102,7 @@ module Harness
         ["POST", %r{\A/api/runs/([\w-]+)/note\z}, :run_note],
         ["GET", %r{\A/api/providers\z}, :providers], ["GET", %r{\A/api/settings\z}, :settings],
         ["POST", %r{\A/api/settings\z}, :settings_post], ["GET", %r{\A/api/doctor\z}, :doctor],
+        ["GET", %r{\A/api/config\z}, :config_get], ["POST", %r{\A/api/config\z}, :config_post],
         ["POST", %r{\A/api/demo\z}, :demo],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
         ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create|fix)\z}, :project_post]
@@ -158,6 +159,11 @@ module Harness
         when :provider_post then provider_post(args[0], body(req))
         when :settings then Response.json(settings)
         when :settings_post then settings_post(body(req))
+        when :config_get then Response.json({ "text" => File.file?(@config_path) ? File.read(@config_path, encoding: "UTF-8") : "" })
+        when :config_post
+          Providers::Setup.replace(path: @config_path, text: body(req)["text"].to_s)
+          load_config
+          Response.json(settings)
         when :doctor then Response.json(doctor(req.query["project"]))
         when :projects then Response.json(projects!.list.map { |p| project_json(p) })
         when :project_post then project_post(args[0], body(req))

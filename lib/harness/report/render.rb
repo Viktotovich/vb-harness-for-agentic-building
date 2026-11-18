@@ -34,6 +34,7 @@ module Harness
         notes = warnings(data)
         [
           "# Run #{data.run_id}", "",
+          "## In plain words", "", *plain(data), "",
           *summary(data), "",
           *(notes.empty? ? [] : ["## Read this first", "", *notes, ""]),
           "## Tasks", "", *tasks(data), "",
@@ -159,6 +160,44 @@ module Harness
             "#{s['fixRounds'].to_i} | #{gates.empty? ? '-' : gates} |"
         end
         ["Titles are planner output.", "", "| Task | Title | Status | Commit | Fix rounds | Gates |", "| --- | --- | --- | --- | --- | --- |", *rows]
+      end
+
+      # The run for someone who does not code: what was made, what is left and what to do next. Always the same three
+      # headings; the words come from the run's state, never from a model.
+      # @param data [Sources]
+      # @return [Array<String>]
+      def self.plain(data)
+        parts = Array(data.plan["tasks"]).map { |t| [t, data.states[t["id"]] || {}] }
+        done = parts.select { |_, s| s["state"] == "done" }
+        left = parts.reject { |_, s| s["state"] == "done" }
+        status = data.run["status"].to_s
+        out = ["**What was made**", ""]
+        out += if done.empty? then ["- Nothing yet."]
+               else done.map { |t, _| "- #{line(t['title'], 100)}" }
+               end
+        out += ["", "**What is left**", ""]
+        out += if left.empty? then ["- Nothing: every part of the plan is finished."]
+               else left.map { |t, s| "- #{line(t['title'], 100)} (#{plain_state(s['state'])})" }
+               end
+        out += ["", "**What you need to do**", ""]
+        out << "- Answer the questions in the app: the build waits for you." unless Array(data.run["questions"]).empty?
+        out << "- Resume the build in the app: it continues where it stopped." if status == "stopped"
+        unless left.empty? || status == "stopped"
+          out << "- Some parts were not finished. Build again, or describe the missing part in a new request."
+        end
+        if data.run["branch"] && !done.empty?
+          out << "- Look over the changes and try them with Preview. When you are happy, merge the branch " \
+                 "#{code(data.run['branch'])} into your project."
+        end
+        out << "- Check the Findings section below: each finding there comes with a failing test as proof."
+        out << "- Local AI makes mistakes: check the result before you rely on it."
+        out
+      end
+
+      # @return [String] a task state in plain words
+      def self.plain_state(state)
+        { "blocked" => "it could not pass your project's checks", "skipped" => "it waits for a part that was not finished",
+          "pending" => "not started yet", "running" => "in progress" }.fetch(state.to_s, state.to_s.empty? ? "not started yet" : state.to_s)
       end
 
       # @return [Array<String>]
@@ -291,7 +330,7 @@ module Harness
         m, s = rest.divmod(60)
         h.positive? ? "#{h}h #{m}m" : "#{m}m #{s}s"
       end
-      private_class_method :summary, :tasks, :gates, :findings, :questions, :suspicious, :blocked, :rejections, :cost, :all_reviews
+      private_class_method :plain, :plain_state, :summary, :tasks, :gates, :findings, :questions, :suspicious, :blocked, :rejections, :cost, :all_reviews
     end
   end
 end
