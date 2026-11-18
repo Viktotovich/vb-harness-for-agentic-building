@@ -7,6 +7,12 @@ require_relative "../config"
 require_relative "../demo"
 require_relative "../doctor"
 require_relative "../errors"
+require_relative "../gates/env"
+require_relative "../project_setup"
+require_relative "../repo/git"
+require_relative "../repo/mirror"
+require_relative "../repo/worktree"
+require "fileutils"
 require_relative "../model/http"
 require_relative "../model/probe"
 require_relative "../model/stream"
@@ -21,6 +27,7 @@ require_relative "builds"
 require_relative "chats"
 require_relative "conversation"
 require_relative "http"
+require_relative "previews"
 
 module Harness
   module UI
@@ -52,7 +59,9 @@ module Harness
         @urls = urls
         @pipeline_for = pipeline_for
         @chats = Chats.new(File.join(@home, "chats"))
-        @builds = Builds.new(runs_dir: File.join(@home, "runs"), pipeline: -> { @pipeline_for.call(config!, @home) })
+        @previews = Previews.new
+        @builds = Builds.new(runs_dir: File.join(@home, "runs"), pipeline: -> { @pipeline_for.call(config!, @home) },
+                             fixes: ->(run) { run_fixes(run) })
         # Try the demo: its own folder, config and scripted model, so the user's config and runs are never touched.
         @demo_dir = File.join(@home, "demo")
         @demo_builds = Builds.new(runs_dir: File.join(@demo_dir, "runs"), finished: ->(id) { Demo.mark(@demo_dir, id) },
@@ -70,12 +79,20 @@ module Harness
         Response.error(503, e.message)
       end
 
+      # Stop what the app started that outlives a request: the Preview dev servers.
+      # @return [void]
+      def shutdown
+        @previews.stop_all
+      end
+
       private
 
       ROUTES = [
         ["GET", %r{\A/\z}, :index], ["GET", %r{\A/theme\.css\z}, :theme], ["GET", %r{\A/api/state\z}, :state],
         ["GET", %r{\A/api/chats\z}, :chat_list], ["GET", %r{\A/api/appearance\z}, :appearance],
         ["POST", %r{\A/api/appearance\z}, :appearance_post], ["POST", %r{\A/api/runs/([\w-]+)/resume\z}, :run_resume],
+        ["POST", %r{\A/api/runs/([\w-]+)/fix\z}, :run_fix],
+        ["GET", %r{\A/api/previews\z}, :previews], ["POST", %r{\A/api/previews/(start|stop)\z}, :preview_post],
         ["POST", %r{\A/api/chats\z}, :chat_create], ["GET", %r{\A/api/chats/([\w-]+)\z}, :chat_get],
         ["POST", %r{\A/api/chats/([\w-]+)/(rename|delete|model|send)\z}, :chat_action],
         ["GET", %r{\A/api/streams/(\h{16})\z}, :stream], ["POST", %r{\A/api/streams/(\h{16})/stop\z}, :stream_stop],
@@ -86,7 +103,7 @@ module Harness
         ["POST", %r{\A/api/settings\z}, :settings_post], ["GET", %r{\A/api/doctor\z}, :doctor],
         ["POST", %r{\A/api/demo\z}, :demo],
         ["POST", %r{\A/api/providers/(custom|action|use)\z}, :provider_post], ["GET", %r{\A/api/projects\z}, :projects],
-        ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create)\z}, :project_post]
+        ["POST", %r{\A/api/projects/(validate|link|unlink|clone|create|fix)\z}, :project_post]
       ].freeze
 
       # @return [Response]
@@ -112,6 +129,14 @@ module Harness
         when :state then Response.json(state)
         when :chat_list then Response.json(chat_list)
         when :run_resume then Response.json({ "run" => builds_for(args[0]).resume(args[0]) })
+        when :previews then Response.json(@previews.list)
+        when :preview_post then preview_post(args[0], body(req))
+        when :run_fix
+          run = builds_for(args[0]).run_info(args[0])
+          repo = run["repo"].to_s
+          raise ConfigError, "this run has no project folder to fix" unless File.directory?(repo)
+
+          apply_fix(setup_fixes(repo, run.dig("setupNeeds", "packages")), repo, body(req))
         when :chat_create then Response.json(@chats.create(model: model_choice(body(req)["model"])))
         when :chat_get then Response.json(@chats.get(args[0]))
         when :chat_action then chat_action(args[0], args[1], body(req))
@@ -150,6 +175,9 @@ module Harness
       def project_post(what, data)
         case what
         when "validate" then Response.json(projects!.status(data["path"]).to_json_hash)
+        when "fix"
+          project = projects!.find(data["name"].to_s)
+          apply_fix(projects!.fixes_for(project.path), project.path, data)
         when "link" then Response.json(project_json(projects!.link(data["path"])))
         when "unlink"
           projects!.unlink(data["name"].to_s)
@@ -163,6 +191,90 @@ module Harness
           load_config
           Response.json(project_json(project))
         end
+      end
+
+      # Preview: {"project": name} serves the project's folder, {"run": id} a build's worktree (what it built);
+      # {"key": ...} stops one. The command is the stack's "preview" from config.
+      # @return [Response]
+      def preview_post(what, data)
+        return Response.json({ "stopped" => @previews.stop(data["key"].to_s) }) if what == "stop"
+
+        if data["run"]
+          run = builds_for(data["run"].to_s).run_info(data["run"].to_s)
+          path = run["worktree"].to_s
+          raise ConfigError, "this build's copy was removed (harness cleanup): preview the project instead" unless File.directory?(path)
+
+          key = "run:#{data['run']}"
+          label = "build #{data['run']}"
+        else
+          project = projects!.find(data["project"].to_s)
+          stack = projects!.stack_for(project.path)
+          raise ConfigError, "no preview command for this project: set \"preview\" in its stack in config.json" unless stack&.preview
+
+          key = "project:#{project.name}"
+          @previews.stop(key)
+          path = preview_copy(project, stack)
+          label = "#{project.name} (its last commit)"
+        end
+        stack = projects!.stack_for(path)
+        raise ConfigError, "no preview command for this project: set \"preview\" in its stack in config.json" unless stack&.preview
+
+        Response.json(@previews.start(key, argv: stack.preview, chdir: path, label: label,
+                                           env: Gates::Env.build(@env, allow: config!.gate_env_allow)))
+      end
+
+      # A fresh detached copy of the project's HEAD in workspaces/preview-<name>, with its dependency folders linked in
+      # as runs do: a dev server writes caches (Astro's .astro/), and the user's checkout must stay as it is (I11).
+      # @return [String] the copy's folder
+      def preview_copy(project, stack)
+        git = Repo::Git.new(env: Gates::Env.build(@env, allow: config!.gate_env_allow))
+        top = Repo::Worktree.top_level(project.path, git)
+        dir = File.join(@home, "workspaces", "preview-#{project.name}")
+        git.run(["worktree", "remove", "--force", dir], chdir: top) if File.exist?(dir)
+        FileUtils.mkdir_p(File.dirname(dir))
+        git.run(["worktree", "add", "--detach", dir, "HEAD"], chdir: top)
+        stack.dependency_dirs.each { |d| Repo::Mirror.link(File.join(top, d), File.join(dir, d)) }
+        dir
+      end
+
+      # @param path [String] a project folder
+      # @param packages [Array<String>, nil] packages a check asked for
+      # @return [Array<ProjectSetup::Fix>]
+      def setup_fixes(path, packages)
+        stack = projects!.stack_for(path)
+        stack ? ProjectSetup.fixes(stack, path, packages: Array(packages)) : []
+      end
+
+      # One-click setup: without "confirm": true the answer is the exact command (409), as for clone; with it the
+      # command runs in the project folder with the gates' scrubbed environment.
+      # @return [Response]
+      def apply_fix(fixes, path, data)
+        fix = fixes.find { |f| f.id == data["fix"] } or raise ParseError, "that fix is not needed any more"
+        unless data["confirm"] == true
+          plan = { "action" => fix.label, "command" => fix.command, "target" => projects!.display(path) }
+          return Response.json({ "confirm" => plan }, status: 409)
+        end
+
+        ok, output = ProjectSetup.run(fix, path, Gates::Env.build(@env, allow: config!.gate_env_allow))
+        Response.json({ "ok" => ok, "label" => fix.label, "output" => output })
+      end
+
+      # What the build card needs beyond run.json: the one-click fixes for a failed run's project, and whether a
+      # build's copy can be previewed.
+      # @param run [Hash] run.json
+      # @return [Hash]
+      def run_fixes(run)
+        return {} unless @projects
+
+        out = {}
+        if run["status"] == "failed" && File.directory?(run["repo"].to_s)
+          out["setupFixes"] = setup_fixes(run["repo"], run.dig("setupNeeds", "packages")).map(&:to_json_hash)
+        end
+        tree = run["worktree"].to_s
+        out["canPreview"] = !tree.empty? && File.directory?(tree) && !@projects.stack_for(tree)&.preview.nil?
+        out
+      rescue StandardError
+        {}
       end
 
       # @return [Projects]

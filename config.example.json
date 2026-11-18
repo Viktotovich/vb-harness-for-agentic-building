@@ -34,6 +34,7 @@
       "docs": { "local": null, "online": false, "matchVersion": true },
       "packageManager": "auto",
       "dependencyDirs": ["node_modules"],
+      "preview": ["npx", "--offline", "--no", "--", "astro", "dev", "--host", "127.0.0.1", "--port", "{port}"],
       "gates": {
         "format": { "argv": ["npx", "--offline", "--no", "--", "prettier", "--check", "{files}"], "scope": "touched", "blocking": false, "costRank": 1 },
         "lint": { "argv": ["npx", "--offline", "--no", "--", "eslint", "{files}"], "scope": "touched", "parser": "eslint", "costRank": 2 },

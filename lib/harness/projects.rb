@@ -6,6 +6,7 @@ require "fileutils"
 require "json"
 require_relative "config"
 require_relative "errors"
+require_relative "project_setup"
 require_relative "evidence/version"
 require_relative "exec"
 require_relative "gates/env"
@@ -21,7 +22,9 @@ module Harness
     # A project. linked: it lives outside projects/ and is remembered in config.json.
     Project = Data.define(:name, :path, :linked)
     # What the picker shows under the selected project. error is set when it cannot be built in.
-    Status = Data.define(:name, :display, :git, :branch, :clean, :stack, :version, :error) do
+    # fixes: ProjectSetup fixes for what stops a build (as JSON hashes), offered as one click in the app; preview:
+    # whether its stack has a dev server command for Preview.
+    Status = Data.define(:name, :display, :git, :branch, :clean, :stack, :version, :error, :fixes, :preview) do
       # @return [Hash]
       def to_json_hash = to_h.transform_keys(&:to_s)
     end
@@ -50,6 +53,12 @@ module Harness
       (found + linked.reject { |l| own.include?(l.name) }).sort_by(&:name)
     end
 
+    # @param path [String] a project folder
+    # @return [Gates::Stack, nil] the configured stack whose detect files it has
+    def stack_for(path)
+      @config&.stacks&.values&.find { |s| s.detect.any? { |f| File.exist?(File.join(path, f)) } }
+    end
+
     # @param name [String]
     # @return [Project]
     # @raise [ConfigError]
@@ -62,7 +71,7 @@ module Harness
     # @return [Status]
     def status(path, name: nil)
       base = { name: name || File.basename(path.to_s), display: display(path.to_s), git: false, branch: nil, clean: nil,
-               stack: nil, version: nil }
+               stack: nil, version: nil, fixes: [], preview: false }
       problem = path_problem(path)
       return Status.new(**base, error: problem) if problem
 
@@ -72,15 +81,38 @@ module Harness
       end
 
       branch = git.run(%w[rev-parse --abbrev-ref HEAD], chdir: path).strip
-      clean = git.run(%w[status --porcelain --untracked-files=all], chdir: path).strip.empty?
+      porcelain = git.run(%w[status --porcelain --untracked-files=all], chdir: path)
+      clean = porcelain.strip.empty?
+      deps = clean ? nil : ProjectSetup.dependency_changes(porcelain)
       stack = @config&.stacks&.values&.find { |s| s.detect.any? { |f| File.exist?(File.join(path, f)) } }
       version = stack && Evidence::Version.detect(path, name: stack.framework["name"] || stack.name,
                                                           package: stack.framework["lockfilePackage"] || stack.name)
+      setup = stack ? ProjectSetup.problem(stack, path) : nil
+      fixes = fixes_for(path, stack, porcelain)
+      error = if clean then setup
+              elsif deps then "uncommitted dependency changes (#{deps.join(', ')}): commit them before a build"
+              else "uncommitted changes: commit or stash them before a build"
+              end
       Status.new(**base, git: true, branch: branch, clean: clean, stack: stack&.name,
                          version: version&.known ? (version.installed || "#{version.major}.x") : nil,
-                         error: clean ? nil : "uncommitted changes: commit or stash them before a build")
+                         error: error, fixes: fixes.map(&:to_json_hash), preview: !stack&.preview.nil?)
     rescue GitError => e
       Status.new(**base, error: e.message.include?("not a git repository") ? "not a git repository (run git init and commit first)" : e.message[0, 200])
+    end
+
+    # The one-click fixes the picker offers for a project, as #status reports them: committing dependency files when
+    # they are the only uncommitted changes, else the setup fixes for what is missing.
+    # @param path [String]
+    # @param stack [Gates::Stack, nil] detected when not given
+    # @param porcelain [String, nil] git status, read when not given
+    # @return [Array<ProjectSetup::Fix>]
+    def fixes_for(path, stack = stack_for(path), porcelain = nil)
+      porcelain ||= git.run(%w[status --porcelain --untracked-files=all], chdir: path)
+      deps = porcelain.strip.empty? ? nil : ProjectSetup.dependency_changes(porcelain)
+      return [ProjectSetup.commit_fix(deps)] if deps
+      return [] unless porcelain.strip.empty? && stack && ProjectSetup.problem(stack, path)
+
+      ProjectSetup.fixes(stack, path)
     end
 
     # Remember a folder outside projects/ by name.

@@ -28,9 +28,16 @@ The app opens in your browser on a start page with three steps: connect a model,
 build. To see a whole build before setting anything up, choose **Try the demo** there (or run
 `ruby exe/harness demo`): a scripted model builds a tiny sample project, with a failed check, its fix and a review,
 in under a minute. Then **Connect** opens **Settings → Models**, where you choose **Use** on a model. Switch the text
-box to **Build**, pick your project, describe the feature, and choose **Start build**. Two things stop a run before
-it starts, each with a message under the text box saying what to do: a project without its dependencies installed
-(run `npm install` in it first) and uncommitted changes (commit or stash them).
+box to **Build**, pick your project, describe the feature, and choose **Start build**. If the project is not set up
+yet (dependencies not installed, a generated folder missing, a package its checks need), the line under the text box
+says so and offers a **Fix** button: it shows the exact command, runs it after you confirm, and you build. The one
+thing it leaves to you is uncommitted changes: commit or stash them. **Preview** next to the project runs its dev
+server (for Astro, `astro dev`) on `127.0.0.1` and opens it; a finished build has a Preview of what it made.
+
+> **📱 New: use the harness from your phone.** `ruby exe/harness ui --lan` lets a phone on your home network chat,
+> start builds, answer the planner and watch progress, while your computer does the work. Read
+> [Use it from your phone (LAN mode)](#use-it-from-your-phone-lan-mode) first: it is off by default, needs a pairing
+> code, and is for trusted networks only.
 
 On the command line instead, `ruby exe/harness init` asks a few questions (Enter accepts each default), and
 `ruby exe/harness run --repo ../my-site --request request.md` builds what `request.md` describes.
@@ -52,6 +59,7 @@ layout with cover art made for the video; the run's own files are unchanged. Cli
 - [Requirements](#requirements)
 - [Install](#install)
 - [Quick start: the app](#quick-start-the-app)
+- [Use it from your phone (LAN mode)](#use-it-from-your-phone-lan-mode)
 - [Quick start: the command line](#quick-start-the-command-line)
 - [Projects and workspaces](#projects-and-workspaces)
 - [Understanding a run](#understanding-a-run)
@@ -184,6 +192,50 @@ Only colours change; the font and layout stay the same. The choice is saved in `
 ![Settings → Appearance: System, Dark or Light, colour presets for the dark look, and a colour picker for each of the seven colours with a text contrast check](docs/media/app-appearance.png)
 
 ![The same finished build in the light look](docs/media/app-light.png)
+
+## Use it from your phone (LAN mode)
+
+> **Off by default. Only on a network you trust.** LAN mode opens the app to other devices on your local network.
+> Read the precautions below before you turn it on.
+
+```bash
+ruby exe/harness ui --lan                # your computer's private address, found for you
+ruby exe/harness ui --lan 192.168.1.20   # or name it
+```
+
+The terminal prints an address such as `http://192.168.1.20:4567/` and a 6-digit code; the app on the computer shows
+the same in a banner at the top. Open the address on your phone, type the code, and the phone gets the full app: chat,
+start builds, answer the planner's questions, send the agent notes, stop and resume, read reports. The app is laid out
+for phones.
+
+What protects it:
+
+- **Off unless you ask, every time.** Only `--lan` turns it on, for that run of the app. It is never saved.
+- **Private addresses only.** It listens on a `10.x`, `172.16–31.x` or `192.168.x` address, never on every interface
+  (`0.0.0.0`) and never on a public address. The app on `127.0.0.1` stays as it is.
+- **Pairing.** A device sees nothing but the pairing page until it types the code. A code pairs one device, expires
+  after 10 minutes, and five wrong tries lock pairing until you make a new code on the computer. A paired device holds
+  a random session cookie that ends when the app stops or you choose **Stop sharing**.
+- **The phone cannot change your machine.** From the LAN there is no way to run model-server commands (LM Studio,
+  Ollama), add, clone or create projects, run setup fixes, start a Preview, or change settings, models or the look.
+  Those stay on the computer.
+- **Same checks as the computer.** Every change from the phone also needs the app's per-start token and its own
+  origin; foreign host names are refused.
+
+Precautions:
+
+- **Use it only on a network you trust**, such as your home Wi-Fi. Never on public, hotel, café or office guest
+  Wi-Fi.
+- **Traffic is not encrypted** (plain HTTP). Anyone who can watch your network can read the pairing code, your
+  messages, the code the model writes and the session cookie. That is why trusted networks only.
+- **Never forward the port** on your router or expose it to the internet, and do not put it behind a public tunnel.
+- **Allow it on private networks only** if your firewall asks (on Windows: Private, not Public).
+- **Stop sharing when you are done**: the banner's **Stop sharing**, or Ctrl+C in the terminal.
+- **A paired phone can start builds**, and builds run your project's own checks (its commands) on your computer.
+  Pair only devices you own.
+
+On Windows with WSL: WSL's own address (`172.x`) cannot be reached from a phone. Turn on WSL's mirrored networking
+(then use your PC's address), or run the harness on Windows. The harness warns when this looks like the case.
 
 ## Quick start: the command line
 
@@ -438,6 +490,11 @@ Gates may not install packages, run `git` or `gh`, or use `npx --yes`. Other sta
 identify the stack), `alwaysGates`, `protectedPaths` (globs the model may never touch; `.git`, `.husky` and
 `node_modules` are always protected), `dependencyDirs`, and `docs.local` (a local checkout of the framework's docs,
 used by the review; without it, framework claims abstain instead of being confirmed).
+Two keys power the app's buttons: `setup` maps a `dependencyDirs` folder to the command that creates it, offered as
+a one-click **Fix** when it is missing (for example `"setup": {"generated": ["npx", "--offline", "--no", "--",
+"prisma", "generate"]}`; `node_modules` needs no entry, its fix is the package manager's install with
+`--ignore-scripts`), and `preview` is the dev server's argv with `{port}` where the port goes (the example config's
+Astro stack has `["npx", "--offline", "--no", "--", "astro", "dev", "--host", "127.0.0.1", "--port", "{port}"]`).
 Two keys carry what a small model gets wrong about the stack, as plain data: `fixHints` (`{"match": text in a
 diagnostic, "hint": what to tell the fixer}`, shown next to a matching diagnostic) and `reviewNotes` (facts and
 pitfalls the reviewer and verifier are given). The example's Astro stack has a few, such as "props are
@@ -573,11 +630,15 @@ The harness assumes the model can be wrong or manipulated, and limits what it ca
   detection is a pattern match: it catches common phrasings, not every reworded attempt, so it warns and never
   blocks. The fence, the fixed edit format and your gates are what keep a planted instruction from taking effect.
 - **Findings need proof.** A review claim is presented as fact only when a test confirmed it.
-- **No installs.** The harness never installs your project's dependencies; you do.
+- **No installs without you.** A run never installs anything. The app's **Fix** buttons can install a project's
+  dependencies or a package its checks ask for, but only after showing you the exact command and only when you
+  confirm; installs use `--ignore-scripts`, and commands come from the harness and your config, never from a model.
 - **Your checkout is untouched.** All work happens on a branch in a separate worktree.
 - **Keys.** Read only from the environment variable you name; never logged, recorded or shown.
-- **The app is local.** It binds to `127.0.0.1` only, refuses foreign hosts, needs a per-start token and its own
-  origin for every change, sends a strict Content Security Policy, and renders model output as text, never HTML.
+- **The app is local.** It binds to `127.0.0.1`, refuses foreign hosts, needs a per-start token and its own origin
+  for every change, sends a strict Content Security Policy, and renders model output as text, never HTML. LAN mode
+  (`--lan`, off by default and never saved) adds your computer's private network address only, behind a pairing
+  code, and a phone there can never run model-server commands, add projects or change settings.
 
 Each of these has a test in [`test/guardrails_test.rb`](test/guardrails_test.rb). See [SECURITY.md](SECURITY.md)
 to report a vulnerability.
@@ -601,7 +662,9 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | --- | --- |
 | Not sure what is wrong | `harness doctor --repo PATH` checks Ruby, git, the config, each model server and the repository in one pass, and says what to do for each problem. |
 | "the repository has uncommitted changes" | Commit or stash first. Runs always start from a clean `HEAD`. |
-| "node_modules is missing … the project's dependencies are not installed" | Run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. The harness never installs anything itself. |
+| "node_modules is missing … the project's dependencies are not installed" | In the app, choose **Fix** under the text box (it shows the install command first). On the command line, run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. A run never installs anything itself. |
+| "typecheck cannot run yet: the project needs … installed" | The check's own tool asked for packages (Astro's checker needs `@astrojs/check` and `typescript`). Choose **Fix** on the build card, then **Build again**. |
+| "Your project's own checks already fail before any change" | Careful mode stops on a red baseline. The card lists each failing check and its first problem: fix those in the project, or choose **Build anyway (Balanced)**, which judges tasks only on new problems. A project with no tests yet does not count as failing. |
 | A gate is **skipped**: "the tool has no configuration in this project" | The tool is installed but its config file is missing (for example ESLint 9+ without `eslint.config.js`). Add the config to your project, or remove the gate from `alwaysGates`. Intake finds this before planning, so tasks are not blocked by it. |
 | A gate is **skipped**: "tool not installed" | Install the project's dependencies in your repository (`npm install`), and keep `node_modules` in `dependencyDirs`. |
 | "model server unavailable" | Check the server is running and `baseUrl` ends in `/v1`. `curl <baseUrl>/models` should list a model. |

@@ -56,6 +56,66 @@ module Harness
       raise CommandNotFoundError, "cannot run #{argv.first.inspect}: #{e.message}"
     end
 
+    # A process left running (a project's dev server for Preview): its pid, whether it is alive, the end of its
+    # output, and stop, which ends its whole process tree.
+    class Background
+      KEEP = 16_384
+
+      attr_reader :argv, :pid
+
+      # @param argv [Array<String>]
+      # @param waiter [Thread]
+      # @param streams [Array<IO>] stdout and stderr
+      def initialize(argv, waiter, streams)
+        @argv = argv
+        @waiter = waiter
+        @pid = waiter.pid
+        @mutex = Mutex.new
+        @tail = +""
+        @readers = streams.map do |io|
+          Thread.new do
+            while (chunk = io.readpartial(4096))
+              @mutex.synchronize { @tail = (@tail + chunk.scrub)[-KEEP..] || (@tail + chunk.scrub) }
+            end
+          rescue IOError, SystemCallError
+            nil
+          end
+        end
+      end
+
+      # @return [Boolean]
+      def alive? = @waiter.alive?
+
+      # @return [String] the last few KB of stdout and stderr together
+      def output = @mutex.synchronize { @tail.dup }
+
+      # @return [void]
+      def stop
+        Exec.kill_tree(@pid) if alive?
+        @waiter.join(5)
+      end
+    end
+
+    # Start a command and leave it running (I3: an argv array, the same checks as run).
+    # @param argv [Array<String>]
+    # @param chdir [String]
+    # @param env [Hash{String=>String}] the child's complete environment
+    # @return [Background]
+    # @raise [ArgumentError, UnsafeArgumentError, CommandNotFoundError]
+    def self.start(argv, chdir:, env:)
+      check_argv!(argv)
+      check_env!(env)
+      shown = argv.dup.freeze
+      argv = prepare(argv, env) if windows?
+      opts = { chdir: chdir, unsetenv_others: true }
+      opts[:pgroup] = true unless windows?
+      stdin, stdout, stderr, waiter = Open3.popen3(env, [argv[0], argv[0]], *argv[1..], **opts)
+      stdin.close
+      Background.new(shown, waiter, [stdout, stderr])
+    rescue Errno::ENOENT, Errno::EACCES, Errno::ENOEXEC => e
+      raise CommandNotFoundError, "cannot run #{argv.first.inspect}: #{e.message}"
+    end
+
     # @return [Boolean] true on Windows
     def self.windows?
       RUBY_PLATFORM.match?(/mswin|mingw|cygwin/)
@@ -187,7 +247,6 @@ module Harness
     rescue Errno::ESRCH, Errno::ENOENT
       nil
     end
-    private_class_method :kill_tree
 
     # @return [Float] monotonic seconds
     def self.clock

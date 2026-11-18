@@ -70,13 +70,21 @@ module Harness
       store = State::RunStore.new(runs_dir: @runs_dir, run_id: run_id || State::RunStore.new_run_id)
       raise ConfigError, "run #{run_id} already exists" if run_id && store.exist?
       locked(store) do
-        setup = Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
+        setup = begin
+          Run.intake(config: @config, repo: repo, store: store, parent_env: @env, cache_dir: @cache_dir)
+        rescue GitError, ConfigError => e
+          # Keep the reason: without run.json the app and `harness status` had nothing to show for a run that never
+          # got past intake (a field run's three attempts left only "stage_started").
+          store.update_run({ "status" => "failed", "exitCode" => 2, "error" => e.message, "stage" => "intake",
+                             "repo" => File.expand_path(repo.to_s), "mode" => @config.mode })
+          raise
+        end
         store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
         request = with_design(store, request)
         next dry_run_result(store, setup, request, plan_hash) if dry_run
 
         red = Array(store.read_run["baselineFailing"])
-        next red_baseline_stop(store, red) if @config.require_green_baseline && !red.empty?
+        next red_baseline_stop(store, red, setup.baseline) if @config.require_green_baseline && !red.empty?
 
         client = Run.observe(@client_factory.call(store), setup.events)
         store.update_run({ "planOnly" => plan_only })
@@ -169,10 +177,18 @@ module Harness
       store.update_run({ "identity" => State::Identity.current(@config), "review" => @config.review, "mode" => @config.mode })
     end
 
-    # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red.
+    # requireGreenBaseline: the run stops after intake, before any model call, and says which gates were red and,
+    # for each, the first problem it reported, in words a newcomer can act on.
     # @return [Result]
-    def red_baseline_stop(store, red)
-      message = "the baseline already fails: #{red.join(', ')} (requireGreenBaseline); fix it, or run without the setting"
+    def red_baseline_stop(store, red, baseline = {})
+      lines = red.map do |g|
+        first = baseline[g]&.diagnostics&.first
+        where = first&.file ? "#{first.file}#{first.line ? ":#{first.line}" : ''}: " : ""
+        "- #{g}: #{where}#{first&.message.to_s.lines.map(&:strip).reject(&:empty?).first.to_s[0, 200]}"
+      end
+      message = "Your project's own checks already fail before any change, so this careful run stops here " \
+                "(requireGreenBaseline):\n#{lines.join("\n")}\nFix them in the project, or choose Balanced " \
+                "(Settings → How runs work): it builds anyway and judges each task only on new problems."
       store.update_run({ "status" => "failed", "exitCode" => 2, "error" => message })
       Result.new(run_id: store.run_id, status: "failed", exit_code: 2, outcome: nil, questions: [], issues: [],
                  plan_path: nil, error: message)

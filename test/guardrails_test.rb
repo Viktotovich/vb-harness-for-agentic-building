@@ -148,20 +148,34 @@ class GuardrailsTest < Minitest::Test
 
   # --- I4: no push, remote write, merge or gh call in any code path ---
 
-  # Processes start in five places only (docs/decisions.md, M8 and the project picker): the git wrapper, the gate
-  # runner, the fixed provider subcommands (DESIGN.md 11.2), the first-start browser opener (11.1) and the
-  # confirmed "new Astro project" command (11.3).
+  # Processes start in seven places only (docs/decisions.md, M8, the project picker, and "Getting a first build
+  # through", approved by the owner on 2026-11-18): the git wrapper, the gate runner, the fixed provider subcommands
+  # (DESIGN.md 11.2), the first-start browser opener (11.1), the confirmed "new Astro project" command (11.3), the
+  # confirmed one-click setup fixes (ProjectSetup: the harness's own install argv or the stack's "setup" config, with
+  # --ignore-scripts), and Preview (the stack's "preview" dev server on 127.0.0.1). Both Exec.run and Exec.start count.
   def test_i4_only_known_places_start_processes
     sites = Dir.glob("lib/**/*.rb", base: ROOT).flat_map do |rel|
-      read(rel).lines.each_with_index.select { |l, _| l.include?("Exec.run(") }.map { |_, i| "#{rel}:#{i + 1}" }
+      read(rel).lines.each_with_index.select { |l, _| l.match?(/Exec\.(?:run|start)\(/) }.map { |_, i| "#{rel}:#{i + 1}" }
     end
-    assert_equal %w[lib/harness/cli/ui_command.rb lib/harness/gates/runner.rb lib/harness/projects.rb lib/harness/providers/actions.rb
-                    lib/harness/repo/git.rb],
+    assert_equal %w[lib/harness/cli/ui_command.rb lib/harness/gates/runner.rb lib/harness/project_setup.rb lib/harness/projects.rb
+                    lib/harness/providers/actions.rb lib/harness/repo/git.rb lib/harness/ui/previews.rb],
                  sites.map { |s| s.split(":").first }.uniq.sort, "unexpected process call sites:\n#{sites.join("\n")}"
-    %w[lib/harness/providers/actions.rb lib/harness/cli/ui_command.rb lib/harness/projects.rb].each do |file|
+    %w[lib/harness/providers/actions.rb lib/harness/cli/ui_command.rb lib/harness/projects.rb lib/harness/project_setup.rb
+       lib/harness/ui/previews.rb].each do |file|
       assert_equal 1, sites.count { |s| s.start_with?("#{file}:") }, file
     end
     assert_includes read("lib/harness/projects.rb"), "Exec.run(CREATE_ASTRO.call(name)", "the only command there is the fixed create command"
+    assert_includes read("lib/harness/project_setup.rb"), "Exec.run(argv, chdir: top", "a fix runs its own steps, in the project"
+    assert_includes read("lib/harness/ui/previews.rb"), "Exec.start(argv, chdir: chdir", "Preview starts only the stack's argv"
+    refute_match(/Exec\.start\(/, read("lib/harness/gates/runner.rb"), "gates never leave a process running")
+  end
+
+  # A setup fix installs with --ignore-scripts, and never takes its command from a model, a request or run state.
+  def test_i10_setup_fixes_install_without_scripts
+    src = read("lib/harness/project_setup.rb")
+    install_lines = src.lines.grep(/%w\[(?:npm|pnpm|yarn|bun) (?:install|ci|add)/)
+    refute_empty install_lines
+    install_lines.each { |l| assert_includes l, "--ignore-scripts", l.strip }
   end
 
   # The project picker may download one way: a shallow https clone into projects/<name>, after confirmation.

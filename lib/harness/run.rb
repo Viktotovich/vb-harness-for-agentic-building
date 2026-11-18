@@ -9,6 +9,7 @@ require_relative "gates/baseline"
 require_relative "gates/env"
 require_relative "gates/runner"
 require_relative "plan/plan"
+require_relative "project_setup"
 require_relative "repo/atomic_file"
 require_relative "repo/git"
 require_relative "repo/map"
@@ -85,11 +86,27 @@ module Harness
 
         events.emit(stage: "intake", kind: "rejected", subject: r.gate, reason: "gate.skipped:#{r.gate}", detail: r.reason.to_s[0, 300])
       end
+      setup_needed!(baseline, store, worktree)
       red = red_baseline(stack, baseline, events)
       store.update_run({ "status" => "planning", "repo" => worktree.repo, "worktree" => worktree.root, "branch" => worktree.branch,
                         "baseSha" => worktree.base_sha, "stack" => stack.name, "baselineFailing" => red })
       events.emit(stage: "intake", kind: "stage_finished", detail: "stack #{stack.name}, base #{worktree.base_sha[0, 12]}")
       Setup.new(worktree: worktree, stack: stack, runner: runner, baseline: baseline, events: events, store: store, env: env)
+    end
+
+    # A check whose tool asked for packages (Gates::Runner, ProjectSetup::NEEDS) cannot prove anything, and a run on
+    # it would plan around a missing check. Stop at intake, record what is needed so the app can offer to install
+    # it, and say so in words.
+    # @return [void]
+    # @raise [ConfigError] when a check needs packages
+    def self.setup_needed!(baseline, store, worktree)
+      needs = ProjectSetup.packages_from(baseline.values.map(&:reason))
+      return if needs.empty?
+
+      gates = baseline.values.select { |r| r.reason.to_s.start_with?(ProjectSetup::NEEDS) }.map(&:gate)
+      store.update_run({ "repo" => worktree.repo, "setupNeeds" => { "packages" => needs } })
+      raise ConfigError, "#{gates.join(', ')} cannot run yet: the project needs #{needs.join(', ')} installed. " \
+                         "Install #{needs.size == 1 ? 'it' : 'them'} (Fix in the app), then build again."
     end
 
     # Lockfiles that name the package manager which installs node_modules, first match wins.

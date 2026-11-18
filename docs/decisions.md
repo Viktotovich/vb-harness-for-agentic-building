@@ -905,3 +905,32 @@ The app now departs from 11.4, on purpose:
 Fixed on the way: the top bar kept saying "building" after a run finished (the collapsed card returned before the
 status was reset), and a re-render of a running card cleared a half-typed note to the agent; inputs in a card are
 now the same elements across renders and keep their focus.
+
+## Getting a first build through: setup fixes, plain failures, Preview, LAN mode
+
+A field run on a fresh Astro project failed four times with nothing a newcomer could act on. Three attempts died at
+intake before `run.json` existed, so the app never kept the reason. The fourth said "the baseline already fails:
+typecheck, unit, e2e (requireGreenBaseline)". None of the three was broken code: Astro's checker needed
+`@astrojs/check` and `typescript`, and vitest and playwright exit 1 on a project with no tests yet.
+
+- **No tests yet is not a failure.** "No test files found" / "No tests found" make the gate skipped with that reason
+  (I6 still holds: skipped never counts as passed).
+- **A tool that asks for packages** ("requires the following dependency to be installed") makes the gate skipped with
+  the package names, and intake stops with a plain message instead of planning around a check that cannot run.
+- **One-click fixes** (`ProjectSetup`): missing `node_modules` gets the package manager's install, a missing folder
+  with a stack `setup` entry gets that command, and packages a check asked for get a dev-dependency install. The
+  app shows the exact command and runs it only after the user confirms, in the project folder, with the gates'
+  scrubbed environment and `--ignore-scripts` (I3, I10: the confirmation is the approval). Commands come from code
+  and config, never from a model or a request; package names are checked.
+- **Failures keep their reason.** `Pipeline#start` writes `run.json` for any intake failure, the card receives
+  `error`, and a red baseline is explained gate by gate with its first problem. A failed intake offers **Build
+  again**; a red baseline also offers **Build anyway (Balanced)**.
+- **Preview.** A stack may name its dev server (`preview`, with `{port}`). The app runs it through `Exec.start` (an
+  argv array, the same checks as `Exec.run`) on a free port on 127.0.0.1, for the project or a build's worktree, at
+  most three at once, all stopped with the app.
+- **LAN mode relaxes I15, with the owner's approval.** `harness ui --lan` adds a listener on a private IPv4 address
+  (never 0.0.0.0, a public or a loopback address), for that run only. A device must pair with a 6-digit code (one
+  device per code, 10 minutes, locked after five wrong tries) and then carries a session cookie and the token; it
+  may chat and run builds but not run provider commands, add projects, run fixes, start previews or change settings.
+  Traffic is plain HTTP, so the README says trusted networks only. The loopback listener and its checks are
+  unchanged, and the I15 tests stand; LAN tests were added.

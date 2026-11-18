@@ -125,7 +125,7 @@ class ProjectsTest < Minitest::Test
                  "only a JSON true confirms"
     assert_equal 400, C.post(port, "k" * 64, "/api/projects/clone", { "url" => "git@github.com:x/y.git", "confirm" => true }).status
     v = C.post(port, "k" * 64, "/api/projects/validate", { "path" => @tmp }).json
-    assert_equal %w[branch clean display error git name stack version], v.keys.sort, "validation describes one folder; it never lists one"
+    assert_equal %w[branch clean display error fixes git name preview stack version], v.keys.sort, "validation describes one folder; it never lists one"
   end
 
   # I2 and I11 for linked folders: the build happens in <home>/workspaces/<runId>; the linked checkout keeps its

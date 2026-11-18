@@ -84,6 +84,23 @@ class UIBuildsTest < Minitest::Test
     assert_equal "the harness stopped on an internal error", Harness::State::Reasons.text("harness.crashed")
   end
 
+  # A field run's app was closed mid-build: run.json still said "planning" and the sidebar said Building for ever.
+  def test_a_run_no_process_holds_any_more_shows_as_stopped
+    builds = Harness::UI::Builds.new(runs_dir: @runs, pipeline: -> { raise "not used" })
+    id = "r20260101-000000-abcd"
+    store = Harness::State::RunStore.new(runs_dir: @runs, run_id: id)
+    FileUtils.mkdir_p(store.dir)
+    store.update_run({ "status" => "planning" })
+    assert_equal "stopped", builds.status(id), "no lock: nobody runs it"
+    assert builds.run_info(id)["interrupted"]
+    File.write(store.lock_path, JSON.generate({ "pid" => Process.pid }))
+    assert_equal "planning", builds.status(id), "a live lock: another process (the command line) runs it"
+    File.write(store.lock_path, JSON.generate({ "pid" => 999_999_999 }))
+    assert_equal "stopped", builds.status(id), "the holder is gone"
+    store.update_run({ "status" => "done" })
+    assert_equal "done", builds.status(id)
+  end
+
   # Regression: on Windows, reading run.json while another thread renames a new copy over it raises EACCES on either
   # side. The stream then ended with no events at all, or the run crashed. Both sides now ride out the moment.
   def test_the_stream_survives_run_json_being_rewritten_while_it_reads

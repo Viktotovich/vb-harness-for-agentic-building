@@ -53,6 +53,11 @@ module Harness
         # npx --offline --no (the default gates): a package that is not installed fails here, with no network
         "npm error code ENOTCACHED", "cache mode is 'only-if-cached'"
       )
+      # A tool that names a package it needs before it can run (Astro's checker asks for @astrojs/check and
+      # typescript). The skip reason carries the names, so the app can offer to install them (ProjectSetup).
+      NEEDS_PACKAGE = /requires the following dependenc(?:y|ies) to be installed:\s*([@\w.\/-]+)/
+      # Terminal colour codes: tools colour the very words matched above.
+      ANSI = /\e\[[0-9;]*[A-Za-z]/
       # Output that means the gate could not run here, though its tool is installed: the operating system's
       # application-control policy blocked a binary (a field run's Astro compiler), or the tool cannot parse the
       # touched file type (prettier without its Astro plugin). Neither is a problem in the model's code.
@@ -64,7 +69,10 @@ module Harness
         # file stops with an error on any file. An eval run counted that as a lint failure on every task and sent
         # each one back to fix a problem no code change could fix.
         "the tool has no configuration in this project" => Regexp.union("couldn't find an eslint.config", "No ESLint configuration found",
-                                                                        "couldn't find a configuration file")
+                                                                        "couldn't find a configuration file"),
+        # A new project with no tests yet: vitest and playwright exit 1 on an empty suite. A field run counted that as a
+        # failing baseline and, with requireGreenBaseline, stopped every build of a fresh project. Nothing is broken.
+        "the project has no tests yet" => Regexp.union("No test files found", "Error: No tests found", /^No tests found/)
       }.freeze
 
       # Characters of output an agent sees after running a gate or command.
@@ -103,8 +111,12 @@ module Harness
         return [result(gate, "passed", r, [], nil), tail] if r.success?
         return [skipped(gate, "tool not installed: #{output[MISSING_TOOL]}", argv), tail] if output.match?(MISSING_TOOL)
 
+        plain = output.gsub(ANSI, "")
+        packages = plain.scan(NEEDS_PACKAGE).flatten.map { |p| p.strip.chomp(".") }.uniq
+        return [skipped(gate, "packages not installed: #{packages.join(', ')}", argv), tail] unless packages.empty?
+
         CANNOT_RUN.each do |why, pattern|
-          return [skipped(gate, "#{why}: #{output.lines.find { |l| l.match?(pattern) }.to_s.strip[0, 200]}", argv), tail] if output.match?(pattern)
+          return [skipped(gate, "#{why}: #{plain.lines.find { |l| l.match?(pattern) }.to_s.strip[0, 200]}", argv), tail] if plain.match?(pattern)
         end
 
         [result(gate, "failed", r, Parsers.parse(gate.parser, output, root: @root), nil), tail]
