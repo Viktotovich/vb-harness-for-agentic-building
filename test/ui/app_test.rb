@@ -82,6 +82,26 @@ class UIAppTest < Minitest::Test
     assert_equal 404, get("/api/chats/..%2Fconfig").status
   end
 
+  # Deleting a chat whose build is still going would leave the build with no card: refused until it stops.
+  def test_a_chat_with_a_build_still_going_is_not_deleted
+    @model = Fake.new(models: [{ "id" => "model-a" }])
+    start(config: RR.raw_config(@model.base_url))
+    id = post("/api/chats", { "model" => { "profile" => "default", "model" => "model-a" } }).json["id"]
+    run = "r20260101-000000-abcd"
+    Harness::UI::Chats.new(File.join(@home, "chats")).append(id, { "role" => "build", "runId" => run, "project" => "p" })
+    store = Harness::State::RunStore.new(runs_dir: File.join(@home, "runs"), run_id: run)
+    FileUtils.mkdir_p(store.dir)
+    store.update_run({ "status" => "running" })
+    File.write(store.lock_path, JSON.generate({ "pid" => Process.pid }))
+
+    refused = post("/api/chats/#{id}/delete")
+    assert_equal 409, refused.status
+    assert_match(/stop it first/, refused.json["error"])
+    store.update_run({ "status" => "failed" })
+    assert_equal 200, post("/api/chats/#{id}/delete").status
+    assert_empty get("/api/chats").json
+  end
+
   def test_a_chat_reply_streams_text_and_thinking_and_is_saved
     @model = Fake.new { |_body, _n| sse_reply({ "reasoning_content" => "Let me think." }, { "content" => "Hel" }, { "content" => "lo <thi" }, { "content" => "nk>inline</think>!" }) }
     start(config: RR.raw_config(@model.base_url))
