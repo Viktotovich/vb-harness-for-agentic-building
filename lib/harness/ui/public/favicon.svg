@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!-- Copyright 2026 V and Bruno LLC -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#221f31" stroke="#9a8cf2" stroke-opacity="0.55" stroke-width="3"/>
+  <text x="32" y="43" text-anchor="middle" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="28" font-weight="800"
+        letter-spacing="-1" fill="#b9aef8">VB</text>
+</svg>

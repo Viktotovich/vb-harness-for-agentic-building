@@ -31,7 +31,7 @@ module Harness
       # What a LAN device may not even read: model servers and their commands, settings, the setup check.
       LAN_GET_DENIED = %r{\A/api/(?:providers|settings|doctor|lan|previews)(?:/|\z)}
       # What an unpaired LAN device may load: the pairing page and what it needs.
-      PAIRING_FILES = %w[/pair.js /app.css /theme.css /fonts/InterVariable.woff2 /fonts/InterVariable-Italic.woff2].freeze
+      PAIRING_FILES = %w[/pair.js /app.css /theme.css /favicon.svg /fonts/InterVariable.woff2 /fonts/InterVariable-Italic.woff2].freeze
       PUBLIC = File.expand_path("public", __dir__)
 
       attr_reader :port, :token, :lan

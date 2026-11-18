@@ -237,9 +237,20 @@ svg.i.sm { width: 15px; height: 15px; }
 .codeblock pre { margin: 0; padding: 12px 14px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55; }
 .codeblock pre code { border: 0; padding: 0; background: none; }
 .link-text { color: var(--accent-strong); }
-details.thinking { margin-bottom: 10px; color: var(--faint); font-size: 13.5px; }
-details.thinking summary { cursor: pointer; display: inline-flex; gap: 6px; border: 1px solid var(--border); border-radius: 99px; padding: 1px 12px; }
-details.thinking div { white-space: pre-wrap; padding: 8px 0 0 14px; margin-top: 6px; border-left: 2px solid var(--border); }
+details.thinking { margin-bottom: 12px; color: var(--muted); font-size: 13.5px; max-width: 100%; }
+details.thinking summary { list-style: none; cursor: pointer; display: flex; flex-direction: column; gap: 2px; width: fit-content; max-width: 100%; }
+details.thinking summary::-webkit-details-marker { display: none; }
+details.thinking .th-head { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 99px; color: var(--faint); }
+details.thinking summary:hover .th-head { background: var(--hover); color: var(--text); }
+details.thinking .th-head svg { transition: transform 0.15s ease; }
+details.thinking[open] .th-head svg { transform: rotate(180deg); }
+details.thinking .th-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+details.thinking.live .th-dot { display: inline-block; animation: pulse 1.2s ease-in-out infinite; }
+details.thinking.live .th-label { color: var(--muted); }
+details.thinking .th-preview { padding-left: 23px; color: var(--faint); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(640px, 100%); }
+details.thinking .th-preview:empty, details.thinking[open] .th-preview { display: none; }
+details.thinking .th-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0 14px; padding: 2px 0 2px 14px; border-left: 2px solid var(--border);
+  color: var(--muted); line-height: 1.55; max-height: 320px; overflow-y: auto; }
 .cursor { display: inline-block; width: 8px; height: 1em; vertical-align: text-bottom; border-radius: 2px; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 .suggest { display: flex; align-items: center; gap: 12px; border: 1px dashed var(--border-strong); border-radius: 12px; padding: 8px 10px 8px 14px; margin-top: 10px; }
 .suggest .grow { font-size: 13.5px; color: var(--muted); }
@@ -471,7 +482,8 @@ kbd { font: inherit; font-size: 11.5px; border: 1px solid var(--border); border-
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) {
-  .dot.busy, .pulse, .cursor { animation: none; }
+  .dot.busy, .pulse, .cursor, details.thinking.live .th-dot { animation: none; }
+  details.thinking .th-head svg { transition: none; }
 }
 /* phones and narrow windows: the sidebar slides in from the left behind the menu button */
 .side-toggle, .side-scrim { display: none; }

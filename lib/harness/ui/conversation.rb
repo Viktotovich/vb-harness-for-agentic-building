@@ -26,13 +26,15 @@ module Harness
       # @param stream [Model::Stream]
       # @param http [Model::Http]
       # @param env [Hash{String=>String}]
-      def initialize(config:, chats:, probe:, stream:, http:, env:)
+      # @param clock [#call] monotonic seconds, for how long the model thought
+      def initialize(config:, chats:, probe:, stream:, http:, env:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @config = config
         @chats = chats
         @probe = probe
         @stream = stream
         @http = http
         @env = env
+        @clock = clock
         @jobs = {}
         @mutex = Mutex.new
       end
@@ -81,11 +83,13 @@ module Harness
         profile, model = choice(chat)
         text = +""
         thinking = +""
+        timer = ThinkingTimer.new(@clock)
         messages = fit(chat, profile)
         reply = lambda do |off|
           @stream.call(profile: profile, model: model, messages: messages, max_tokens: profile.max_output_tokens,
                        thinking_off: off, stop: -> { job[:stop] || sse.closed? }) do |piece|
             (piece.kind == "text" ? text : thinking) << piece.text
+            timer.piece(piece.kind)
             sse.event(piece.kind, { "text" => piece.text })
           end
         end
@@ -104,13 +108,45 @@ module Harness
                                                  "maxOutputTokens for this profile, or ask a narrower question." })
         end
 
+        thought = thinking.empty? ? nil : timer.ms
         @chats.append(chat["id"], { "role" => "assistant", "content" => text, "thinking" => thinking.empty? ? nil : thinking,
-                                    "model" => "#{profile.name} · #{model}", "finish" => finish, "retried" => retried || nil }.compact)
-        sse.event("done", { "finish" => finish })
+                                    "thinkingMs" => thought, "model" => "#{profile.name} · #{model}", "finish" => finish,
+                                    "retried" => retried || nil }.compact)
+        sse.event("done", { "finish" => finish, "thinkingMs" => thought }.compact)
       rescue ModelUnavailableError, ConfigError => e
         sse.event("error", { "error" => e.message })
       ensure
         @mutex.synchronize { @jobs.delete(id) }
+      end
+
+      # How long a reply thought: from its first thinking piece to its first answer piece (or its last thinking piece
+      # when no answer came). Shown as "Thought for 12s" above the reply.
+      class ThinkingTimer
+        # @param clock [#call] monotonic seconds
+        def initialize(clock)
+          @clock = clock
+          @from = nil
+          @to = nil
+          @answered = false
+        end
+
+        # @param kind [String] "thinking" or "text"
+        # @return [void]
+        def piece(kind)
+          return if @answered
+
+          now = @clock.call
+          if kind == "thinking"
+            @from ||= now
+            @to = now
+          elsif @from
+            @to = now
+            @answered = true
+          end
+        end
+
+        # @return [Integer, nil] milliseconds, nil when the reply did not think
+        def ms = @from && ((@to - @from) * 1000).round
       end
 
       private
