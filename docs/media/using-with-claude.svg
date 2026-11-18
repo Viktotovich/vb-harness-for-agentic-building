@@ -4,21 +4,21 @@
   <!-- SPDX-License-Identifier: Apache-2.0 -->
   <!-- Copyright 2026 V and Bruno LLC -->
   <style>
-    .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #fafafa; }
-    .m { fill: #a3a3ad; }
+    .t { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #e8e6f0; }
+    .m { fill: #a6a3b6; }
     .s { font-size: 13px; }
     .xs { font-size: 12px; }
     .h { font-size: 15px; font-weight: 600; }
     .n { font-size: 22px; font-weight: 700; }
-    .model { fill: #5809e0; }
-    .claude { fill: #16161a; stroke: #ddcbff; stroke-width: 1.5; }
-    .plain { fill: #16161a; stroke: #2b2b33; }
-    .arrow { stroke: #a3a3ad; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    .model { fill: #463d82; stroke: #9a8cf2; stroke-width: 1.5; }
+    .claude { fill: #1d1c25; stroke: #b9aef8; stroke-width: 1.5; }
+    .plain { fill: #1d1c25; stroke: #34323f; }
+    .arrow { stroke: #a6a3b6; stroke-width: 1.5; fill: none; marker-end: url(#a); }
   </style>
   <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#a3a3ad"/></marker>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#a6a3b6"/></marker>
   </defs>
-  <rect width="960" height="430" rx="6" fill="#0b0b0d"/>
+  <rect width="960" height="430" rx="6" fill="#16151c"/>
   <text class="t h" x="24" y="34">Using the harness from Claude</text>
   <text class="t s m" x="24" y="54">Claude decides and reviews; the token-heavy work in between runs on your machine.</text>
 
@@ -26,23 +26,23 @@
   <rect class="claude" x="24" y="80" width="190" height="118" rx="4"/>
   <text class="t s" x="119" y="106" text-anchor="middle" font-weight="600">Claude</text>
   <text class="t s m" x="119" y="126" text-anchor="middle">writes the request</text>
-  <text class="t n" x="119" y="164" text-anchor="middle" fill="#ddcbff">~740</text>
+  <text class="t n" x="119" y="164" text-anchor="middle" fill="#b9aef8">~740</text>
   <text class="t xs m" x="119" y="184" text-anchor="middle">tokens</text>
   <path class="arrow" d="M214 139 H252"/>
 
   <!-- the harness and the local model -->
   <rect class="model" x="254" y="80" width="452" height="118" rx="4"/>
-  <text class="t s" x="480" y="106" text-anchor="middle" font-weight="600">vb-harness + a local model</text>
-  <text class="t s" x="480" y="126" text-anchor="middle" fill="#ddcbff">plan · edit · your checks · fix · review, on your machine</text>
+  <text class="t s" x="480" y="106" text-anchor="middle" font-weight="600">VB Harness + a local model</text>
+  <text class="t s" x="480" y="126" text-anchor="middle" fill="#b9aef8">plan · edit · your checks · fix · review, on your machine</text>
   <text class="t n" x="480" y="164" text-anchor="middle">93,400</text>
-  <text class="t xs" x="480" y="184" text-anchor="middle" fill="#ddcbff">tokens: 77,000 in, 16,400 out</text>
+  <text class="t xs" x="480" y="184" text-anchor="middle" fill="#b9aef8">tokens: 77,000 in, 16,400 out</text>
   <path class="arrow" d="M706 139 H744"/>
 
   <!-- Claude reads back -->
   <rect class="claude" x="746" y="80" width="190" height="118" rx="4"/>
   <text class="t s" x="841" y="106" text-anchor="middle" font-weight="600">Claude</text>
   <text class="t s m" x="841" y="126" text-anchor="middle">reads status, report, diff</text>
-  <text class="t n" x="841" y="164" text-anchor="middle" fill="#ddcbff">~6,400</text>
+  <text class="t n" x="841" y="164" text-anchor="middle" fill="#b9aef8">~6,400</text>
   <text class="t xs m" x="841" y="184" text-anchor="middle">tokens</text>
 
   <!-- the split, to scale -->
@@ -50,7 +50,7 @@
   <text class="t s m" x="24" y="266">One landing page, eight tasks (the cookbook's third run), drawn to scale.</text>
 
   <text class="t s" x="24" y="303">Claude</text>
-  <rect x="150" y="288" width="61" height="22" rx="3" fill="#ddcbff"/>
+  <rect x="150" y="288" width="61" height="22" rx="3" fill="#b9aef8"/>
   <text class="t s" x="221" y="304">~7,200</text>
 
   <text class="t s" x="24" y="343">Local model</text>

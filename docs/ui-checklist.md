@@ -22,7 +22,9 @@ before a release, with a model server running, and note the browser and date.
 - [ ] Enter adds a newline; Ctrl+Enter (⌘+Enter on macOS) sends. The box shows 6 lines and grows to 40% of the
       window.
 - [ ] A draft survives switching chats and reloading the page.
-- [ ] Replies stream with a pulsing cursor; Stop ends them; thinking text sits in a collapsed "Thinking" block.
+- [ ] Replies stream with a pulsing cursor; Stop ends them. A thinking model shows "Thinking… Ns" with its latest line
+  of thought while it works, then folds to "Thought for Ns"; opening it shows the whole thought process, scrolling
+  inside its own panel. Reopening the chat still says how long it thought.
 - [ ] Markdown: headings, lists, emphasis and code blocks render; Copy copies a code block; links show as text.
 - [ ] A reply containing `<img src=x onerror=alert(1)>` or `<script>` shows the text literally and runs nothing.
 - [ ] A long chat keeps working past the model's context (older messages are summarised).
@@ -49,9 +51,12 @@ before a release, with a model server running, and note the browser and date.
 
 - [ ] Settings → Appearance: System follows the computer's setting; Dark and Light stick after a reload, with no flash
       of the other look on load.
-- [ ] A preset or a colour picker changes the page at once; "Discard changes" and leaving the tab undo an unsaved
-      change; "Save colours" keeps it after a reload. The dark look's colours never show in the light look.
+- [ ] A preset or a colour picker changes the page at once and is saved as you go: it is still there after leaving
+      Settings and after a reload. The dark look's colours never show in the light look.
 - [ ] Text that is hard to read (below 4.5:1) is flagged under the colour pickers.
+- [ ] The browser tab reads "VB Harness" with the VB icon, on the app and on the pairing page.
+- [ ] Each chat in the sidebar has a delete button (on hover, or always on a touch screen); a chat whose build is
+      still going is not deleted. The Settings tabs show no scrollbar.
 - [ ] The sidebar shows Building, Needs you, Failed, Stopped or ✓ for a chat's latest build, and the top bar stops
       saying "working" when a run ends.
 - [ ] At phone width (375px): the menu button opens the chat list over the page and choosing a chat closes it; no

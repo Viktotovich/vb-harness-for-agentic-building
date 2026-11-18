@@ -1,4 +1,26 @@
-# vb-harness-for-agentic-building
+# VB Harness
+
+**A small model on your own laptop builds real features, and nothing it writes counts until your project's own
+checks pass.**
+
+[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
+
+*A four-part blog feature, built by a local model on a 6 GB laptop GPU in one unattended run. An animated
+illustration of a real run (not a screen recording): the plan, code, numbers, review claims and pages come from a
+real agent-mode run of evaluation task 10, which took 3 hours 28 minutes. The steering note shows the feature and was
+not part of that run, and the pages are shown in a layout with cover art made for the video; the run's own files are
+unchanged. Click it for the 1080p, 60 fps video.*
+
+- **Your checks decide, not the model.** Every change runs your type check, lint, build and tests. A change that
+  breaks one goes back to the model with the exact errors, and only a green change is committed.
+- **Claims need proof.** The final review may only report a bug it can show with a failing test; unproven claims are
+  dropped, so the report holds no invented problems.
+- **Your checkout is never touched.** Work happens in its own worktree on a new branch: no pushes, no installs
+  without your OK, git hooks off. You review the branch like any pull request.
+- **Built for small models.** Small tasks, exact edits instead of whole files, JSON checked on every reply, and
+  context fitted to the model's window. Any OpenAI-compatible server works: LM Studio, Ollama, llama.cpp, vLLM.
+- **A calm app for all of it.** Plan in Chat and watch the model think, start a build, steer it with a note, preview
+  the result, even from your phone.
 
 Get real coding work out of the model on your own machine. The harness plans a feature as small tasks, has your
 local model implement them one at a time, proves every change with your project's own type check, lint, build and
@@ -45,13 +67,6 @@ On the command line instead, `ruby exe/harness init` asks a few questions (Enter
 Stuck? `ruby exe/harness doctor --repo ../my-site` (or **Settings → Check setup**) lists every reason a
 build would not start, each with what to do, without changing anything or asking a model to write.
 
-[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
-
-*An animated illustration of a run in the app (not a screen recording). The plan, code, numbers, review claims and
-pages come from a real agent-mode run of evaluation task 10 with a local model on a 6 GB laptop GPU, which took
-3 hours 28 minutes. The steering note shows the feature and was not part of that run, and the pages are shown in a
-layout with cover art made for the video; the run's own files are unchanged. Click it for the 1080p, 60 fps video.*
-
 ## Contents
 
 - [Fastest path](#fastest-path)
@@ -78,7 +93,7 @@ layout with cover art made for the video; the run's own files are unchanged. Cli
 
 ## How it works
 
-![How a run works: a request is planned into small tasks; each task is gathered, implemented as exact edits, applied, checked by your gates with fix rounds, reviewed and committed; then integration gates, a final review and a report. Model steps are purple, steps decided by code are outlined in green.](docs/media/how-it-works.svg)
+![How a run works: a request is planned into small tasks; each task is gathered, implemented as exact edits, applied, checked by your gates with fix rounds, reviewed and committed; then integration gates, a final review and a report. Model steps are filled in lavender, steps decided by code are outlined in green.](docs/media/how-it-works.svg)
 
 1. **Intake.** The harness checks your repository is clean, creates a git worktree on a new branch
    `harness/<runId>`, detects the stack, and runs your checks once to record a **baseline**. Anything already
@@ -155,8 +170,9 @@ working sit at the bottom of the sidebar, next to **Settings**.
 
    ![Settings → Models: the model in use with its probed abilities as labels, the planning-and-review picker, and LM Studio and Ollama as found on this machine](docs/media/app-connect-a-model.png)
 2. **Chat.** Chat mode is a planning conversation: work out what to build, compare approaches, sketch the steps.
-   Ctrl+Enter (⌘+Enter on macOS) sends; Enter adds a line. Replies stream, and thinking text sits in a collapsed
-   **Thinking** block. Chat changes no files. **Use as build request** under a reply copies it into the text box in
+   Ctrl+Enter (⌘+Enter on macOS) sends; Enter adds a line. Replies stream. When the model thinks first, you see
+   **Thinking… 4s** with its latest line of thought as it works; afterwards it folds into **Thought for 12s** above
+   the reply, and a click opens the whole thought process so you can judge how it got there. Chat changes no files. **Use as build request** under a reply copies it into the text box in
    Build mode, for you to edit and send: nothing starts until you do.
 
    ![A planning chat: asked about a Badge component for an Astro site, the local model replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
@@ -400,7 +416,7 @@ the work that is clear and self-contained, and keep Claude for the parts that ne
 project's `CLAUDE.md`:
 
 ```markdown
-## Delegating to vb-harness
+## Delegating to VB Harness
 
 For a self-contained feature (a component, a page, a small refactor), delegate to the local harness instead of
 writing the code yourself:

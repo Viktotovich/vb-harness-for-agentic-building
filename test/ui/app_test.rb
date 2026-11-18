@@ -110,14 +110,38 @@ class UIAppTest < Minitest::Test
     events = get("/api/streams/#{stream}").events
     assert_equal "Hello !", events.select { |e, _| e == "text" }.map { |_, d| d["text"] }.join
     assert_equal "Let me think.inline", events.select { |e, _| e == "thinking" }.map { |_, d| d["text"] }.join
-    assert_equal ["done", { "finish" => "stop" }], events.last
+    assert_equal ["done", "stop"], [events.last[0], events.last[1]["finish"]]
+    took = events.last[1]["thinkingMs"]
+    assert_kind_of Integer, took, "the page shows \"Thought for 12s\""
     chat = get("/api/chats/#{id}").json
     assert_equal "Say hello", chat["title"]
     assert_equal [%w[user Say\ hello], ["assistant", "Hello !"]], chat["messages"].map { |m| [m["role"], m["content"]] }
     assert_equal "Let me think.inline", chat["messages"].last["thinking"]
+    assert_equal took, chat["messages"].last["thinkingMs"], "kept, so an old reply still says how long it thought"
     body = @model.chat_bodies.last
     assert body["stream"]
     assert_equal %w[system user], body["messages"].map { |m| m["role"] }
+  end
+
+  def test_the_thinking_timer_runs_from_the_first_thought_to_the_first_answer
+    now = 10.0
+    timer = Harness::UI::Conversation::ThinkingTimer.new(-> { now })
+    timer.piece("text")
+    assert_nil timer.ms, "an answer before any thinking: the reply did not think"
+    timer.piece("thinking")
+    now = 14.2
+    timer.piece("thinking")
+    now = 15.0
+    timer.piece("text")
+    now = 30.0
+    timer.piece("thinking")
+    timer.piece("text")
+    assert_equal 5000, timer.ms, "inline <think> after the answer started does not stretch it"
+    only = Harness::UI::Conversation::ThinkingTimer.new(-> { now })
+    only.piece("thinking")
+    now = 33.5
+    only.piece("thinking")
+    assert_equal 3500, only.ms, "no answer came: up to the last thought"
   end
 
   def length_reply(*pieces)
@@ -148,7 +172,7 @@ data: [DONE]
     stream = post("/api/chats/#{id}/send", { "text" => "Plan it", "mode" => "chat" }).json["stream"]
     events = get("/api/streams/#{stream}").events
     assert_includes events.map(&:first), "notice"
-    assert_equal ["done", { "finish" => "stop" }], events.last
+    assert_equal ["done", "stop"], [events.last[0], events.last[1]["finish"]]
     first, second = @model.chat_bodies.select { |b| b["stream"] }.last(2)
     assert_nil first["chat_template_kwargs"]
     assert_equal({ "enable_thinking" => false }, second["chat_template_kwargs"])

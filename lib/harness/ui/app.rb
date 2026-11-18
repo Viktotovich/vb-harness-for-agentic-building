@@ -39,7 +39,8 @@ module Harness
       STATIC = { "/app.css" => ["app.css", "text/css; charset=utf-8"], "/app.js" => ["app.js", "text/javascript; charset=utf-8"],
                  "/fonts/InterVariable.woff2" => ["fonts/InterVariable.woff2", "font/woff2"],
                  "/fonts/InterVariable-Italic.woff2" => ["fonts/InterVariable-Italic.woff2", "font/woff2"],
-                 "/fonts/OFL.txt" => ["fonts/OFL.txt", "text/plain; charset=utf-8"] }.freeze
+                 "/fonts/OFL.txt" => ["fonts/OFL.txt", "text/plain; charset=utf-8"],
+                 "/favicon.svg" => ["favicon.svg", "image/svg+xml"] }.freeze
       MODES = %w[chat build].freeze
 
       # @param config_path [String] config.json; chats/, runs/ and .cache/ live next to it

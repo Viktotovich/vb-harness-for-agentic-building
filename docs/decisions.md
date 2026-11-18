@@ -934,3 +934,16 @@ typecheck, unit, e2e (requireGreenBaseline)". None of the three was broken code:
   may chat and run builds but not run provider commands, add projects, run fixes, start previews or change settings.
   Traffic is plain HTTP, so the README says trusted networks only. The loopback listener and its checks are
   unchanged, and the I15 tests stand; LAN tests were added.
+
+## Showing the model's thinking in Chat
+
+A thinking model's reasoning used to sit in a small collapsed "Thinking" pill, with no sign that it was working or for
+how long. Chat now shows it the way local chat apps do: while the model thinks, a "Thinking… 4s" header counts up
+with the latest line of thought under it, and the panel can be opened to watch it stream. Once the answer starts it
+folds into "Thought for 12s", and opening it shows the whole thought process, so a reader can judge how the model
+got there. The panel scrolls on its own and follows new text unless the reader has scrolled up in it.
+
+The time runs from the first thinking piece to the first answer piece, measured on the server, and is saved with the
+reply (`thinkingMs`), so an old reply still says how long it thought. Inline `<think>` text that arrives after the
+answer has started does not stretch it. Reasoning still comes from either `reasoning_content` or inline `<think>`
+tags (Model::Stream), so any model that thinks gets the same view.
