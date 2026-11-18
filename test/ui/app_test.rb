@@ -82,6 +82,28 @@ class UIAppTest < Minitest::Test
     assert_equal 404, get("/api/chats/..%2Fconfig").status
   end
 
+  # Settings → How runs work → Advanced configuration: the whole config.json, written only when it is valid.
+  def test_the_advanced_configuration_is_saved_only_when_valid
+    @model = Fake.new(models: [{ "id" => "model-a" }])
+    start(config: RR.raw_config(@model.base_url))
+    path = File.join(@home, "config.json")
+    before = File.read(path)
+    assert_equal before, get("/api/config").json["text"]
+
+    bad_json = post("/api/config", { "text" => "{ not json" })
+    assert_equal 400, bad_json.status
+    assert_match(/not valid JSON/, bad_json.json["error"])
+    unknown = post("/api/config", { "text" => JSON.generate(JSON.parse(before).merge("colour" => "blue")) })
+    assert_equal 400, unknown.status
+    assert_match(/colour/, unknown.json["error"])
+    assert_equal 400, post("/api/config", { "text" => "[1, 2]" }).status
+    assert_equal before, File.read(path), "nothing invalid was written"
+
+    edited = JSON.parse(before).merge("requireGreenBaseline" => true)
+    assert_equal 200, post("/api/config", { "text" => JSON.pretty_generate(edited) }).status
+    assert_equal true, JSON.parse(File.read(path))["requireGreenBaseline"]
+  end
+
   # Deleting a chat whose build is still going would leave the build with no card: refused until it stops.
   def test_a_chat_with_a_build_still_going_is_not_deleted
     @model = Fake.new(models: [{ "id" => "model-a" }])

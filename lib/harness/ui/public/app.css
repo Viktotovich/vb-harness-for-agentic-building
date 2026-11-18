@@ -159,16 +159,16 @@ svg.i.sm { width: 15px; height: 15px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 /* ------------------------------------------------------------------ layout */
-.app { display: grid; grid-template-columns: 264px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+.app { display: grid; grid-template-columns: 370px minmax(0, 1fr); height: 100vh; overflow: hidden; }
 
 /* sidebar */
-.side { background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; padding: 18px 12px 12px; min-height: 0; }
+.side { background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; padding: 24px 20px 16px; min-height: 0; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; font-weight: 600; letter-spacing: -0.01em; }
 .logo { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 700;
   background: var(--accent-bg); color: var(--accent-strong); border: 1px solid var(--border-strong); }
-.chats { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; min-height: 0; }
+.chats { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; min-height: 0; }
 .side-label { font-size: 12px; color: var(--faint); padding: 14px 10px 4px; font-weight: 500; }
-.chat-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 9px; border: 0; background: none;
+.chat-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 9px; border: 0; background: none;
   color: var(--muted); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .chat-row { display: flex; align-items: center; border-radius: 9px; }
 .chat-row:hover { background: var(--hover); }
@@ -562,3 +562,44 @@ a.btn { text-decoration: none; }
 .next .fail-actions { flex-basis: 100%; padding-left: 27px; }
 .composer-note .btn { margin-left: 4px; }
 .disclaimer { text-align: center; font-size: 11.5px; color: var(--faint); padding: 2px 0 4px; }
+/* Settings → Help and How runs work → Advanced configuration */
+a.help-link { display: block; text-decoration: none; color: var(--text); }
+a.help-link:hover { border-color: var(--accent); }
+a.help-link .name { font-weight: 600; margin-bottom: 2px; }
+details.adv { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+details.adv summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+details.adv[open] summary { color: var(--text); margin-bottom: 8px; }
+.config-text { width: 100%; box-sizing: border-box; font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; line-height: 1.5;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 12px; resize: vertical; tab-size: 2; }
+details.adv .row { display: flex; gap: 8px; margin: 8px 0; }
+.composer-note:not(:empty) + .disclaimer { display: none; }
+.disclaimer { cursor: help; opacity: 0.8; }
+.seg button:disabled, #project-add:disabled { opacity: 0.45; cursor: not-allowed; }
+.col > .disclaimer { margin: 18px 0 4px; }
+/* Ctrl+Shift+Space chat switcher, and the shortcut list in Settings → Help */
+.switcher { display: flex; flex-direction: column; gap: 10px; }
+.switch-filter { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
+.switch-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow-y: auto; }
+.switch-list .chat-item.first, .switch-list .chat-item:focus { background: var(--tint); color: var(--text); }
+.keys { display: flex; flex-direction: column; gap: 8px; }
+.keys .name { font-weight: 600; }
+.key-row { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--muted); }
+.key-row kbd { min-width: 132px; }
+/* Chat list icons: a playful spin while a build runs (fast, ease, pause), a soft glow when there is news to see */
+.chat-item .ic.spin svg { animation: ic-spin 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite; color: var(--accent); }
+@keyframes ic-spin { 0% { transform: rotate(0deg); } 70% { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
+.chat-item .ic.glow { color: var(--accent-strong); border-radius: 50%; animation: ic-glow 2.4s ease-in-out infinite; }
+@keyframes ic-glow { 0%, 100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 80%, transparent)); } }
+@media (prefers-reduced-motion: reduce) { .chat-item .ic.spin svg, .chat-item .ic.glow { animation: none; } }
+/* Finished build card: outcome headline, the request as one quiet line, a small branch line */
+.b-head.outcome h3 { font-size: 17px; }
+.b-req { color: var(--muted); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0 4px; }
+.branch-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); margin: 6px 20px 0 68px; }
+.branch-line code { font-size: 12px; }
+.branch-line .btn { margin-left: 2px; }
+/* Finished card hierarchy: 1 outcome, 2 request, 3 quiet facts (project, time, branch), then actions */
+.b-head.outcome h3 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 2px; }
+.b-head.outcome .b-req { font-size: 14px; color: var(--muted); margin: 0 0 8px; }
+.b-head.outcome .sub, .branch-line { font-size: 12.5px; color: var(--faint); }
+.branch-line code { color: var(--faint); background: none; border: 0; padding: 0; }
+.b-head.outcome + .done-sum + .branch-line ~ .b-actions, .branch-line + .b-actions { padding-top: 18px; }

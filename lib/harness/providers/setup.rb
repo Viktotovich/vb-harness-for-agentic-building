@@ -66,6 +66,27 @@ module Harness
         write(path, cfg)
       end
 
+      # Replace the whole config with text from Settings → Advanced configuration. Nothing is written unless the text
+      # is a JSON object that parses as a valid config, so a typo never leaves the harness unable to start.
+      # @param path [String] config.json
+      # @param text [String] the new config as JSON
+      # @return [Hash] the written config
+      # @raise [ParseError] when the text is not a JSON object or not a valid config (the message says where)
+      def self.replace(path:, text:)
+        raise ParseError, "the config is too large" if text.bytesize > MAX_CONFIG_BYTES
+
+        cfg = begin
+          JSON.parse(text)
+        rescue JSON::ParserError => e
+          raise ParseError, "not valid JSON: #{e.message.lines.first.to_s.strip[0, 200]}"
+        end
+        raise ParseError, "the config must be a JSON object ({ ... })" unless cfg.is_a?(Hash)
+
+        write(path, cfg)
+      end
+
+      MAX_CONFIG_BYTES = 512 * 1024
+
       # @return [Hash] cfg, after it parsed as a valid config
       def self.write(path, cfg)
         Config.parse(cfg)
