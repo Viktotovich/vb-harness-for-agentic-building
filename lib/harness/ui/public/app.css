@@ -603,3 +603,4 @@ details.adv .row { display: flex; gap: 8px; margin: 8px 0; }
 .b-head.outcome .sub, .branch-line { font-size: 12.5px; color: var(--faint); }
 .branch-line code { color: var(--faint); background: none; border: 0; padding: 0; }
 .b-head.outcome + .done-sum + .branch-line ~ .b-actions, .branch-line + .b-actions { padding-top: 18px; }
+.modal .mf:empty { display: none; }
