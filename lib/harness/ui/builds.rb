@@ -72,7 +72,10 @@ module Harness
       # @return [String] the run id
       # @raise [ConfigError] when there is no such run, it is still going, or it cannot be resumed
       def resume(id)
-        status = run_info(id)["status"]
+        info = run_info(id)
+        raise ConfigError, LOST if info["error"] == LOST
+
+        status = info["status"]
         unless %w[stopped failed].include?(status)
           raise ConfigError, "run #{id} cannot be resumed (status: #{status}); only a stopped or failed run can"
         end
@@ -85,16 +88,32 @@ module Harness
       # @return [Hash] run.json, with "status" "stopped" for a run whose process ended without saying so
       # @raise [ConfigError] when there is no such run
       def run_info(id)
-        s = store(id)
-        run = s.read_run
-        interrupted?(id, s, run) ? run.merge("status" => "stopped", "interrupted" => true) : run
+        s = store(id, events_only: true)
+        shown(id, s, s.read_run)
       end
 
-      # A run that says it is going, but no process holds it: neither a thread here nor a live harness.lock (the app
-      # or the command line that ran it was closed or crashed). It is shown as stopped, and Resume continues it.
+      # What a run with no run.json says: before 0.1.49 a build that failed at intake ended before saving one, so
+      # its card waited for ever. Nothing can resume it; it can only be started again.
+      LOST = "this build ended before it saved its status, so its reason was not kept; start it again"
+
+      # run.json as the app shows it: a run nobody holds any more is "stopped" (Resume continues it), or "failed"
+      # with LOST when it never saved a status at all.
+      # @param id [String]
+      # @param store [State::RunStore]
+      # @param run [Hash] run.json, {} when there is none
+      # @return [Hash]
+      def shown(id, store, run)
+        return run unless interrupted?(id, store, run)
+        return run.merge("status" => "failed", "exitCode" => 2, "error" => LOST) if run["status"].nil?
+
+        run.merge("status" => "stopped", "interrupted" => true)
+      end
+
+      # A run that says it is going, or says nothing at all, but no process holds it: neither a thread here nor a
+      # live harness.lock (the app or the command line that ran it was closed or crashed).
       # @return [Boolean]
       def interrupted?(id, store, run)
-        return false unless %w[running planning starting].include?(run["status"]) && !running?(id)
+        return false unless [nil, "running", "planning", "starting"].include?(run["status"]) && !running?(id)
 
         holder = State.read_json(store.lock_path)
         !(holder.is_a?(Hash) && holder["pid"].is_a?(Integer) && State::Lock.alive?(holder["pid"]))
@@ -108,10 +127,9 @@ module Harness
         return nil unless id.is_a?(String) && id.match?(RUN_ID)
 
         s = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
-        return nil unless s.exist?
+        return nil unless s.exist? || File.file?(s.events_path)
 
-        run = s.read_run
-        interrupted?(id, s, run) ? "stopped" : run["status"]
+        shown(id, s, s.read_run)["status"]
       rescue JSON::ParserError, SystemCallError
         nil
       end
@@ -167,8 +185,7 @@ module Harness
             sse.event("event", e.merge("reasonText" => e["reason"] ? State::Reasons.text(e["reason"]) : nil), id: e["seq"])
             seq = e["seq"]
           end
-          run = store.read_run
-          run = run.merge("status" => "stopped", "interrupted" => true) if interrupted?(id, store, run)
+          run = shown(id, store, store.read_run)
           plan = tasks(store)
           job = @mutex.synchronize { @jobs[id] }
           asked = job ? @mutex.synchronize { job[:stop] } : false
@@ -208,13 +225,15 @@ module Harness
         []
       end
 
+      # @param id [String]
+      # @param events_only [Boolean] also accept a run that has an event log but never wrote run.json (see LOST)
       # @return [State::RunStore]
       # @raise [ConfigError]
-      def store(id)
+      def store(id, events_only: false)
         raise ConfigError, "no run #{id.to_s[0, 40]}" unless id.is_a?(String) && id.match?(RUN_ID)
 
         s = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
-        raise ConfigError, "no run #{id}" unless s.exist?
+        raise ConfigError, "no run #{id}" unless s.exist? || (events_only && File.file?(s.events_path))
 
         s
       end

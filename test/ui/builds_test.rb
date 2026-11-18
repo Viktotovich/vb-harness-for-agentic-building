@@ -101,6 +101,26 @@ class UIBuildsTest < Minitest::Test
     assert_equal "done", builds.status(id)
   end
 
+  # A field run from before 0.1.49 failed at intake before it wrote run.json: its card said "running" for ever.
+  def test_a_run_that_never_saved_a_status_shows_as_failed_and_its_stream_ends
+    builds = Harness::UI::Builds.new(runs_dir: @runs, pipeline: -> { raise "not used" }, sleeper: ->(_) {})
+    id = "r20260101-000000-abce"
+    store = Harness::State::RunStore.new(runs_dir: @runs, run_id: id)
+    FileUtils.mkdir_p(store.dir)
+    File.write(store.events_path, JSON.generate({ "seq" => 1, "stage" => "intake", "kind" => "stage_started" }) + "\n")
+    assert_equal({}, store.read_run)
+
+    assert_equal "failed", builds.status(id)
+    assert_equal Harness::UI::Builds::LOST, builds.run_info(id)["error"]
+    sse = Recorder.new
+    builds.events(id, 0, sse)
+    assert_equal ["end", { "status" => "failed" }], sse.sent.last.first(2)
+    err = assert_raises(Harness::ConfigError) { builds.resume(id) }
+    assert_equal Harness::UI::Builds::LOST, err.message
+    File.write(store.lock_path, JSON.generate({ "pid" => Process.pid }))
+    assert_nil builds.status(id), "a live lock: the command line is still at intake"
+  end
+
   # Regression: on Windows, reading run.json while another thread renames a new copy over it raises EACCES on either
   # side. The stream then ended with no events at all, or the run crashed. Both sides now ride out the moment.
   def test_the_stream_survives_run_json_being_rewritten_while_it_reads
