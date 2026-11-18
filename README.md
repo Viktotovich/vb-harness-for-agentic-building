@@ -1,6 +1,6 @@
 # VB Harness
 
-**Verified agentic development for local models.** Models write code; your project's own checks decide whether it
+**Proof-first coding with local models.** Models write code; your project's own checks decide whether it
 survives.
 
 VB Harness is an engineering harness that makes local coding agents accountable for their changes. It doesn't try to
@@ -51,7 +51,8 @@ You don't need to write code: you describe the website in plain words, a model o
 one click shows it in your browser. Setup takes about 30 minutes, once.
 
 1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/). It runs AI models on your computer.
-   [This video](https://www.youtube.com/watch?v=396Xg5ZSL80) shows the next two steps.
+   Pick a video for the next two steps: a [quick LM Studio setup](https://www.youtube.com/watch?v=396Xg5ZSL80), or
+   [Web Dev Simplified's friendly intro to running AI locally](https://www.youtube.com/watch?v=UngVdAsQEiU).
 2. **Download a coding model** in LM Studio's **Discover** tab (the models come from
    [Hugging Face](https://huggingface.co/models?library=gguf&sort=trending)). Pick one that fits your computer's
    memory; LM Studio marks the ones that fit.
