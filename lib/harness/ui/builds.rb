@@ -6,6 +6,7 @@ require "json"
 require_relative "../errors"
 require_relative "../report/render"
 require_relative "../state/events"
+require_relative "../state/lock"
 require_relative "../state/reasons"
 require_relative "../state/notes"
 require_relative "../state/run_store"
@@ -26,7 +27,10 @@ module Harness
       # @param pipeline [#call] -> Pipeline (built when a run starts, so config changes apply)
       # @param sleeper [#call]
       # @param finished [#call, nil] (run id) -> void, called in the build's thread once its pipeline step returns
-      def initialize(runs_dir:, pipeline:, sleeper: ->(s) { sleep(s) }, finished: nil)
+      # @param fixes [#call, nil] (run.json hash) -> Hash merged into the card's view: "setupFixes" (one-click setup
+      #   for a failed run) and "canPreview" (a finished build's copy can be served)
+      def initialize(runs_dir:, pipeline:, sleeper: ->(s) { sleep(s) }, finished: nil, fixes: nil)
+        @fixes = fixes
         @runs_dir = runs_dir
         @pipeline = pipeline
         @sleeper = sleeper
@@ -68,7 +72,7 @@ module Harness
       # @return [String] the run id
       # @raise [ConfigError] when there is no such run, it is still going, or it cannot be resumed
       def resume(id)
-        status = store(id).read_run["status"]
+        status = run_info(id)["status"]
         unless %w[stopped failed].include?(status)
           raise ConfigError, "run #{id} cannot be resumed (status: #{status}); only a stopped or failed run can"
         end
@@ -78,12 +82,36 @@ module Harness
       end
 
       # @param id [String]
+      # @return [Hash] run.json, with "status" "stopped" for a run whose process ended without saying so
+      # @raise [ConfigError] when there is no such run
+      def run_info(id)
+        s = store(id)
+        run = s.read_run
+        interrupted?(id, s, run) ? run.merge("status" => "stopped", "interrupted" => true) : run
+      end
+
+      # A run that says it is going, but no process holds it: neither a thread here nor a live harness.lock (the app
+      # or the command line that ran it was closed or crashed). It is shown as stopped, and Resume continues it.
+      # @return [Boolean]
+      def interrupted?(id, store, run)
+        return false unless %w[running planning starting].include?(run["status"]) && !running?(id)
+
+        holder = State.read_json(store.lock_path)
+        !(holder.is_a?(Hash) && holder["pid"].is_a?(Integer) && State::Lock.alive?(holder["pid"]))
+      rescue Errno::ENOENT, JSON::ParserError
+        true
+      end
+
+      # @param id [String]
       # @return [String, nil] the run's status ("running", "waiting", "done", ...), or nil when there is no such run
       def status(id)
         return nil unless id.is_a?(String) && id.match?(RUN_ID)
 
         s = State::RunStore.new(runs_dir: @runs_dir, run_id: id)
-        s.exist? ? s.read_run["status"] : nil
+        return nil unless s.exist?
+
+        run = s.read_run
+        interrupted?(id, s, run) ? "stopped" : run["status"]
       rescue JSON::ParserError, SystemCallError
         nil
       end
@@ -140,11 +168,13 @@ module Harness
             seq = e["seq"]
           end
           run = store.read_run
+          run = run.merge("status" => "stopped", "interrupted" => true) if interrupted?(id, store, run)
           plan = tasks(store)
           job = @mutex.synchronize { @jobs[id] }
           asked = job ? @mutex.synchronize { job[:stop] } : false
           # agentQuestion and mode: an agent-mode run's pending question, and whether notes can steer it.
-          view = run.slice("status", "questions", "exitCode", "branch", "agentQuestion", "mode").merge("tasks" => plan, "stopping" => asked)
+          view = run.slice("status", "questions", "exitCode", "branch", "agentQuestion", "mode", "error").merge("tasks" => plan, "stopping" => asked)
+          view.merge!(@fixes.call(run)) if @fixes
           if view != sent
             status = run["status"]
             sent = view

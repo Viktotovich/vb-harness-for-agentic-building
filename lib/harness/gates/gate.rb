@@ -76,12 +76,15 @@ module Harness
     # git-ignored folders (node_modules) mirrored from the repository into each worktree, so gates can run there.
     # fix_hints: [{"match" => text in a diagnostic, "hint" => what the fixer is told}]; review_notes: facts and
     # pitfalls of the stack for the reviewer and verifier. Both are config data, so lib/ stays stack-neutral.
+    # setup: {dependency dir => argv} that creates the folder when it is missing (e.g. a generated client), offered as
+    # a one-click fix in the app after the user sees the exact command; node_modules needs no entry (an install).
+    # preview: argv of the project's dev server with a {port} placeholder (the app's Preview), or nil.
     Stack = Data.define(:name, :detect, :framework, :docs, :package_manager, :gates, :always_gates, :protected_paths,
-                        :dependency_dirs, :fix_hints, :review_notes)
+                        :dependency_dirs, :fix_hints, :review_notes, :setup, :preview)
 
     # Parsing for Stack.
     class Stack
-      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths dependencyDirs fixHints reviewNotes].freeze
+      KEYS = %w[detect framework docs packageManager gates alwaysGates protectedPaths dependencyDirs fixHints reviewNotes setup preview].freeze
 
       # @param name [String]
       # @param raw [Hash]
@@ -107,7 +110,33 @@ module Harness
             package_manager: Parse.enum!(h.fetch("packageManager", "auto"), "#{path}.packageManager", %w[auto npm pnpm yarn]),
             gates: gates.freeze, always_gates: always.dup.freeze,
             protected_paths: protected_paths(h, path), dependency_dirs: dependency_dirs(h, path),
-            fix_hints: fix_hints(h, path), review_notes: Parse.strings!(h.fetch("reviewNotes", []), "#{path}.reviewNotes").dup.freeze)
+            fix_hints: fix_hints(h, path), review_notes: Parse.strings!(h.fetch("reviewNotes", []), "#{path}.reviewNotes").dup.freeze,
+            setup: setup(h, path), preview: preview(h, path))
+      end
+
+      # @return [Array<String>, nil] the dev server's argv, with {port} where the port goes
+      # @raise [ParseError] when it is not a list of strings with {port}
+      def self.preview(h, path)
+        return nil unless h.key?("preview") && !h["preview"].nil?
+
+        argv = Parse.strings!(h["preview"], "#{path}.preview")
+        raise ParseError, "#{path}.preview: expected the dev server's command with {port} where the port goes" unless argv.include?("{port}")
+
+        argv.dup.freeze
+      end
+
+      # @return [Hash{String=>Array<String>}] for each dependency folder, the argv that creates it
+      # @raise [ParseError] for a folder not in dependencyDirs, or an argv that is not a non-empty list of strings
+      def self.setup(h, path)
+        dirs = dependency_dirs(h, path)
+        Parse.hash!(h.fetch("setup", {}), "#{path}.setup").to_h do |dir, argv|
+          raise ParseError, "#{path}.setup.#{dir}: not one of dependencyDirs (#{dirs.join(", ")})" unless dirs.include?(dir)
+
+          list = Parse.strings!(argv, "#{path}.setup.#{dir}")
+          raise ParseError, "#{path}.setup.#{dir}: expected the command as a non-empty list of strings" if list.empty?
+
+          [dir, list.dup.freeze]
+        end.freeze
       end
 
       # @return [Array<Hash{String=>String}>]

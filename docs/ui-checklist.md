@@ -56,3 +56,14 @@ before a release, with a model server running, and note the browser and date.
       saying "working" when a run ends.
 - [ ] At phone width (375px): the menu button opens the chat list over the page and choosing a chat closes it; no
       sideways scrolling anywhere; the build card, Settings and the dialogs fit; typing does not zoom the page.
+
+## Setup fixes, Preview and LAN mode
+
+- [ ] A project without `node_modules` says so under the text box with a Fix button; Fix shows the exact command,
+      runs it only after "Run it", shows its output, and the project becomes ready (a fresh project stays clean).
+- [ ] A build that stops at intake keeps its reason after a reload, with the fixes it can offer and Build again.
+- [ ] Closing the app mid-build, then opening it again, shows that build as Stopped with Resume, not Building.
+- [ ] Preview starts the project's dev server, shows Open preview when it answers, and Stop preview ends it; the
+      project's checkout has no new files afterwards.
+- [ ] `harness ui --lan`: the banner shows the address and code; a phone pairs with the code and can chat and
+      build; Settings, Add project, Fix and Preview are not offered there; Stop sharing signs the phone out.

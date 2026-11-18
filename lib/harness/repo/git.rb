@@ -15,7 +15,10 @@ module Harness
     class Git
       # Each rule: first words of the argv, and a check on the rest.
       ALLOWED = [
-        [%w[worktree add], ->(rest) { rest.size == 4 && rest[0] == "-b" && rest[3] == "HEAD" }],
+        # a run's worktree on its own branch, or a detached copy of HEAD (the app's Preview of a project)
+        [%w[worktree add], lambda { |rest|
+          (rest.size == 4 && rest[0] == "-b" && rest[3] == "HEAD") || (rest.size == 3 && rest[0] == "--detach" && rest[2] == "HEAD")
+        }],
         [%w[worktree remove], ->(rest) { [1, 2].include?(rest.size) && (rest.size == 1 || rest[0] == "--force") }],
         [%w[status], ->(rest) { rest.all? { |a| a.start_with?("-") } }],
         [%w[diff], ->(_rest) { true }],

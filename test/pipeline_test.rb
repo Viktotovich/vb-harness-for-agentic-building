@@ -132,7 +132,8 @@ class PipelineTest < Minitest::Test
     @fx = F.pipeline(@tmp, { "plan" => F.plan_reply([t1]) }, files: red, top: { "requireGreenBaseline" => true })
     r = @fx.pipeline.start(repo: @fx.repo, request: "Make the price double.")
     assert_equal ["failed", 2], [r.status, r.exit_code]
-    assert_match(/the baseline already fails: typecheck \(requireGreenBaseline\)/, r.error)
+    assert_match(/already fail before any change.*\(requireGreenBaseline\):\n- typecheck: src\/lib\/tax\.ts:1: Type/m, r.error)
+    assert_match(/choose Balanced/, r.error, "the message says how to build anyway")
     assert_empty @fx.server.chat_bodies, "no model call was made"
   end
 
