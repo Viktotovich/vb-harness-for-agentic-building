@@ -562,10 +562,6 @@ a.btn { text-decoration: none; }
 .next .fail-actions { flex-basis: 100%; padding-left: 27px; }
 .composer-note .btn { margin-left: 4px; }
 .disclaimer { text-align: center; font-size: 11.5px; color: var(--faint); padding: 2px 0 4px; }
-/* Settings → Help and How runs work → Advanced configuration */
-a.help-link { display: block; text-decoration: none; color: var(--text); }
-a.help-link:hover { border-color: var(--accent); }
-a.help-link .name { font-weight: 600; margin-bottom: 2px; }
 details.adv { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 details.adv summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 details.adv[open] summary { color: var(--text); margin-bottom: 8px; }
@@ -581,10 +577,6 @@ details.adv .row { display: flex; gap: 8px; margin: 8px 0; }
 .switch-filter { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
 .switch-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow-y: auto; }
 .switch-list .chat-item.first, .switch-list .chat-item:focus { background: var(--tint); color: var(--text); }
-.keys { display: flex; flex-direction: column; gap: 8px; }
-.keys .name { font-weight: 600; }
-.key-row { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--muted); }
-.key-row kbd { min-width: 132px; }
 /* Chat list icons: a playful spin while a build runs (fast, ease, pause), a soft glow when there is news to see */
 .chat-item .ic.spin svg { animation: ic-spin 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite; color: var(--accent); }
 @keyframes ic-spin { 0% { transform: rotate(0deg); } 70% { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
@@ -604,3 +596,17 @@ details.adv .row { display: flex; gap: 8px; margin: 8px 0; }
 .branch-line code { color: var(--faint); background: none; border: 0; padding: 0; }
 .b-head.outcome + .done-sum + .branch-line ~ .b-actions, .branch-line + .b-actions { padding-top: 18px; }
 .modal .mf:empty { display: none; }
+/* Settings → Help: shortcuts in two columns, docs as a grid of padded link cards */
+.keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 28px; padding: 16px 20px; }
+.key-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 14px;
+  color: var(--muted); border-bottom: 1px solid var(--border); }
+.key-row:nth-last-child(-n+2) { border-bottom: 0; }
+.key-row kbd { font-size: 12px; padding: 2px 8px; white-space: nowrap; }
+.help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+a.help-link { display: flex; align-items: center; gap: 14px; padding: 16px 18px; text-decoration: none; color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease; }
+a.help-link:hover { border-color: var(--accent); background: var(--hover); }
+a.help-link .name { font-weight: 600; margin-bottom: 4px; }
+a.help-link .help { margin: 0; }
+a.help-link svg { color: var(--faint); flex: none; }
+@media (max-width: 760px) { .keys, .help-grid { grid-template-columns: 1fr; } .key-row:nth-last-child(2) { border-bottom: 1px solid var(--border); } }
