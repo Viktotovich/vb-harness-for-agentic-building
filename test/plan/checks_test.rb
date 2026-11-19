@@ -45,7 +45,7 @@ class ChecksTest < Minitest::Test
   def test_a_task_that_changes_no_files_is_rejected
     i = only(issues(task("T1", files: { "read" => ["src/a.ts"] })))
     assert_equal "plan.no_changes", i.reason
-    assert_match(/T1 creates and modifies no files\. Every task must change something: fold the inspection into the task that writes/, i.message)
+    assert_match(/T1 creates, modifies and deletes no files. Every task must change something: fold the inspection into the task that writes/, i.message)
     assert_equal "task changes no files", Harness::State::Reasons.text("plan.no_changes")
     assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150), "Do not plan tasks that only inspect"
   end
@@ -58,7 +58,7 @@ class ChecksTest < Minitest::Test
     assert_equal ["tests/a.test.ts"], t.files.create
     assert_includes t.writable, "tests/a.test.ts"
     assert_empty issues(task("T1", acceptance: [written]))
-    rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: t.test_paths, rewrite_bytes: 4096)
+    rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: t.test_paths, deletes: t.files.delete, rewrite_bytes: 4096)
     assert_includes rules, "Edit only these files: src/a.ts, tests/a.test.ts."
     assert_includes rules, "Write the test for this task exactly at tests/a.test.ts"
     i = only(issues(task("T2", acceptance: [written.merge("path" => "src/b.test.ts")])))
@@ -71,7 +71,31 @@ class ChecksTest < Minitest::Test
   def test_too_many_files
     i = only(issues(task("T3", files: { "modify" => %w[src/a.ts src/b.ts], "create" => %w[src/c.ts src/d.ts] })))
     assert_equal "plan.too_many_files", i.reason
-    assert_equal "T3 creates or modifies 4 files; the limit is 3 per task. Split it into smaller tasks", i.message
+    assert_equal "T3 creates, modifies or deletes 4 files; the limit is 3 per task. Split it into smaller tasks", i.message
+  end
+
+  # files.delete: the file must exist and not be protected, it counts toward the file limit, and a task that only
+  # deletes changes something.
+  def test_files_to_delete_are_checked_and_counted
+    assert_empty issues(task("T1", files: { "delete" => ["src/b.test.ts"] }))
+    i = only(issues(task("T1", files: { "delete" => ["src/gone.ts"] })))
+    assert_equal ["plan.missing_path", "T1: src/gone.ts does not exist (files.delete) and no task it depends on creates it; " \
+                                       "add the task that creates it to dependsOn, or list only existing files"], [i.reason, i.message]
+    assert_equal "plan.protected_path", only(issues(task("T1", files: { "delete" => [".env"] }))).reason
+    assert_equal "plan.protected_path", only(issues(task("T1", files: { "delete" => ["../x.ts"] }))).reason
+    i = only(issues(task("T1", files: { "modify" => %w[src/a.ts src/b.ts], "create" => %w[src/c.ts], "delete" => %w[src/b.test.ts] })))
+    assert_equal "plan.too_many_files", i.reason
+    plan = Harness::Plan::PlanParser.parse({ "tasks" => [task("T1", files: { "modify" => ["src/a.ts"], "delete" => ["src/b.test.ts"] })] })
+    t = plan.tasks.first
+    assert_equal %w[src/a.ts src/b.test.ts], t.deletable
+    assert_equal({ "create" => [], "modify" => ["src/a.ts"], "read" => [], "delete" => ["src/b.test.ts"] }, plan.to_json_hash["tasks"][0]["files"])
+    assert_equal plan, Harness::Plan::PlanParser.parse(plan.to_json_hash), "the saved plan reads back the same"
+    plain = Harness::Plan::PlanParser.parse({ "tasks" => [task("T1")] })
+    refute plain.to_json_hash.dig("tasks", 0, "files").key?("delete"), "plans without deletions are saved as before"
+    rules = Harness::Prompts.render("edit_rules", files: t.writable.join(", "), tests: [], deletes: t.files.delete, rewrite_bytes: 4096)
+    assert_includes rules, "Delete these files, each with a \"delete\" edit: src/b.test.ts."
+    assert_includes Harness::Prompts.render("planner_system", max_files: 3, gates: "typecheck", tests: true, max_create_lines: 150),
+                    "To remove a file, list it under \"delete\""
   end
 
   def covered(request, *tasks)

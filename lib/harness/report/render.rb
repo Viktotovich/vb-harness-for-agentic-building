@@ -177,7 +177,7 @@ module Harness
                end
         out += ["", "**What is left**", ""]
         out += if left.empty? then ["- Nothing: every part of the plan is finished."]
-               else left.map { |t, s| "- #{line(t['title'], 100)} (#{plain_state(s['state'])})" }
+               else left.map { |t, s| "- #{line(t['title'], 100)} (#{plain_state(s['state'], s['reason'])})" }
                end
         out += ["", "**What you need to do**", ""]
         out << "- Answer the questions in the app: the build waits for you." unless Array(data.run["questions"]).empty?
@@ -194,8 +194,11 @@ module Harness
         out
       end
 
+      # @param reason [String, nil] the blocked task's reason code
       # @return [String] a task state in plain words
-      def self.plain_state(state)
+      def self.plain_state(state, reason = nil)
+        return "it made no changes" if state.to_s == "blocked" && reason == "task.no_changes"
+
         { "blocked" => "it could not pass your project's checks", "skipped" => "it waits for a part that was not finished",
           "pending" => "not started yet", "running" => "in progress" }.fetch(state.to_s, state.to_s.empty? ? "not started yet" : state.to_s)
       end

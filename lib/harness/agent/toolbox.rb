@@ -17,7 +17,7 @@ require_relative "settings"
 module Harness
   module Agent
     # The tools an agent works with. Reading: read_file, list_dir, search, find_symbol. Writing (task agents only):
-    # edit_file, write_file, append_file. Checking: run_gate (the stack's gates) and run_command (commands declared
+    # edit_file, write_file, append_file, delete_file. Checking: run_gate (the stack's gates) and run_command (commands declared
     # in config, I3). Plus view_diff and finish. Every write goes through Task::Edits, so I2 and protectedPaths hold;
     # every result is fenced as untrusted (I9); no tool runs a command string a model wrote.
     class Toolbox
@@ -64,8 +64,10 @@ module Harness
       #   or existing tests
       # @param ask [#call, nil] (question) -> answer text, for ask_user; nil offers no such tool
       # @param only [Array<String>, nil] the only files that may be written; nil: no such limit
+      # @param deletable [Array<String>] the files the plan lets the task delete (its files.modify and files.delete);
+      #   besides these, only files the agent created in this task may be deleted
       def initialize(root:, protected:, stack:, settings:, runner: nil, worktree: nil, map: nil, writable: false, tests: [],
-                     planned: [], ask: nil, only: nil)
+                     planned: [], ask: nil, only: nil, deletable: [])
         @root = root
         @protected = protected
         @runner = runner
@@ -76,6 +78,11 @@ module Harness
         @writable = writable
         @tests = tests
         @planned = planned.filter_map do |p|
+          Repo::Paths.normalize(p)
+        rescue PathError
+          nil
+        end
+        @deletable = deletable.filter_map do |p|
           Repo::Paths.normalize(p)
         rescue PathError
           nil
@@ -105,6 +112,8 @@ module Harness
                                      "new file, write the first part here and add the rest with append_file.",
                        { "path" => str, "content" => str }, %w[path content])
           defs << tool("append_file", "Add text to the end of a file you created in this task.", { "path" => str, "content" => str }, %w[path content])
+          defs << tool("delete_file", "Delete a file: only one the task lists for changing or deleting#{deletable_listing}, or one " \
+                                      "you created in this task.", { "path" => str }, %w[path])
           defs << tool("view_diff", "Show your changes so far as a diff.", {}, [])
         end
         if @runner
@@ -149,7 +158,7 @@ module Harness
       end
 
       # @return [Boolean] whether the tool writes files
-      def self.write_tool?(name) = %w[edit_file write_file append_file].include?(name)
+      def self.write_tool?(name) = %w[edit_file write_file append_file delete_file].include?(name)
 
       private
 
@@ -162,6 +171,7 @@ module Harness
         when "edit_file" then writable { edit_file(args["path"], args["search"], args["replace"]) }
         when "write_file" then writable { write_file(args["path"], args["content"]) }
         when "append_file" then writable { append_file(args["path"], args["content"]) }
+        when "delete_file" then writable { delete_file(args["path"]) }
         when "view_diff" then writable { view_diff }
         when "run_gate" then run_gate(args["name"])
         when "run_command" then run_command(args["name"], args["params"])
@@ -314,9 +324,33 @@ module Harness
         apply(Task::Edit.new(op: "create", path: rel, content: current + content.to_s, search: nil, replace: nil), modify: true)
       end
 
+      # Deleting obeys the rules writing does, and one more: only a file the plan lets the task change or delete, or one
+      # the agent created in this task. A field run could not remove a file its task named, and committed nothing as done.
+      # The path guard (I2, protectedPaths) runs in Task::Edits before the file is removed.
       # @return [String]
-      def apply(edit, modify:)
-        rel = Repo::Paths.normalize(edit.path)
+      def delete_file(path)
+        rel = Repo::Paths.normalize(path.to_s)
+        unless @deletable.include?(rel) || @created.include?(rel)
+          allowed = (@deletable + @created.to_a).uniq.sort
+          return "error: #{rel} is not a file this task may delete (#{allowed.empty? ? 'none' : allowed.join(', ')}); the " \
+                 "plan must list it under files.delete"
+        end
+        refused = refusal(rel)
+        return refused if refused
+
+        edit = Task::Edit.new(op: "delete", path: rel, content: nil, search: nil, replace: nil)
+        result = Task::Edits.apply(root: @root, edit_set: Task::EditSet.new(edits: [edit], tests: [], notes: ""),
+                                   modify: [], create: [], delete: [rel], protected: @protected)
+        return "error: #{result.rejections.first.message}" unless result.ok?
+
+        @touched.merge(result.written)
+        @created.delete(rel)
+        "#{rel}: deleted"
+      end
+
+      # Why a file may not be written or deleted here, or nil when it may.
+      # @return [String, nil]
+      def refusal(rel)
         return "error: only #{@only.join(', ')} may be changed here" if @only && !@only.include?(rel)
 
         if guarded?(rel)
@@ -324,10 +358,18 @@ module Harness
                  "project's checks pass, and this task's plan does not name it. Fix the code instead; if the check itself is " \
                  "wrong, say so in finish"
         end
-        if !@touched.include?(rel) && @touched.size >= @settings.max_files_per_task
-          return "error: this task may change at most #{@settings.max_files_per_task} files (#{@touched.to_a.sort.join(', ')}); " \
-                 "finish, and leave the rest to another task"
-        end
+        return nil unless !@touched.include?(rel) && @touched.size >= @settings.max_files_per_task
+
+        "error: this task may change at most #{@settings.max_files_per_task} files (#{@touched.to_a.sort.join(', ')}); " \
+          "finish, and leave the rest to another task"
+      end
+
+      # @return [String]
+      def apply(edit, modify:)
+        rel = Repo::Paths.normalize(edit.path)
+        refused = refusal(rel)
+        return refused if refused
+
         result = Task::Edits.apply(root: @root, edit_set: Task::EditSet.new(edits: [edit], tests: [], notes: ""),
                                    modify: modify ? [rel] : [], create: [rel], protected: @protected,
                                    rewrite_max_bytes: REWRITE_MAX_BYTES, own: @created.to_a)
@@ -371,6 +413,11 @@ module Harness
         result, output = @runner.run_with_output(gate, files: files, tests: @tests)
         text = describe(result, output)
         gate.blocking == false && result.status != "passed" ? "#{text}\n#{OPTIONAL_NOTE}" : text
+      end
+
+      # @return [String] the files the plan lists for deletion, for the tool's description
+      def deletable_listing
+        @deletable.empty? ? "" : " (#{@deletable.join(', ')})"
       end
 
       # @return [String] the gate names, with the ones that never block a task marked

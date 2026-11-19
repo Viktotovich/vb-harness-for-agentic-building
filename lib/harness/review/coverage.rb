@@ -64,6 +64,16 @@ module Harness
       # @return [Array<Claim>] accepted claims, one for each gap
       # @raise [ModelUnavailableError]
       def call(scope, prepared, subject, failures)
+        # An empty change does nothing the request asks for, and a change whose every file was left out of review cannot
+        # be compared with it: either way the check did not run, and the record says so rather than skipping quietly.
+        if prepared.chunks.empty?
+          why = if prepared.skipped.empty? && prepared.omitted.empty? then "the change is empty"
+                else "every changed file was left out of review (#{(prepared.skipped + prepared.omitted).map(&:first).first(5).join(', ')})"
+                end
+          failures << "#{RUN}: not run: #{why}, so nothing could be compared with the request"
+          @ctx.emit("review.discover", "skipped", subject: RUN, reason: "request.nothing_to_check", detail: failures.last[0, 300])
+          return []
+        end
         # A gap read from part of a diff could be in the part not shown.
         if prepared.chunks.size != 1
           @ctx.emit("review.discover", "skipped", subject: RUN, detail: "the diff is in #{prepared.chunks.size} parts, so the check would not see all of it")

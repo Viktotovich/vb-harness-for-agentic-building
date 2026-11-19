@@ -50,6 +50,9 @@ module Harness
       # review of 7 tiny files cost more than implementing and fixing them, and found nothing.
       LIGHT_REVIEW_MAX_LINES = 80
       REVIEW_CONTEXT = 10
+      # A planned task always declares files to create, modify or delete (plan checks refuse one that declares none), so
+      # ending with nothing changed means it did not do its job. A field run committed such a task as done.
+      NO_CHANGES = "task.no_changes"
 
       # Ends the task as blocked.
       class Blocked < StandardError
@@ -94,7 +97,7 @@ module Harness
             @created.merge(Array(saved["created"]))
             next landed if @ctx.worktree.head_subject.start_with?("#{task.id}: ")
 
-            fix_until_green
+            fix_until_changed
             review
             commit
           else
@@ -123,6 +126,7 @@ module Harness
         @locked = []
         @proven = false
         @acceptance_reviewed = false
+        @no_changes_round = false
       end
 
       # @return [Outcome]
@@ -133,7 +137,7 @@ module Harness
         else
           edit_set = implement
           apply(edit_set, :implementer, @implement_messages)
-          fix_until_green
+          fix_until_changed
         end
         review
         commit
@@ -154,7 +158,8 @@ module Harness
         @mailbox = Agent::Mailbox.new(store: @ctx.store, events: @ctx.events, task_id: @task.id, timeout: settings.ask_timeout_sec)
         toolbox = Agent::Toolbox.new(root: @ctx.worktree.root, protected: @ctx.stack.protected_paths, stack: @ctx.stack,
                                      settings: settings, runner: @ctx.runner, worktree: @ctx.worktree, map: @ctx.map,
-                                     writable: true, tests: @task.test_paths, planned: @task.writable - @locked, ask: @mailbox.asker)
+                                     writable: true, tests: @task.test_paths, planned: @task.writable + @task.files.delete - @locked,
+                                     deletable: @task.deletable - @locked, ask: @mailbox.asker)
         roles = @ctx.config.roles
         @ladder = Agent::Ladder.new(max: settings.max_recoveries, stronger: roles[:rescuer] != roles[:implementer])
         @session = agent_session(:implementer, toolbox, "#{@task.id}.agent")
@@ -162,7 +167,17 @@ module Harness
         result = agent_stretch(toolbox) { @session.run(user, max_steps: settings.max_steps) }
         loop do
           failing = @proven ? [] : run_gates
-          return if failing.empty?
+          if failing.empty?
+            return if changed?
+
+            no_changes_round(settings.max_rounds) do
+              @fix_rounds += 1
+              step("fixing")
+              emit("task.fix", "stage_started")
+              result = agent_stretch(toolbox) { @session.continue(no_changes_note, max_steps: settings.max_steps) }
+            end
+            next
+          end
           next if review_acceptance(settings, failing, result)
 
           if @fix_rounds >= settings.max_rounds
@@ -377,7 +392,7 @@ module Harness
       # @return [String]
       def agent_rules(settings)
         Prompts.render("agent_rules", files: (@task.writable - @locked).join(", "), tests: @task.test_paths - @locked, locked: @locked,
-                                      max_files: settings.max_files_per_task)
+                                      deletes: @task.files.delete, max_files: settings.max_files_per_task)
       end
 
       # Turn the ways a task can fail into a blocked Outcome.
@@ -459,7 +474,7 @@ module Harness
         emit("task.apply", "stage_started")
         result = Edits.apply(root: @ctx.worktree.root, edit_set: edit_set, modify: @task.files.modify,
                              create: @task.files.create + @task.test_paths, protected: @ctx.stack.protected_paths,
-                             rewrite_max_bytes: @limits.whole_file_rewrite_max_bytes, own: @created.to_a)
+                             rewrite_max_bytes: @limits.whole_file_rewrite_max_bytes, own: @created.to_a, delete: @task.files.delete)
         result.rejections.each do |r|
           emit("task.apply", "rejected", subject: "#{r.edit.op} #{r.edit.path}"[0, 120], reason: r.reason, detail: r.message[0, 300])
         end
@@ -684,6 +699,67 @@ Hint: #{h['hint']}" }
         ""
       end
 
+      # --- a task that changed nothing ---
+
+      # The fix rounds until the checks pass, then one more round if the task changed nothing.
+      # @return [void]
+      # @raise [Blocked]
+      def fix_until_changed
+        fix_until_green
+        until changed?
+          no_changes_round(@limits.max_fix_rounds) do
+            fix_applied?([no_changes_diagnostic])
+            fix_until_green
+          end
+        end
+      end
+
+      # @return [Boolean] whether the worktree differs from the last commit
+      def changed?
+        @ctx.worktree.dirty?
+      end
+
+      # A task whose checks pass but that changed nothing gets one more round, told so; if it still changes nothing, it
+      # is blocked with a plain reason. Passing gates prove nothing here: they passed before the task too (I7). Callers
+      # check #changed? again after the round.
+      # @param max_rounds [Integer] the mode's round limit; with no round left the task is blocked at once
+      # @yield one more round of work, ending with the task's checks run again
+      # @return [void]
+      # @raise [Blocked]
+      def no_changes_round(max_rounds)
+        emit("task.apply", "rejected", subject: "task", reason: NO_CHANGES, detail: "nothing changed in #{declared_files}"[0, 300])
+        if @no_changes_round
+          raise Blocked.new(NO_CHANGES, "the task made no changes to #{declared_files}, even after a round that asked for them")
+        end
+        if @fix_rounds >= max_rounds
+          raise Blocked.new(NO_CHANGES, "the task made no changes to #{declared_files}, and no round was left to ask again")
+        end
+
+        @no_changes_round = true
+        yield
+      end
+
+      # @return [String] the files the task was to create, modify or delete
+      def declared_files
+        (@task.writable + @task.files.delete).uniq.join(", ")
+      end
+
+      # @return [String] what an agent is told when its work changed nothing
+      def no_changes_note
+        how = @task.files.delete.empty? ? "" : " (delete_file removes a file)"
+        "The harness found no changes: the task made no changes to its files (#{declared_files}). Passing checks do not " \
+          "finish a task that changes nothing. Make the change the task asks for#{how}, run the checks with run_gate, " \
+          "then call finish."
+      end
+
+      # @return [Gates::Diagnostic] the problem the fixer is shown when the task changed nothing
+      def no_changes_diagnostic
+        how = @task.files.delete.empty? ? "" : %(; a {"op": "delete"} edit removes a file)
+        Gates::Diagnostic.new(file: nil, line: nil, col: nil, code: "no_changes", severity: "error",
+                              message: "the task made no changes: none of its files (#{declared_files}) differ from the last " \
+                                       "commit. Write the edits the task asks for#{how}.")
+      end
+
       # --- review and commit ---
 
       # @return [void]
@@ -741,7 +817,7 @@ Hint: #{h['hint']}" }
 
       # @return [String]
       def rules
-        Prompts.render("edit_rules", files: @task.writable.join(", "), tests: @task.test_paths,
+        Prompts.render("edit_rules", files: @task.writable.join(", "), tests: @task.test_paths, deletes: @task.files.delete,
                                      rewrite_bytes: @limits.whole_file_rewrite_max_bytes)
       end
 

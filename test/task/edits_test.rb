@@ -112,6 +112,33 @@ class EditsTest < Minitest::Test
     assert_equal "edit.search_not_found", apply(set({ "op" => "delete", "path" => "src/new.ts" })).rejections.first.reason
   end
 
+  # A file listed under files.delete may be deleted and nothing else; a file the task does not list may not be.
+  def test_the_delete_list_allows_only_deleting
+    del = ->(edit_set) { T::Edits.apply(root: @root, edit_set: edit_set, modify: [], create: [], delete: %w[src/twice.ts], protected: [".env*"]) }
+    r = del.call(set(replace("src/twice.ts", "const x = 1;\nconst x = 1;", "const x = 1;")))
+    assert_equal ["edit.undeclared_path"], r.rejections.map(&:reason)
+    assert_match(/listed for deletion only/, r.rejections.first.message)
+    r = del.call(set({ "op" => "delete", "path" => "src/card.ts" }))
+    assert_equal ["edit.undeclared_path"], r.rejections.map(&:reason)
+    assert File.exist?(File.join(@root, "src/card.ts"))
+    r = del.call(set({ "op" => "delete", "path" => "src/twice.ts" }))
+    assert r.ok?
+    assert_equal ["src/twice.ts"], r.written
+    refute File.exist?(File.join(@root, "src/twice.ts"))
+  end
+
+  def test_deleting_a_protected_or_outside_path_is_refused
+    write(".env", "SECRET=1")
+    File.write(File.join(File.dirname(@root), "harness-edits-outside.txt"), "keep")
+    r = T::Edits.apply(root: @root, edit_set: set({ "op" => "delete", "path" => ".env" }, { "op" => "delete", "path" => "../harness-edits-outside.txt" }),
+                       modify: [], create: [], delete: %w[.env ../harness-edits-outside.txt], protected: [".env*"])
+    assert_equal %w[edit.protected_path edit.outside_worktree], r.rejections.map(&:reason)
+    assert File.exist?(File.join(@root, ".env"))
+    assert File.exist?(File.join(File.dirname(@root), "harness-edits-outside.txt"))
+  ensure
+    FileUtils.rm_f(File.join(File.dirname(@root), "harness-edits-outside.txt"))
+  end
+
   # --- refusals ---
 
   def test_undeclared_protected_and_outside_paths_are_rejected

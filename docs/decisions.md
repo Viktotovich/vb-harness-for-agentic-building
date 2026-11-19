@@ -947,3 +947,35 @@ The time runs from the first thinking piece to the first answer piece, measured 
 reply (`thinkingMs`), so an old reply still says how long it thought. Inline `<think>` text that arrives after the
 answer has started does not stretch it. Reasoning still comes from either `reasoning_content` or inline `<think>`
 tags (Model::Stream), so any model that thinks gets the same view.
+
+## Deleting files, and tasks that change nothing
+
+A field run (request 11b) asked a task to delete `tests/CommunityFeed.astro`. The agent had no tool for it, ended with
+an empty diff, and the task was committed as done with no changes. Two gaps, two fixes.
+
+- **A `files.delete` list in the plan.** Deleting is a separate intent from changing, so the plan says it: a task
+  lists files to remove under `files.delete`. The plan checks treat it like `modify` (the file must exist or come
+  from a task it depends on, no protected or outside paths) and count it toward `maxFilesPerTask`; a task that only
+  deletes counts as changing something. The key is optional and saved only when non-empty, so older plans read and
+  write as before. A file under `modify` may also be deleted, since a planner may not use the new list.
+- **Pipeline mode** already had a `delete` edit. `Task::Edits.apply` takes the delete list too: a file listed only
+  there may be deleted and nothing else, and every other rule (declared files, I2, `protectedPaths`) is unchanged.
+- **Agent mode gets `delete_file`.** It is stricter than the write tools, which may touch files outside the plan:
+  it deletes only a file the task lists under `modify` or `delete`, or one the agent created in this task. Then the
+  same refusals as writes apply (check configuration and existing tests the plan does not name, the file cap), and
+  the delete itself goes through `Task::Edits`, so the path guard runs right before the file is removed. Nothing
+  outside the worktree can be named.
+- **An empty diff is not done.** Plan checks already refuse a task that declares no files (`plan.no_changes`), and
+  follow-up fix tasks always modify a file, so every task that reaches the loop was meant to change something.
+  Passing gates prove nothing here: they passed before the task too, and a model's word never marks a task done
+  (I7). So when the checks pass with nothing changed, the task gets one more round that says so ("the task made no
+  changes"): a fix round in pipeline mode, a message to the same agent in agent mode. Still nothing, or no round
+  left, and the task is blocked with `task.no_changes`, which the app shows as "the task made no changes" and the
+  plain report as "it made no changes".
+- **No legitimate empty task was kept.** The only one considered is a requirement that is already true, which the
+  planner is told to keep. Committing it as done would hide exactly the failure above, so it now ends blocked with a
+  plain reason, and its dependants are skipped. A resumed task whose commit already landed is still done (that path
+  checks HEAD, not the diff). The commit step keeps its "no changes" guard as a defence, though it is now unreachable.
+- **The request check no longer skips quietly on an empty diff.** "The diff is in 0 parts" was logged as a plain
+  skip. Now an empty change, or one whose every file was filtered out of review, records the check as not run, with
+  `request.nothing_to_check` and a line in the review's failures.

@@ -101,14 +101,17 @@ module Harness
       # @param protected [Array<String>] protectedPaths globs
       # @param rewrite_max_bytes [Integer] wholeFileRewriteMaxBytes
       # @param own [Array<String>] files this task already created in an earlier attempt; it may write them whole again
+      # @param delete [Array<String>] the task's files.delete: files it may only delete
       # @return [Result] nothing is written unless every edit is accepted
-      def self.apply(root:, edit_set:, modify:, create:, protected: [], rewrite_max_bytes: 4096, own: [])
+      def self.apply(root:, edit_set:, modify:, create:, protected: [], rewrite_max_bytes: 4096, own: [], delete: [])
         declared_modify = modify.filter_map { |p| declared_path(p) }
         declared = (declared_modify + create.filter_map { |p| declared_path(p) }).uniq
+        deletable = delete.filter_map { |p| declared_path(p) } - declared
         files = {}       # rel => {full:, before: String|nil, after: String|nil, eol:}
         rejections = []
         edit_set.all.each do |edit|
-          rejection = stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes, own.filter_map { |o| declared_path(o) })
+          rejection = stage(edit, root, files, { write: declared, modify: declared_modify, delete: deletable }, protected,
+                            rewrite_max_bytes, own.filter_map { |o| declared_path(o) })
           rejections << rejection if rejection
         end
         unless rejections.empty?
@@ -129,23 +132,39 @@ module Harness
         nil
       end
 
-      # Check one edit and apply it to the in-memory copy.
+      # Check one edit and apply it to the in-memory copy. declared: write: files it may create or change, modify: its
+      # files.modify, delete: files it may only delete.
       # @return [Rejection, nil]
-      def self.stage(edit, root, files, declared, declared_modify, protected, rewrite_max_bytes, own = [])
+      def self.stage(edit, root, files, declared, protected, rewrite_max_bytes, own = [])
         rel = Repo::Paths.normalize(edit.path)
         full = Repo::Paths.resolve_in_worktree(root, rel, protected: protected)
-        unless declared.include?(rel)
-          return Rejection.new(edit: edit, reason: "edit.undeclared_path",
-                               message: "#{rel} is not one of this task's files (#{declared.join(', ')}); the plan must list it")
-        end
+        rejection = undeclared(edit, rel, declared)
+        return rejection if rejection
+
         f = files[rel] ||= load(full).merge(root: root, rel: rel, protected: protected)
         case edit.op
-        when "create" then stage_create(edit, rel, f, declared_modify, rewrite_max_bytes, own)
+        when "create" then stage_create(edit, rel, f, declared[:modify], rewrite_max_bytes, own)
         when "replace" then stage_replace(edit, rel, f)
         else stage_delete(edit, rel, f)
         end
       rescue PathError => e
         Rejection.new(edit: edit, reason: e.reason, message: e.message)
+      end
+
+      # A file the task does not declare for this kind of edit. A file listed under files.delete may only be deleted.
+      # @return [Rejection, nil]
+      def self.undeclared(edit, rel, declared)
+        return nil if declared[:write].include?(rel)
+
+        if declared[:delete].include?(rel)
+          return nil if edit.op == "delete"
+
+          return Rejection.new(edit: edit, reason: "edit.undeclared_path",
+                               message: "#{rel} is listed for deletion only (files.delete); delete it or leave it, do not change it")
+        end
+        listed = declared[:write] + declared[:delete]
+        Rejection.new(edit: edit, reason: "edit.undeclared_path",
+                      message: "#{rel} is not one of this task's files (#{listed.join(', ')}); the plan must list it")
       end
 
       # @return [Hash]
@@ -271,8 +290,8 @@ module Harness
           Repo::AtomicFile.write(f[:full], f[:after])
         end
       end
-      private_class_method :declared_path, :stage, :load, :stage_create, :stage_replace, :stage_delete, :occurrences, :mismatch,
-                           :similarity, :write_all, :write_one
+      private_class_method :declared_path, :stage, :undeclared, :load, :stage_create, :stage_replace, :stage_delete, :occurrences,
+                           :mismatch, :similarity, :write_all, :write_one
     end
   end
 end

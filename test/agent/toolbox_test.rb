@@ -37,9 +37,68 @@ class AgentToolboxTest < Minitest::Test
     FileUtils.rm_rf(@tmp)
   end
 
-  def box(writable: true)
+  def box(writable: true, **rest)
     Harness::Agent::Toolbox.new(root: @root, protected: @stack.protected_paths, stack: @stack, settings: @config.agent,
-                                runner: @runner, writable: writable)
+                                runner: @runner, writable: writable, **rest)
+  end
+
+  # --- delete_file: the rules writes obey, and only files the task declares ---
+
+  def exists?(rel) = File.exist?(File.join(@root, rel))
+
+  def test_delete_file_refuses_a_file_the_task_does_not_declare
+    t = box(deletable: ["src/lib/tax.ts"])
+    assert_match(/error: src\/lib\/price\.ts is not a file this task may delete \(src\/lib\/tax\.ts\); the plan must list it under files\.delete/,
+                 plain(t.call("delete_file", { "path" => "src/lib/price.ts" })))
+    assert_match(/error: .* \(none\)/, plain(box.call("delete_file", { "path" => "src/lib/price.ts" })), "no list: nothing to delete")
+    assert exists?("src/lib/price.ts")
+    assert_empty t.touched
+  end
+
+  def test_delete_file_refuses_protected_paths_even_when_declared
+    t = box(deletable: [".env", "tools/typecheck.rb"], planned: [".env", "tools/typecheck.rb"])
+    assert_match(/error: .*protected/, plain(t.call("delete_file", { "path" => ".env" })))
+    assert_match(/error: .*protected/, plain(t.call("delete_file", { "path" => "tools/typecheck.rb" })))
+    assert exists?(".env")
+    assert exists?("tools/typecheck.rb")
+  end
+
+  def test_delete_file_never_reaches_outside_the_worktree
+    outside = File.join(@tmp, "outside.txt")
+    File.write(outside, "keep")
+    t = box(deletable: ["../outside.txt", outside])
+    assert_match(/error: /, plain(t.call("delete_file", { "path" => "../outside.txt" })))
+    assert_match(/error: /, plain(t.call("delete_file", { "path" => outside })))
+    assert_match(/error: /, plain(t.call("delete_file", { "path" => "src/../../outside.txt" })))
+    assert File.exist?(outside)
+    refute(t.calls.any?(&:ok))
+  end
+
+  def test_delete_file_refuses_an_existing_test_or_check_config_the_plan_does_not_name
+    FileUtils.mkdir_p(File.join(@root, "tests"))
+    File.write(File.join(@root, "tests/price.test.ts"), "expect(1).toBe(1);\n")
+    t = box(deletable: %w[tests/price.test.ts package.json])
+    assert_match(/error: tests\/price\.test\.ts is an existing test/, plain(t.call("delete_file", { "path" => "tests/price.test.ts" })))
+    assert_match(/error: package\.json is check configuration/, plain(t.call("delete_file", { "path" => "package.json" })))
+    assert exists?("tests/price.test.ts")
+    named = box(deletable: %w[tests/price.test.ts], planned: %w[tests/price.test.ts])
+    assert_equal "tests/price.test.ts: deleted", plain(named.call("delete_file", { "path" => "tests/price.test.ts" })).strip
+  end
+
+  def test_delete_file_removes_a_declared_file_or_one_made_in_this_task
+    t = box(deletable: ["src/lib/tax.ts"])
+    assert_equal "src/lib/tax.ts: deleted", plain(t.call("delete_file", { "path" => "src/lib/tax.ts" })).strip
+    refute exists?("src/lib/tax.ts")
+    assert_match(/error: src\/lib\/tax\.ts does not exist/, plain(t.call("delete_file", { "path" => "src/lib/tax.ts" })))
+    assert_match(/written/, plain(t.call("write_file", { "path" => "src/lib/scratch.ts", "content" => "x\n" })))
+    assert_equal "src/lib/scratch.ts: deleted", plain(t.call("delete_file", { "path" => "src/lib/scratch.ts" })).strip
+    assert_equal Set["src/lib/tax.ts", "src/lib/scratch.ts"], t.touched
+    assert_empty t.created
+    assert Harness::Agent::Toolbox.write_tool?("delete_file")
+    assert_includes t.definitions.map { |d| d.dig("function", "name") }, "delete_file"
+    refute_includes box(writable: false).definitions.map { |d| d.dig("function", "name") }, "delete_file"
+    assert_match(/only reads/, plain(box(writable: false, deletable: ["src/lib/price.ts"]).call("delete_file", { "path" => "src/lib/price.ts" })))
+    assert exists?("src/lib/price.ts")
   end
 
   def plain(text) = text.lines.reject { |l| l.start_with?("<untrusted-data") || l.start_with?("</untrusted-data") }.join

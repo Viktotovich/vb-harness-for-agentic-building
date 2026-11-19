@@ -135,4 +135,24 @@ class RequestCheckTest < Minitest::Test
     assert_equal ["review.discover", "skipped"], events.first.first(2)
     assert_match(/2 parts/, events.first.last[:detail])
   end
+
+  # A field run reported "the diff is in 0 parts" and moved on: an empty change is a check that did not run, recorded
+  # with a reason, never a silent skip.
+  def test_an_empty_diff_is_recorded_as_not_checked
+    events = []
+    ctx = Struct.new(:events) { def emit(stage, kind, **f) = events << [stage, kind, f] }.new(events)
+    scope = Harness::Review::Scope.new(request: REQUEST, task: nil, others: [])
+    failures = []
+    assert_empty Coverage.new(ctx).call(scope, Harness::Review::Prepared.new(chunks: [], skipped: [], omitted: []), "task T1", failures)
+    assert_equal ["request-check: not run: the change is empty, so nothing could be compared with the request"], failures
+    stage, kind, fields = events.first
+    assert_equal ["review.discover", "skipped", "request.nothing_to_check"], [stage, kind, fields[:reason]]
+    refute_match(/0 parts/, fields[:detail])
+    refute_empty Harness::State::Reasons.text("request.nothing_to_check")
+
+    failures = []
+    prepared = Harness::Review::Prepared.new(chunks: [], skipped: [["package-lock.json", "generated"]], omitted: [])
+    Coverage.new(ctx).call(scope, prepared, "task T1", failures)
+    assert_match(/every changed file was left out of review \(package-lock\.json\)/, failures.first)
+  end
 end
