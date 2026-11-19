@@ -131,6 +131,7 @@ build would not start, each with what to do, without changing anything or asking
 - [Requirements](#requirements)
 - [Install](#install)
 - [Quick start: the app](#quick-start-the-app)
+- [Help, settings and shortcuts](#help-settings-and-shortcuts)
 - [Use it from your phone (LAN mode)](#use-it-from-your-phone-lan-mode)
 - [Quick start: the command line](#quick-start-the-command-line)
 - [Projects and workspaces](#projects-and-workspaces)
@@ -147,6 +148,7 @@ build would not start, each with what to do, without changing anything or asking
 - [Why Ruby](#why-ruby)
 - [Development](#development)
 - [License](#license)
+- [Disclaimer](#disclaimer)
 
 ## How it works
 
@@ -265,6 +267,43 @@ Only colours change; the font and layout stay the same. The choice is saved in `
 ![Settings → Appearance: System, Dark or Light, colour presets for the dark look, and a colour picker for each of the seven colours with a text contrast check](docs/media/app-appearance.png)
 
 ![The same finished build in the light look](docs/media/app-light.png)
+
+## Help, settings and shortcuts
+
+**Settings** (bottom of the sidebar) has six tabs: **Models**, **How runs work**, **Check setup**, **Appearance**,
+**Demo** and **Help**. On a paired phone the settings stay on the computer; see
+[Use it from your phone](#use-it-from-your-phone-lan-mode).
+
+### Help
+
+**Settings → Help** lists the keyboard shortcuts and links to the [documentation site](https://vb-harness.vandbruno.net),
+which opens in a new tab: building your first website, using the app, how a run works, LAN mode, Figma designs,
+troubleshooting and configuration.
+
+### Advanced configuration
+
+**Settings → How runs work** ends with **Advanced configuration**, folded until you open it. It shows the whole
+`config.json` in a text box, for the settings the other tabs do not cover: model profiles and their limits, roles,
+stacks and their checks, review, commits and more. **Save configuration** checks the text with the harness's own
+configuration rules and writes it only when it is valid; otherwise it says **Not saved:** and why, and the file stays
+as it was. A saved configuration applies from the next chat or build. **Undo changes** puts back the text as it was
+when you opened the tab. [Configuration](#configuration) explains every setting. Never paste a key there: like
+everywhere else, a profile names the environment variable that holds its key.
+
+### Keyboard shortcuts
+
+| Keys | What it does |
+| --- | --- |
+| Ctrl+Shift+Space | Switch to another chat: type to filter the list, Enter opens the first match |
+| Alt+N | New chat |
+| Alt+M | Switch the text box between Chat and Build |
+| Alt+S | Open Settings, or go back from Settings |
+| / | Go to the text box (when you are not already typing) |
+| Ctrl+Enter | Send; Enter alone adds a line |
+| Esc | Close a dialog, the chat menu or the report |
+
+On macOS, Alt is the Option key, and ⌘+Enter also sends. New chat is Alt+N because Ctrl+Shift+N belongs to the
+browser (it opens a private window).
 
 ## Use it from your phone (LAN mode)
 
@@ -683,6 +722,21 @@ Practical advice:
   model spends its whole budget thinking, the harness retries once with thinking off and gives the model its reasoning
   so far, so the thinking is not lost. Set `continuation` to `none` to turn continuing off.
 - Compare models with the [evaluation](#evaluation): the same ten tasks, one table per profile mapping.
+
+### Optional: an Astro fine-tune for your model
+
+For Astro sites, we recommend the [Astro 7 fine-tune kit](https://github.com/V-and-Bruno/astro-7-finetune-kit), and
+fine-tuning Ornith with it. The kit is a v0.1 snapshot of Astro 7 (7.3.5) question-and-answer pairs: 1,467 examples
+of a planned 3,500, grounded in the Astro docs and web specs. Every answer passes deterministic checks, `astro check`
+on its code blocks, and an independent judge. Its code is Apache-2.0 and its data CC BY 4.0.
+
+We trained a LoRA adapter on it for Ornith 9B (rank 16; the MLP of every layer plus attention on the 8
+full-attention layers; trained without thinking). On 73 held-out questions, token F1 went from 0.231 for the base
+model to 0.356 with the adapter. The adapter did better on 66 of the 73, with answers about 3.5 times shorter.
+
+What it does not do yet: it still invents APIs at times, it has not been measured in harness agent runs (with
+thinking and tool calls), and the dataset is partial. The harness stays model-agnostic: the adapter is loaded by
+your model server, not set in the harness, which probes the result like any other model.
 
 ## Safety model
 
