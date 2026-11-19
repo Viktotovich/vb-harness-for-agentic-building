@@ -3,6 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "json"
+require_relative "ascii"
 require_relative "agent/settings"
 require_relative "parse"
 require_relative "model/profiles"
@@ -145,7 +146,7 @@ module Harness
     def self.apply_env(name, raw, env)
       return raw unless raw.is_a?(Hash)
 
-      key = name.upcase.gsub(/[^A-Z0-9]/, "_")
+      key = Ascii.upcase(name).gsub(/[^A-Z0-9]/, "_")
       out = raw.dup
       out["baseUrl"] = env["HARNESS_#{key}_BASE_URL"] if env["HARNESS_#{key}_BASE_URL"]
       out["model"] = env["HARNESS_#{key}_MODEL"] if env["HARNESS_#{key}_MODEL"]

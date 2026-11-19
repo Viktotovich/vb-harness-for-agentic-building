@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require_relative "../ascii"
 require_relative "../errors"
 
 module Harness
@@ -65,7 +66,7 @@ module Harness
       # @return [Boolean] true for .git, .husky, node_modules and anything below them, or a match of any pattern
       def self.protected?(rel, patterns)
         first = rel.split("/").first.to_s
-        return true if ALWAYS_PROTECTED.any? { |p| first.casecmp?(p) }
+        return true if ALWAYS_PROTECTED.any? { |p| Ascii.same?(first, p) }
 
         patterns.any? do |pat|
           File.fnmatch?(pat, rel, FNM_FLAGS) ||

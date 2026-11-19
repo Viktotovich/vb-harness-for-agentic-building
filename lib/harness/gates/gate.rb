@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require_relative "../ascii"
 require_relative "../errors"
 require_relative "../parse"
 
@@ -164,7 +165,7 @@ module Harness
       # @raise [ParseError]
       def self.dependency_dirs(h, path)
         dirs = Parse.strings!(h.fetch("dependencyDirs", []), "#{path}.dependencyDirs")
-        bad = dirs.find { |d| !d.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/) || d.casecmp?(".git") }
+        bad = dirs.find { |d| !d.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/) || Ascii.same?(d, ".git") }
         raise ParseError, "#{path}.dependencyDirs: #{bad.inspect} must be a folder name at the repository root" if bad
 
         dirs.dup.freeze

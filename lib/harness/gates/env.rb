@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 V and Bruno LLC
 
+require_relative "../ascii"
+
 module Harness
   module Gates
     # The environment for gate and git subprocesses (I5, DESIGN.md 9.3): an allowlisted base, NODE_*
@@ -21,7 +23,7 @@ module Harness
         out = {}
         BASE.each { |name| (v = lookup(source, name)) && out[name] = v }
         source.each do |k, v|
-          up = k.upcase
+          up = Ascii.upcase(k)
           next unless up.start_with?("NODE_")
           next if up == "NODE_OPTIONS" && !allowed?(k, allow)
 
@@ -36,13 +38,13 @@ module Harness
       def self.lookup(source, name)
         return source[name] if source.key?(name)
 
-        pair = source.find { |k, _| k.casecmp?(name) }
+        pair = source.find { |k, _| Ascii.same?(k, name) }
         pair && pair[1]
       end
 
       # @return [Boolean]
       def self.allowed?(name, allow)
-        allow.any? { |a| a.casecmp?(name) }
+        allow.any? { |a| Ascii.same?(a, name) }
       end
       private_class_method :lookup, :allowed?
     end
