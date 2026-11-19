@@ -8,6 +8,13 @@ make the model smarter: it breaks your request into small tasks, has the model w
 and keeps a change only when your type check, lint, build and tests pass and an independent review can't prove it
 wrong.
 
+[![A screen recording of a real build in the app, sped up and labelled: a request for a one-page bakery site is typed into Build mode, the model reads the project and plans four tasks, each task is written on its own branch and passes the type check, the review drops two unproven claims, the finished card reads Built 4 of 4 parts, the report shows what was made in plain words, one commit per task and an open question about missing styles, and the preview shows the plain page that was built](docs/media/recording-preview.webp)](docs/media/recording.mp4)
+
+*A real screen recording: a 9B model on this computer builds a small Astro page in one run of 41 minutes, shown in
+85 seconds. Nothing is staged: every clip says whether it is real time or sped up and by how much, and shows the
+run's own clock. Every task passed the type check first time, so no fix round was needed; the review dropped three
+unproven claims, and the report says plainly that the requested styles were not added. Click it for the 1080p video.*
+
 [![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
 
 *A four-part blog feature, built by a local model on a 6 GB laptop GPU in one unattended run. An animated
