@@ -106,8 +106,9 @@ build. To see a whole build before setting anything up, choose **Try the demo** 
 `ruby exe/harness demo`): a scripted model builds a tiny sample project, with a failed check, its fix and a review,
 in under a minute. Then **Connect** opens **Settings → Models**, where you choose **Use** on a model. Switch the text
 box to **Build**, pick your project, describe the feature, and choose **Start build**. If the project is not set up
-yet (dependencies not installed, a generated folder missing, a package its checks need), the line under the text box
-says so and offers a **Fix** button: it shows the exact command, runs it after you confirm, and you build. The one
+yet (dependencies not installed, a generated folder missing, a package its checks need), a card in the chat, just
+above the text box, says so and offers a **Fix** button: it shows the exact command in the card, runs it after you
+confirm, shows its output there, and you build. The one
 thing it leaves to you is uncommitted changes: commit or stash them. **Preview** next to the project runs its dev
 server (for Astro, `astro dev`) on `127.0.0.1` and opens it; a finished build has a Preview of what it made.
 
@@ -233,8 +234,8 @@ working sit at the bottom of the sidebar, next to **Settings**.
 
    ![A planning chat: asked about a Badge component for an Astro site, the local model thought for 15 seconds (folded under "Thought for 15s") and replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
 3. **Build.** Switch the text box to **Build**, pick a project (or **Add project**), describe the feature, and choose
-   **Start build**. The line under the text box says what will happen, or what stops the build (uncommitted changes,
-   a project with a problem). A live card in the chat shows the run:
+   **Start build**. The line under the text box says what will happen; if something stops the build (uncommitted
+   changes, a project with a problem), a card in the chat above the text box says what and offers its fixes. A live card in the chat shows the run:
    - a progress bar, **Plan → Tasks → Final checks → Review → Report**;
    - a **Now** line in plain words ("T1 Double the price: running your checks") with how long ago it last moved, so a
      model that is still writing a long answer is not mistaken for a hang;
@@ -734,7 +735,7 @@ rounds, tokens and time, plus tokens and time per role. Preparing the starting r
 | --- | --- |
 | Not sure what is wrong | `harness doctor --repo PATH` checks Ruby, git, the config, each model server and the repository in one pass, and says what to do for each problem. |
 | "the repository has uncommitted changes" | Commit or stash first. Runs always start from a clean `HEAD`. |
-| "node_modules is missing … the project's dependencies are not installed" | In the app, choose **Fix** under the text box (it shows the install command first). On the command line, run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. A run never installs anything itself. |
+| "node_modules is missing … the project's dependencies are not installed" | In the app, choose the fix in the card above the text box (it shows the install command first). On the command line, run the install command it names (`npm install`, `pnpm install`, …) in your repository, then start the run again. A run never installs anything itself. |
 | "typecheck cannot run yet: the project needs … installed" | The check's own tool asked for packages (Astro's checker needs `@astrojs/check` and `typescript`). Choose **Fix** on the build card, then **Build again**. |
 | "Your project's own checks already fail before any change" | Careful mode stops on a red baseline. The card lists each failing check and its first problem: fix those in the project, or choose **Build anyway (Balanced)**, which judges tasks only on new problems. A project with no tests yet does not count as failing. |
 | A gate is **skipped**: "the tool has no configuration in this project" | The tool is installed but its config file is missing (for example ESLint 9+ without `eslint.config.js`). Add the config to your project, or remove the gate from `alwaysGates`. Intake finds this before planning, so tasks are not blocked by it. |
