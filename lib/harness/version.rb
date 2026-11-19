@@ -4,5 +4,5 @@
 
 module Harness
   # Semantic version of the harness. Kept in its own file so the gemspec can load it alone.
-  VERSION = "0.1.61"
+  VERSION = "0.1.62"
 end

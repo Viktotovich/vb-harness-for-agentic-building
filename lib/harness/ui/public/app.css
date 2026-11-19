@@ -271,6 +271,11 @@ details.thinking .th-body { white-space: pre-wrap; overflow-wrap: anywhere; marg
 
 /* ------------------------------------------------------------------ composer */
 .composer-wrap { flex: none; padding: 0 32px 16px; }
+.project-notice { flex: none; padding: 0 32px 12px; }
+.notice-card { max-width: 800px; margin: 0 auto; max-height: 45vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.notice-card .next { margin: 0; }
+.notice-step { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.notice-step .name { font-weight: 600; font-size: 14px; }
 .composer { max-width: 800px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: var(--shadow); }
 .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong)); }
 .composer textarea { display: block; width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; resize: none;
@@ -525,6 +530,7 @@ kbd { font: inherit; font-size: 11.5px; border: 1px solid var(--border); border-
   .b-actions { padding: 12px 14px 14px; }
   .askbox { margin: 12px 14px 6px; }
   .composer-wrap { padding: 0 8px 8px; }
+  .project-notice { padding: 0 8px 8px; }
   .composer-row { padding: 6px 8px 8px; }
   .project-chip select { max-width: 120px; }
   .kbd { display: none; }
