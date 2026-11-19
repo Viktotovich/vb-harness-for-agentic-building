@@ -57,19 +57,38 @@ one click shows it in your browser. Setup takes about 30 minutes, once.
    [Hugging Face](https://huggingface.co/models?library=gguf&sort=trending)). Pick one that fits your computer's
    memory; LM Studio marks the ones that fit.
 3. **Start LM Studio's server** in its **Developer** tab, and leave LM Studio open.
-4. **Install three free tools**, accepting the defaults:
-   [Ruby](https://www.ruby-lang.org/en/documentation/installation/) (on Windows,
-   [RubyInstaller](https://rubyinstaller.org/)), [Git](https://git-scm.com/downloads) and
-   [Node.js](https://nodejs.org/) (for the website itself).
-5. **Download VB Harness:** on GitHub, **Code → Download ZIP**, and unzip it.
-6. **Start it:** open a terminal in that folder (on Windows, right-click the folder → *Open in Terminal*) and type
-   `ruby exe/harness`. The app opens in your browser.
-7. **In the app:** **Models** finds LM Studio, choose **Use**. Then **Add project → New Astro site**, switch the text
+4. **Download VB Harness:** on GitHub, **Code → Download ZIP**, and unzip it (on Windows, right-click the ZIP →
+   **Extract All…**; on a Mac, double-click it).
+5. **Double-click Start VB Harness** in the unzipped folder: `Start VB Harness.bat` on Windows,
+   `Start VB Harness.command` on a Mac. A small window checks for the three free tools VB Harness needs (Ruby,
+   Git, and Node.js for the website itself). For each one that is missing it says what it is for and asks before
+   installing it, from the official source: winget on Windows, Apple's Command Line Tools and
+   [Homebrew](https://brew.sh/) on a Mac. If it can't install one, it opens the official download page. Then the
+   app opens in your browser. Keep that small window open while you use the app; closing it stops VB Harness.
+6. **In the app:** **Models** finds LM Studio, choose **Use**. Then **Add project → New Astro site**, switch the text
    box to **Build**, describe your website ("a page for my bakery with opening hours and a menu…") and choose
    **Start build**. When it's done, **Preview** shows your site.
 
 If something is missing, the app says what and usually offers a **Fix** button. Local models make mistakes, so look
 over the result before you publish it.
+
+**If your computer warns you about the start file.** It came from the internet, so your computer asks before
+running it. That is normal; the steps below are the system's own way to say yes, and nothing is switched off.
+
+- **Windows:** if a blue box says *Windows protected your PC*, choose **More info → Run anyway**. When an installer
+  asks *Do you want to allow this app to make changes to your device?*, choose **Yes**. If Smart App Control blocks
+  the file and offers no way to run it, use the manual steps below instead; Smart App Control can also block Ruby
+  itself on some computers.
+- **Mac:** if it says it can't verify the file is free of malware, choose **Done**, then open **System Settings →
+  Privacy & Security**, scroll down and choose **Open Anyway** next to "Start VB Harness.command" (on older macOS,
+  right-click the file and choose **Open**). If Terminal asks to access your Downloads or Desktop folder, choose
+  **Allow**. Installing Homebrew asks for your Mac password; that is the installer asking, not VB Harness.
+- **After installing a tool,** the window may ask you to close it and double-click Start VB Harness again, so the
+  computer picks up the new tool.
+
+**Prefer a terminal, or on Linux?** Install [Ruby 3.3+](https://www.ruby-lang.org/en/documentation/installation/)
+(on Windows, [RubyInstaller](https://rubyinstaller.org/)), [Git](https://git-scm.com/downloads) and
+[Node.js](https://nodejs.org/) yourself, open a terminal in the unzipped folder and type `ruby exe/harness`.
 
 ## Fastest path
 
