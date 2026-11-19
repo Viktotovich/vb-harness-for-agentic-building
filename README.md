@@ -757,9 +757,6 @@ out for lack of tasks.*
   that is friendlier to agents and still easy for people.
 - **Easy to review.** Ruby is easy to skim when you approve a pull request, read code or leave review comments. That
   matters for a project that expects many outside contributions.
-- **A bit of history.** Ruby and Ruby on Rails are what first pulled the author towards AdonisJS and deeper
-  TypeScript work. There was never time to learn Ruby properly back then, but its influence stuck. This project is
-  the chance to build in it.
 
 ## Development
 
