@@ -254,7 +254,7 @@ module Harness
     # @return [Plan::Planner::Result]
     def check_given(setup, client, plan, budget: false)
       if budget == false
-        impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: [], rewrite_bytes: @config.limits.whole_file_rewrite_max_bytes))
+        impl_system = Prompts.render("implement_system", rules: Prompts.render("edit_rules", files: "", tests: [], deletes: [], rewrite_bytes: @config.limits.whole_file_rewrite_max_bytes))
         budget = Task::Gather.budget(client: client, config: @config, role: :implementer, system: impl_system,
                                      schema: Task::EditSet::SCHEMA)
       end

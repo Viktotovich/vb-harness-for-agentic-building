@@ -2,6 +2,9 @@
 <%# Copyright 2026 V and Bruno LLC -%>
 Rules:
 - The plan names these files for this task: <%= files %>. Change other files only when the task cannot be done without them, and at most <%= max_files %> files in all.
+<% unless deletes.empty? -%>
+- The task removes these files: <%= deletes.join(", ") %>. Delete each with delete_file, and change what used them so nothing refers to them.
+<% end -%>
 <% tests.each do |path| -%>
 - Write the test for this task exactly at <%= path %>.
 <% end -%>

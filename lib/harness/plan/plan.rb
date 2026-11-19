@@ -24,7 +24,13 @@ module Harness
       end
     end
 
-    Files = Data.define(:create, :modify, :read)
+    # delete: files the task removes (each must exist when the task runs). Optional, so callers that build a task
+    # without it still work.
+    Files = Data.define(:create, :modify, :read, :delete) do
+      def initialize(delete: [], **rest)
+        super
+      end
+    end
 
     # One small task (DESIGN.md 5.3). type: a COMMIT_TYPES entry for its commit, or nil when the plan gave none.
     Task = Data.define(:id, :title, :intent, :files, :depends_on, :acceptance, :type) do
@@ -41,6 +47,11 @@ module Harness
       # @return [Array<String>] every path the task may write
       def writable
         (files.create - test_paths + files.modify + test_paths).uniq
+      end
+
+      # @return [Array<String>] every path the task may delete: the files it modifies or lists under files.delete
+      def deletable
+        (files.modify + files.delete).uniq
       end
 
       # @return [String] the task as a model sees it (callers fence it: plans are model output, I9)
@@ -136,10 +147,10 @@ module Harness
         id = Parse.str!(h["id"], "#{path}.id")
         Parse.fail!("#{path}.id", "id like T1", id) unless id.match?(TASK_ID)
         files = Parse.hash!(h["files"], "#{path}.files")
-        Parse.known_keys!(files, %w[create modify read], "#{path}.files")
+        Parse.known_keys!(files, %w[create modify read delete], "#{path}.files")
         acceptance = h["acceptance"]
         Parse.fail!("#{path}.acceptance", "array", acceptance) unless acceptance.is_a?(Array)
-        lists = %w[create modify read].to_h { |k| [k.to_sym, Parse.strings!(files.fetch(k, []), "#{path}.files.#{k}").dup] }
+        lists = %w[create modify read delete].to_h { |k| [k.to_sym, Parse.strings!(files.fetch(k, []), "#{path}.files.#{k}").dup] }
         items = acceptance.each_with_index.map { |a, i| parse_acceptance(a, "#{path}.acceptance[#{i}]") }.freeze
         # A test the task writes is one of its files: added to files.create unless the plan modifies it, so the
         # edit rules, the checks and the file count all see it.
@@ -208,7 +219,8 @@ module Harness
           end
         end
         { "id" => t.id, "title" => t.title, "intent" => t.intent,
-          "files" => { "create" => t.files.create, "modify" => t.files.modify, "read" => t.files.read },
+          "files" => { "create" => t.files.create, "modify" => t.files.modify, "read" => t.files.read }
+                     .merge(t.files.delete.empty? ? {} : { "delete" => t.files.delete }),
           "dependsOn" => t.depends_on, "acceptance" => acc }.merge(t.type ? { "type" => t.type } : {})
       end
       private_class_method :parse_task, :parse_acceptance, :parse_question, :check_ids!

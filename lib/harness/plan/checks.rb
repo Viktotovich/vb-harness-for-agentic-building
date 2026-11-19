@@ -88,20 +88,20 @@ module Harness
       # makes the change.
       # @return [Array<Issue>]
       def self.writes_nothing(task)
-        return [] unless (task.files.create + task.files.modify).empty?
+        return [] unless (task.files.create + task.files.modify + task.files.delete).empty?
 
         [Issue.new(task: task.id, reason: "plan.no_changes",
-                   message: "#{task.id} creates and modifies no files. Every task must change something: fold the inspection " \
+                   message: "#{task.id} creates, modifies and deletes no files. Every task must change something: fold the inspection " \
                             "into the task that writes (list what it reads under files.read) and remove #{task.id}")]
       end
 
       # @return [Array<Issue>]
       def self.files_count(task, max_files)
-        n = (task.files.create + task.files.modify).uniq.size
+        n = (task.files.create + task.files.modify + task.files.delete).uniq.size
         return [] if n <= max_files
 
         [Issue.new(task: task.id, reason: "plan.too_many_files",
-                   message: "#{task.id} creates or modifies #{n} files; the limit is #{max_files} per task. Split it into smaller tasks")]
+                   message: "#{task.id} creates, modifies or deletes #{n} files; the limit is #{max_files} per task. Split it into smaller tasks")]
       end
 
       # @param stack [Gates::Stack]
@@ -136,7 +136,8 @@ module Harness
       # @param earlier [Set<String>] files an earlier task creates (see created_before)
       # @return [Array<Issue>]
       def self.paths(task, root, protected, earlier)
-        listed = { "create" => task.files.create, "modify" => task.files.modify, "read" => task.files.read }
+        listed = { "create" => task.files.create, "modify" => task.files.modify, "read" => task.files.read,
+                   "delete" => task.files.delete }
         listed.flat_map do |kind, list|
           list.filter_map do |rel|
             full = Repo::Paths.resolve_in_worktree(root, rel, protected: protected)

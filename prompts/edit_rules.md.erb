@@ -10,6 +10,9 @@ Put test files under "tests" and all other edits under "edits". "notes" is one s
 
 Rules:
 - Edit only these files: <%= files %>.
+<% unless deletes.empty? -%>
+- Delete these files, each with a "delete" edit: <%= deletes.join(", ") %>. Do not change them otherwise.
+<% end -%>
 <% tests.each do |path| -%>
 - Write the test for this task exactly at <%= path %>, as a "create" entry under "tests" (or "replace" if it exists). Use no other test path.
 <% end -%>
