@@ -241,7 +241,7 @@ module Harness
 
     def inside?(real, root)
       root_real = File.realpath(root)
-      real.casecmp?(root_real) || real.downcase.start_with?("#{root_real.downcase}/") || real.downcase.start_with?("#{root_real.downcase}\\")
+      real.downcase == root_real.downcase || real.downcase.start_with?("#{root_real.downcase}/") || real.downcase.start_with?("#{root_real.downcase}\\")
     rescue SystemCallError
       false
     end

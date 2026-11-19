@@ -3,6 +3,7 @@
 # Copyright 2026 V and Bruno LLC
 
 require "json"
+require_relative "../ascii"
 
 module Harness
   module Figma
@@ -28,7 +29,7 @@ module Harness
 
       # @return [String]
       def self.describe(node)
-        kind = node["type"].to_s.tr("_", " ").capitalize
+        kind = Ascii.capitalize(node["type"].to_s.tr("_", " "))
         head = "#{kind} #{quoted(node['name'])}#{size(node['absoluteBoundingBox'])}".strip
         details = [text(node), layout(node), paint("fill", node["fills"]), stroke(node), radius(node), opacity(node)].flatten.compact
         details.empty? ? head : "#{head}: #{details.join(', ')}"

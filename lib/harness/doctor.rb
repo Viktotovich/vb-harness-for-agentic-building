@@ -25,6 +25,9 @@ module Harness
     end
 
     MIN_RUBY = "3.3"
+    # First fixed release per series for ruby2shell (GHSA-34m4-m9fh-gqp5). The harness never reaches the bug (see
+    # Ascii), so an affected Ruby is reported, not refused: other Ruby software on the machine may still be exposed.
+    RUBY2SHELL_FIXED = { "3.3" => "3.3.14", "3.4" => "3.4.13", "4.0" => "4.0.10" }.freeze
 
     # @param config_path [String]
     # @param env [Hash{String=>String}]
@@ -52,12 +55,29 @@ module Harness
     # @return [Boolean] no problem found
     def self.ready?(checks) = checks.all?(&:ok)
 
+    # @param version [String] a Ruby version, RUBY_VERSION by default
+    # @return [String, nil] the fixed release to upgrade to when version has the ruby2shell bug, else nil
+    #   (also nil below 3.3, which the minimum-version check already refuses)
+    def self.ruby2shell_upgrade(version = RUBY_VERSION)
+      v = Gem::Version.new(version)
+      fixed = RUBY2SHELL_FIXED[v.segments.first(2).join(".")]
+      fixed && v < Gem::Version.new(fixed) ? fixed : nil
+    end
+
     private
 
     # @return [Check]
     def ruby
       ok = Gem::Version.new(RUBY_VERSION) >= Gem::Version.new(MIN_RUBY)
-      Check.new(area: "ruby", ok: ok, detail: "Ruby #{RUBY_VERSION}", fix: ok ? nil : "install Ruby #{MIN_RUBY} or newer")
+      return Check.new(area: "ruby", ok: false, detail: "Ruby #{RUBY_VERSION}", fix: "install Ruby #{MIN_RUBY} or newer") unless ok
+
+      upgrade = self.class.ruby2shell_upgrade
+      return Check.new(area: "ruby", ok: true, detail: "Ruby #{RUBY_VERSION}", fix: nil) unless upgrade
+
+      Check.new(area: "ruby", ok: true,
+                detail: "Ruby #{RUBY_VERSION} has the ruby2shell bug (GHSA-34m4-m9fh-gqp5). The harness does not reach it, " \
+                        "but upgrade to #{upgrade} or newer for other Ruby software on this machine",
+                fix: "upgrade Ruby to #{upgrade} or newer")
     end
 
     # Found on PATH only: doctor starts no process (I4 keeps those to known places).

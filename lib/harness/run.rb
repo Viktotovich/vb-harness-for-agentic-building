@@ -4,6 +4,7 @@
 
 require "fileutils"
 require "json"
+require_relative "ascii"
 require_relative "errors"
 require_relative "gates/baseline"
 require_relative "gates/env"
@@ -164,7 +165,7 @@ module Harness
               "install the project's dependencies there"
             end
       "#{missing.join(', ')} #{missing.size == 1 ? 'is' : 'are'} missing in #{top}: the project's " \
-        "dependencies are not installed, so its checks cannot run. #{how.capitalize}, then start the run again"
+        "dependencies are not installed, so its checks cannot run. #{Ascii.capitalize(how)}, then start the run again"
     end
 
     # @param config [Config]

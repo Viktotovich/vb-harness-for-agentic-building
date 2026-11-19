@@ -5,6 +5,7 @@
 require "fileutils"
 require "json"
 require "socket"
+require_relative "ascii"
 require_relative "config"
 require_relative "errors"
 require_relative "report/render"
@@ -187,7 +188,7 @@ module Harness
         length = 0
         while (line = client.gets) && line != "\r\n"
           k, v = line.split(":", 2)
-          length = v.to_i if k.to_s.strip.casecmp?("content-length")
+          length = v.to_i if Ascii.same?(k.to_s.strip, "content-length")
         end
         raw = length.positive? ? client.read([length, 4 * 1024 * 1024].min).to_s : ""
         status, payload = route(method, path.to_s, raw)
