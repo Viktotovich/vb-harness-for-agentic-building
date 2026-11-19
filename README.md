@@ -227,14 +227,14 @@ working sit at the bottom of the sidebar, next to **Settings**.
    server as the first. **Settings → How runs work** picks the [mode](#configuration) (Careful, Balanced or Quick)
    and the way of working (Pipeline or Agent).
 
-   ![Settings → Models: the model in use with its probed abilities as labels, the planning-and-review picker, and LM Studio and Ollama as found on this machine](docs/media/app-connect-a-model.png)
+   ![Settings → Models: the model in use with its probed abilities as labels and the planning-and-review picker; below, LM Studio and Ollama (not installed on this machine) with links to get one](docs/media/app-connect-a-model.png)
 2. **Chat.** Chat mode is a planning conversation: work out what to build, compare approaches, sketch the steps.
    Ctrl+Enter (⌘+Enter on macOS) sends; Enter adds a line. Replies stream. When the model thinks first, you see
    **Thinking… 4s** with its latest line of thought as it works; afterwards it folds into **Thought for 12s** above
    the reply, and a click opens the whole thought process so you can judge how it got there. Chat changes no files. **Use as build request** under a reply copies it into the text box in
    Build mode, for you to edit and send: nothing starts until you do.
 
-   ![A planning chat: asked about a Badge component for an Astro site, the local model thought for 15 seconds (folded under "Thought for 15s") and replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
+   ![A planning chat: asked about a Badge component for an Astro site, the local model thought for 7 seconds (folded under "Thought for 7s") and replies with an approach and a sketch of the component; under the reply, Use as build request](docs/media/app-chat.png)
 3. **Build.** Switch the text box to **Build**, pick a project (or **Add project**), describe the feature, and choose
    **Start build**. The line under the text box says what will happen; if something stops the build (uncommitted
    changes, a project with a problem), a card in the chat above the text box says what and offers its fixes. A live card in the chat shows the run:
@@ -252,7 +252,7 @@ working sit at the bottom of the sidebar, next to **Settings**.
    **Copy branch**, and **View report**, which opens the report beside the chat. A stopped or failed run has
    **Resume**, which continues where it left off and keeps what was committed.
 
-   ![A build in progress: the request as the card's title, the progress bar at Tasks, the Now line, task T1 at its Check step and T2 waiting for it, and the kept and caught model answers](docs/media/app-build.png)
+   ![A build in progress: the request as the card's title, the progress bar at Tasks, the Now line, task T1 committed and T2 at its Check step, and the kept and caught model answers](docs/media/app-build.png)
 
 The app only listens on `127.0.0.1`, refuses other host names, and needs a per-start token for every change.
 
@@ -465,7 +465,7 @@ changed while the run was paused. Each line says what to do about it.
 Replies that were discarded and retried with thinking off count too. Rejections show where a model struggles, and
 they are how you compare models.
 
-![A report in the app, open beside the chat: the demo run's summary, the tasks table with both tasks done and their commits, gates compared with the baseline, and empty Findings and Questions](docs/media/app-report.png)
+![A report in the app, open beside the chat and scrolled past its plain-words summary: Read this first, the tasks table with both tasks done and their commits, gates compared with the baseline, and empty Findings and Questions](docs/media/app-report.png)
 
 **Findings** in the report are only claims confirmed by a failing test. Everything else the review raised is under
 **Questions**, clearly marked as unconfirmed.
