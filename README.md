@@ -57,6 +57,13 @@ decisions.
 You don't need to write code: you describe the website in plain words, a model on your own computer builds it, and
 one click shows it in your browser. Setup takes about 30 minutes, once.
 
+[![A screen recording of a first run on Windows, sped up and labelled: VB Harness is downloaded from GitHub as a ZIP, Smart App Control blocks the double-clicked start file, a terminal in the folder starts the app with ruby exe\harness and the browser opens on it, a local model is connected by its address, a new Astro site is added, a request for a bakery welcome page is typed, the type check and site build pass, and the card reads Built 1 of 1 part, saved on its own branch, followed by the plain page it built](docs/media/first-run-preview.webp)](docs/media/first-run.mp4)
+
+*A real first run on Windows, from the download to a change ready to merge, in 68 seconds. Waits are sped up and
+labelled. On this PC Smart App Control blocked the start file, so the video shows the terminal way round it (below).
+Steps 1–3 were recorded on 0.1.66 and steps 4–6 on 0.1.67; the model download is not shown. Click it for the 1080p
+video.*
+
 1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/). It runs AI models on your computer.
    Pick a video for the next two steps: a [quick LM Studio setup](https://www.youtube.com/watch?v=396Xg5ZSL80), or
    [Web Dev Simplified's friendly intro to running AI locally](https://www.youtube.com/watch?v=UngVdAsQEiU).
