@@ -167,12 +167,14 @@ module Harness
     # @raise [ParseError]
     def create_plan(name)
       name = new_name(name)
-      Plan.new(action: "create", command: "#{CREATE_ASTRO.call(name).join(' ')}   (in projects/), then git init and a first commit",
+      Plan.new(action: "create", command: "#{CREATE_ASTRO.call(name).join(' ')}   (in projects/), then " \
+                                          "#{ProjectSetup.astro_check_fix.command}, git init and a first commit",
                target: "projects/#{name}")
     end
 
-    # A new Astro project in projects/<name>: npm's create-astro (a download and an install, I10), then a git
-    # repository with a first commit. Only after the user confirmed the plan in the app.
+    # A new Astro project in projects/<name>: npm's create-astro (a download and an install, I10), the packages
+    # astro check needs (so the first build's checks can run), then a git repository with a first commit. Only after
+    # the user confirmed the plan in the app.
     # @return [Project]
     # @raise [ParseError, GitError, ConfigError]
     def create_astro(name)
@@ -183,6 +185,9 @@ module Harness
       raise ConfigError, "npm create astro failed: #{"#{r.stdout}\n#{r.stderr}".strip.lines.last(5).join.strip[0, 400]}" unless r.success?
 
       path = File.join(@dir, name)
+      ok, output = ProjectSetup.run(ProjectSetup.astro_check_fix, path, @env.to_h)
+      raise ConfigError, "installing #{ProjectSetup::ASTRO_CHECK_PACKAGES.join(', ')} failed: #{output.strip.lines.last(5).join.strip[0, 400]}" unless ok
+
       File.write(File.join(path, ".gitignore"), "node_modules/\ndist/\n.astro/\n") unless File.exist?(File.join(path, ".gitignore"))
       git.run(%w[init -q -b main], chdir: path)
       git.run(%w[add -A], chdir: path)

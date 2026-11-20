@@ -138,7 +138,7 @@ module Harness
           repo = run["repo"].to_s
           raise ConfigError, "this run has no project folder to fix" unless File.directory?(repo)
 
-          apply_fix(setup_fixes(repo, run.dig("setupNeeds", "packages")), repo, body(req))
+          apply_fix(run_setup_fixes(repo, run), repo, body(req))
         when :chat_create then Response.json(@chats.create(model: model_choice(body(req)["model"])))
         when :chat_get then Response.json(@chats.get(args[0]))
         when :chat_action then chat_action(args[0], args[1], body(req))
@@ -252,6 +252,21 @@ module Harness
         stack ? ProjectSetup.fixes(stack, path, packages: Array(packages)) : []
       end
 
+      # The fixes a failed run's card offers. When the project's only uncommitted changes are dependency files (an
+      # install made outside the app, or before installs committed their own changes), committing them is the fix,
+      # since a build cannot start until the project is clean.
+      # @param path [String] the run's project folder
+      # @param run [Hash] run.json
+      # @return [Array<ProjectSetup::Fix>]
+      def run_setup_fixes(path, run)
+        project = projects!.fixes_for(path)
+        return project if project.any? { |f| f.id == "commit-deps" }
+
+        setup_fixes(path, run.dig("setupNeeds", "packages"))
+      rescue GitError
+        setup_fixes(path, run.dig("setupNeeds", "packages"))
+      end
+
       # One-click setup: without "confirm": true the answer is the exact command (409), as for clone; with it the
       # command runs in the project folder with the gates' scrubbed environment.
       # @return [Response]
@@ -275,7 +290,7 @@ module Harness
 
         out = {}
         if run["status"] == "failed" && File.directory?(run["repo"].to_s)
-          out["setupFixes"] = setup_fixes(run["repo"], run.dig("setupNeeds", "packages")).map(&:to_json_hash)
+          out["setupFixes"] = run_setup_fixes(run["repo"], run).map(&:to_json_hash)
         end
         tree = run["worktree"].to_s
         out["canPreview"] = !tree.empty? && File.directory?(tree) && !@projects.stack_for(tree)&.preview.nil?

@@ -42,7 +42,9 @@ class ProjectSetupTest < Minitest::Test
     fixes = PS.fixes(s, @tmp, packages: ["@astrojs/check", "typescript", "bad name; rm -rf /", "-e"])
     assert_equal [[%w[pnpm add -D --ignore-scripts @astrojs/check typescript]]], fixes.map(&:steps), "only valid package names"
     assert_equal({ "id" => "packages", "label" => "Install @astrojs/check, typescript",
-                   "command" => "pnpm add -D --ignore-scripts @astrojs/check typescript" }, fixes.first.to_json_hash)
+                   "command" => "pnpm add -D --ignore-scripts @astrojs/check typescript && git commit (the changed package files only)" },
+                 fixes.first.to_json_hash, "an install that changes package files commits them, so a build can start at once")
+    assert fixes.first.commit
     assert_empty PS.fixes(stack, @tmp), "nothing missing, nothing asked for"
   end
 
@@ -89,5 +91,45 @@ class ProjectSetupTest < Minitest::Test
     assert_includes out, "made it"
     assert File.directory?(File.join(@tmp, "generated"))
     assert_empty PS.fixes(s, @tmp)
+  end
+
+  def git_repo
+    env = ENV.to_h.slice("PATH", "SystemRoot", "PATHEXT", "HOME", "USERPROFILE")
+                 .merge("GIT_AUTHOR_NAME" => "t", "GIT_AUTHOR_EMAIL" => "t@example.com", "GIT_COMMITTER_NAME" => "t",
+                        "GIT_COMMITTER_EMAIL" => "t@example.com", "GIT_CONFIG_NOSYSTEM" => "1")
+    File.write(File.join(@tmp, "package.json"), "{}\n")
+    [%w[init -q -b main], %w[add -A], %w[commit -q -m init]].each { |a| Harness::Exec.run(["git", *a], chdir: @tmp, env: env) }
+    env
+  end
+
+  def writes(files) = [RbConfig.ruby, "-e", files.map { |f| "File.write(#{f.inspect}, 'x')" }.join("; ")]
+
+  def status(env) = Harness::Exec.run(%w[git status --porcelain --untracked-files=all], chdir: @tmp, env: env).stdout
+
+  def test_an_install_commits_only_the_package_files_it_changed
+    env = git_repo
+    fix = PS::Fix.new(id: "packages", label: "Install x", steps: [writes(%w[package.json package-lock.json])], commit: true)
+    ok, out = PS.run(fix, @tmp, env)
+    assert ok, out
+    assert_empty status(env), "the project is clean again, so Build again can start"
+    log = Harness::Exec.run(%w[git log -1 --format=%s --name-only], chdir: @tmp, env: env).stdout
+    assert_includes log, "chore: install project dependencies"
+    assert_includes log, "package-lock.json"
+  end
+
+  def test_an_install_that_changes_other_files_commits_nothing
+    env = git_repo
+    fix = PS::Fix.new(id: "packages", label: "Install x", steps: [writes(%w[package.json src.astro])], commit: true)
+    ok, out = PS.run(fix, @tmp, env)
+    refute ok
+    assert_includes out, "other files changed too"
+    assert_includes status(env), "src.astro", "the person's files are left as they are"
+    refute_includes Harness::Exec.run(%w[git log --format=%s], chdir: @tmp, env: env).stdout, "chore: install"
+  end
+
+  def test_a_new_astro_project_gets_what_astro_check_needs
+    fix = PS.astro_check_fix
+    assert_equal [%w[npm install --save-dev --ignore-scripts @astrojs/check typescript]], fix.steps
+    refute fix.commit, "create_astro makes the first commit itself"
   end
 end
