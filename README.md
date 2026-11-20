@@ -475,9 +475,10 @@ they are how you compare models.
 ## Cookbook: an Astro landing page
 
 [docs/cookbook/astro-landing-page.md](docs/cookbook/astro-landing-page.md) builds a small business landing page
-from an empty folder with a local 16K coder model: the new project, the theme, planning in Chat, the Build request
-line by line, seven runs (the first two found harness gaps, now fixed; the last four were layout and fixes after
-reviewing the page), reviewing the branch and merging it. Every stage has a screenshot.
+from an empty folder with a local 9B model and a 48K context. It covers the new project, the theme, planning in
+Chat and the Build request line by line. Then come seven runs: two for the content, two for the layout and three
+to make it look finished. Each run is followed by what the page showed and what to ask next. Every stage has a
+screenshot.
 
 [![The landing page the cookbook builds](docs/media/cookbook/page-final.png)](docs/cookbook/astro-landing-page.md)
 
@@ -489,7 +490,8 @@ and a diff, while a model on your own machine does the planning, editing, fixing
 
 ![Claude writes the request (about 740 tokens), the harness and a local model do the work (93,400 tokens), and Claude reads the status, report and diff (about 6,400 tokens)](docs/media/using-with-claude.svg)
 
-**What it saves, measured on the cookbook's third run** (eight tasks, a full landing page):
+**What it saves, measured on a run from an earlier version of the cookbook** (a 16K coder model, eight tasks, a
+full landing page):
 
 | | Tokens |
 | --- | --- |
