@@ -4,20 +4,16 @@
 # Cookbook: an Astro landing page with a local model
 
 This recipe builds a landing page for **Tidewater Clay**, a made-up pottery studio, from an empty folder to a
-merged branch. All the code is written by a local coder model with a 16K context window, running on one machine.
-It covers what was typed, what the model said, what went wrong and why each decision was made. It took seven
-build runs. The first two found real gaps in the harness, which are now fixed; the third built the right page;
-the fourth was a layout pass, and the last three were small fixes after reading the result. The recipe says what
-each one taught.
+merged branch. A 9B local model with a 48K context window, running on one machine, wrote all of the code. The
+recipe covers what was typed, what the model said, what went wrong and why each decision was made. It took seven
+build runs:
+
+- **Runs 1 and 2** built the content. Each failed on one task for the same reason, a gap in how the harness
+  treats a task that finds its work already done.
+- **Runs 3 and 4** laid the page out.
+- **Runs 5 to 7** made it look finished, with drawings instead of empty tiles.
 
 ![The finished Tidewater Clay landing page](../media/cookbook/page-final.png)
-
-> **About the screenshots.** The app screenshots in this recipe were taken during the real runs, with an earlier
-> version of the app: darker, with a run id as the card's title and a text strip for progress. The app now looks
-> like the [README's screenshots](../../README.md#quick-start-the-app), and some names changed: **Add project** is a
-> dialog, the run card has a progress bar and a **Now** line, rejected outputs are shown as "caught by the
-> harness's checks" under **Why?**, and **Show report** is **View report**. The steps, the requests and the results
-> are the same.
 
 **Contents**
 
@@ -27,58 +23,74 @@ each one taught.
 4. [Choose the theme](#4-choose-the-theme)
 5. [Plan in Chat first](#5-plan-in-chat-first)
 6. [Write the Build request](#6-write-the-build-request)
-7. [Run 1: two harness gaps](#7-run-1-two-harness-gaps)
-8. [Run 2: it compiles, but it is not the page you asked for](#8-run-2-it-compiles-but-it-is-not-the-page-you-asked-for)
-9. [Run 3: the right page, plainly laid out](#9-run-3-the-right-page-plainly-laid-out)
-10. [Run 4: a layout pass](#10-run-4-a-layout-pass)
-11. [Runs 5 to 7: review, then small fixes](#11-runs-5-to-7-review-then-small-fixes)
-12. [Review and merge](#12-review-and-merge)
-13. [What to take from this](#13-what-to-take-from-this)
+7. [Run 1: one task did the work of four](#7-run-1-one-task-did-the-work-of-four)
+8. [Run 2: a fix list, one task per file](#8-run-2-a-fix-list-one-task-per-file)
+9. [Runs 3 and 4: a layout pass, then its fixes](#9-runs-3-and-4-a-layout-pass-then-its-fixes)
+10. [Runs 5 to 7: make it look finished](#10-runs-5-to-7-make-it-look-finished)
+11. [Review and merge](#11-review-and-merge)
+12. [What to take from this](#12-what-to-take-from-this)
 
 ## 1. What you need
 
 - The harness installed (see [Install](../../README.md#install)) and Node.js 22 or newer for Astro.
-- A model behind an OpenAI-compatible server. This recipe used **Tiel Coder 35B-A3B** (the `UD-IQ3_XXS` quant) on
-  llama.cpp's server with a 16,384-token context and one request at a time. Any model works; a smaller or slower
-  one only changes how long it takes.
-- A model profile with room to answer. The one used here:
+- A model behind an OpenAI-compatible server. This recipe used **Ornith 1.0 9B** with an Astro LoRA adapter on
+  llama.cpp's server, with a 49,152-token (48K) context and one request at a time. Any model works; a smaller or
+  slower one only changes how long it takes.
+- Two model profiles on the same server: one that thinks a little, for the roles that judge, and one with
+  thinking off, for the roles that type.
 
   ```json
-  "default": {
-    "baseUrl": "http://127.0.0.1:8080/v1",
-    "model": "tiel-coder-35b-a3b-ud-iq3_xxs",
-    "contextTokens": "probe",
-    "maxOutputTokens": 4000,
-    "thinking": { "control": "probe", "effort": "low" },
-    "concurrency": 1,
-    "timeoutSec": 1800
-  }
+  "profiles": {
+    "default": {
+      "baseUrl": "http://127.0.0.1:8081/v1",
+      "model": "ornith-1.0-9b",
+      "contextTokens": 49152,
+      "maxOutputTokens": 8000,
+      "thinking": { "control": "probe", "effort": "low" },
+      "concurrency": 1,
+      "timeoutSec": 7200
+    },
+    "fast": {
+      "baseUrl": "http://127.0.0.1:8081/v1",
+      "model": "ornith-1.0-9b",
+      "contextTokens": 49152,
+      "maxOutputTokens": 8000,
+      "thinking": { "control": "reasoning_effort", "effort": "none" },
+      "concurrency": 1,
+      "timeoutSec": 7200
+    }
+  },
+  "roles": {
+    "planner": "default", "reviewer": "default", "verifier": "default",
+    "implementer": "fast", "fixer": "fast", "summarizer": "fast", "tester": "fast"
+  },
+  "mode": "agent"
   ```
 
-  **Why 4,000 output tokens:** a 16K window has to hold the prompt, the files and the answer. 4,000 leaves about
-  12K for context and is enough for one component's edits. When a thinking model spends all of it on thinking,
-  the harness asks again with thinking off (you will see this happen below), so the budget is a ceiling, not a
-  guess you have to get exactly right.
+  **Why two profiles:** planning and review are judgement, and a little thinking helps them. Editing a file is
+  typing, and thinking there only costs time. **Why 8,000 output tokens:** the 48K window has to hold the prompt,
+  the files and the answer; 8,000 leaves about 40K for context and is plenty for one component. **Why agent
+  mode:** the implementer works through tool calls (read a file, edit it, run a check, finish) instead of
+  answering with every edit in one reply, so it can look before it writes.
 
 ## 2. A new Astro project
 
 In the app, choose **Add project** (on the start page, or next to the project picker in Build mode), then **New
-Astro site**, and type the folder name, `tidewater-clay`. **Continue** does not download anything yet. The dialog
-shows the exact command first:
+Astro site**, and type the folder name, `tidewater-clay`. Nothing runs until you have seen the exact command:
 
 ```text
 Before anything runs, this is exactly what will happen:
 
-npm create astro@latest tidewater-clay -- --template minimal --install --no-git --yes
+npm create astro@latest tidewater-clay -- --template minimal --install --no-git --yes (in projects/), then git init and a first commit
 
-Into projects/tidewater-clay.
+Into projects/tidewater-clay. It downloads code from the internet and installs the template's dependencies.
 ```
 
-After you choose **Create project**, it runs the command, writes a `.gitignore`, makes a git repository and commits
-"New Astro project". The project chip under the text box then shows the project's state: its branch, `main`, and
-✓ clean; the line under the box names the Astro version it found.
+**Create project** runs it, writes a `.gitignore`, makes a git repository and commits "New Astro project". The start
+page ticks off **Add project**, and the project chip under the text box shows the branch and its state, `main ·
+clean`. The line under the box names the Astro version it found.
 
-![The app with the new project selected: git, branch main, clean, astro 7.4.0](../media/cookbook/01-new-project.png)
+![The start page with the new project: main · clean, astro 7.4.13](../media/cookbook/01-new-project.png)
 
 **Why the minimal template:** the harness plans against the files that exist. A starter full of example pages
 gives the planner more to read and more to get wrong. The minimal template has one page and nothing else.
@@ -93,9 +105,10 @@ npm install -D @astrojs/check typescript
 git commit -am "Add astro check and TypeScript"
 ```
 
-Now the Astro stack's gates are `typecheck` (`astro check`), `build` (`astro build`) and `unit` (`vitest`).
-Vitest is not installed, and that is fine: at intake the harness runs every gate once as a baseline, sees that
-`unit` cannot run, and does not offer it to the planner (this was one of the run 1 fixes; see below).
+Now the Astro stack's gates are `typecheck` (`astro check`) and `build` (`astro build`), plus `unit`, `e2e`,
+`format` and `lint`, which this project has no tools for. That is fine: at intake the harness runs every gate once
+as a baseline, sees which cannot run, says so at the top of the report ("Gate not run"), and does not offer them
+to the planner.
 
 ## 4. Choose the theme
 
@@ -148,49 +161,47 @@ Help me plan it before I ask for code: which sections should the page have, how 
 components, which colour should do which job, and what should I decide first? Keep it a plan, no full code.
 ```
 
-![The first planning message and the start of the model's answer](../media/cookbook/02-chat-top.png)
+![The first planning message, with the model's answer starting below it](../media/cookbook/02-chat-top.png)
 
-The answer was useful. It said to decide three things first (what the studio offers, whether there are photos,
-and the one primary action), proposed Hero, About, Collections, Process, Visit and Footer sections, and gave
-every colour a role.
+The answer came back in 80 seconds (9 of them thinking). It was short and confident, and half of it was wrong for
+this page:
 
-![The model's colour roles and its one rule: clay only for action](../media/cookbook/02-chat-end.png)
+![The model's plan: colour roles, five sections and what to decide first](../media/cookbook/02-chat-end.png)
 
-It also contradicted itself. It made teal-700 the colour for links and nav, and then said "everything interactive
-(buttons, primary links) is clay". A small model's plan needs reading, not just accepting. The reply settled the
-three questions and the contradiction:
+- **Colours the other way round:** teal for accents and buttons, clay for headings. The point of the palette is
+  the reverse.
+- **Sections for a studio that does not exist yet:** a hero with a studio photo, About, Work, Pricing.
+- **Components in `src/pages/`.** In Astro every file there becomes its own URL.
+- **"Decide first": the serif fallback and a sticky nav.** Neither is what the plan depends on.
+
+A small model's plan needs reading, not accepting. The reply answered for it and corrected each point:
 
 ```text
-Answers:
-1. Both, but classes come first. The one primary action is "Book a class"; there is no booking system yet, so
-   the button is a mailto link to hello@example.com.
+Answers and corrections:
+1. Classes come first, pieces second. The one primary action is "Book a class"; there is no booking system yet,
+   so the button is a mailto link to hello@example.com.
 2. No photos yet. Use CSS-only placeholder tiles (sand-100 fill with a thin peach-300 rule), no image files.
-3. For v1, drop Process and the contact form. Visit (hours, address, email) goes in the footer.
-
-One correction: you put links in teal but also said everything interactive is clay. I'll keep nav and inline
-links teal-700, and use clay only for buttons.
+3. For v1: Header, Hero, Classes, Pieces, Footer. No About, no pricing, no contact form; Visit (hours, address,
+   email) goes in the footer. No sticky nav.
+4. Colours the other way round from your plan: headings are teal-900, links teal-700, and clay is only for the
+   "Book a class" button. Headings never use clay.
+5. Sections go in src/components/ and are rendered by the one page, src/pages/index.astro. A file in src/pages/
+   becomes its own URL.
 
 The build tool I'm using changes at most 3 files per task and checks each task with astro check and astro build.
 In what order should the work go, task by task?
 ```
 
-The model's first attempt at this answer spent its whole output allowance thinking and returned nothing. The app
-asked again with thinking off and shows that it did:
+The answer took 63 seconds (20 thinking):
 
-![The answer with the note "Ran out of room while thinking; answered with thinking off"](../media/cookbook/03b-retry-notice.png)
+![The model's task order: Header and Footer, then Hero, Classes and Pieces, then index.astro](../media/cookbook/03-chat-order.png)
 
-The task order it proposed is a good example of why the Build request should not just paste a chat answer:
+Composing `index.astro` last is right. What is missing is why the Build request should not just paste a chat answer:
 
-![The model's task order: every task also edits index.astro, and the layout imports Header and Footer](../media/cookbook/03-chat-order.png)
+- **No theme task.** The palette has nowhere to live, so each component would carry its own copy.
+- **No layout.** Nothing provides the HTML shell, so the first component's `astro check` has nothing to sit in.
 
-- **Every task edits `index.astro`.** Five tasks writing one file is five chances for an edit to miss the text it
-  expects to find.
-- **Task 1's layout imports Header and Footer**, which do not exist until tasks 2 and 5. Task 1's `astro check`
-  would fail on the missing imports, so it could never pass on its own.
-- **The palette lives in `Layout.astro`.** Components then depend on the layout for their variables, even though
-  they never import it.
-
-The Build request below fixes all three: the palette goes in its own stylesheet, created first; the layout imports
+The Build request below fixes both: the palette goes in its own stylesheet, created first; the layout imports
 no components; each component is its own task; and one last task composes the page.
 
 ## 6. Write the Build request
@@ -238,215 +249,218 @@ Why each part is there:
 | --- | --- |
 | "Static page only: no client JavaScript, no images, no new dependencies, no web fonts" | Rules out whole classes of task: installs (which the harness will not run), image files, font downloads, hydration. |
 | The full token list with values | The model copies exact values. Without them, every component invents its own colours. |
-| "Buttons are clay-600 … clay is used for nothing else" | Settles the contradiction from the chat in the request itself. |
-| "Style each component in its own `<style>` block … no Tailwind" | Added after run 2, where a component used Tailwind classes in a project without Tailwind. They compile, and do nothing. |
+| "Buttons are clay-600 … clay is used for nothing else" | Settles the colour roles from the chat in the request itself. |
+| "Style each component in its own `<style>` block … no Tailwind" | Small models reach for Tailwind classes by habit. In a project without Tailwind they compile, and do nothing. |
 | A numbered file list | The planner turns each file into a task that fits the 3-file limit. Paths are exact, so no task guesses where a file lives. |
 | "It imports no components" | Lets the layout pass its checks before any component exists. |
 | Exact text ("Hand-thrown in small batches", the class names) | Wording is a value too. Give it, or the model writes its own. |
-| "The cards are not links" | Answers the question the model asked at the end of the chat. |
 | index.astro last | The only file that imports everything, so it is the only task that has to wait for all the others. |
 
-The app adds a build card under the request and streams the run into it: its progress bar moves through Plan,
-Tasks, Final checks, Review and Report, and the **Now** line says in plain words what the model is doing.
+The app adds a build card under the request and streams the run into it: a progress bar through Plan, Tasks,
+Final checks, Review and Report, and a **Now** line that says in plain words what the model is doing.
 
 ![The Build request sent, with its build card starting](../media/cookbook/05-build-started.png)
 
-## 7. Run 1: two harness gaps
+## 7. Run 1: one task did the work of four
 
-The first run (without the styling line above) failed: one task done, one blocked, six skipped, and 16 of 27 model
-outputs rejected.
+The planner made the eight tasks the request lists, one per file. Run 1 took 46 minutes and failed: five tasks
+committed, three blocked.
 
-![Run 1: T1 blocked because the unit gate could not run, six tasks skipped after it](../media/cookbook/06-run1-failed.png)
+![Run 1: "Didn't finish: 5 of 8 parts built", 3 blocked](../media/cookbook/06-run1-card.png)
 
-Reading the events showed two problems in the harness, not in the model:
+The report says which three, and why, in its first lines:
 
-- **A task could not read a file an earlier task creates.** The planner correctly planned "T1 creates
-  `global.css`, T2 reads it", and the plan check refused it because `global.css` did not exist yet. A task may
-  now read or modify any file that a task it depends on creates, and the refusal says to add the creating task
-  to `dependsOn`.
-- **The planner was offered a gate that could not run.** It proved T1 with the `unit` gate, Vitest was not
-  installed, so T1 was blocked at its gates and everything after it was skipped. The planner is now told only
-  about gates the baseline could run, a plan that names any other is sent back (`plan.gate_unavailable`), and
-  when no test gate can run the prompt says so.
+![The run 1 report: what was made, and three parts left because "it made no changes"](../media/cookbook/07-run1-report.png)
 
-The model made mistakes too (a reply with a duplicate JSON key, a test item pointing at a page), and the harness
-rejected each one and asked again. That is the job it is built for.
+Pieces, Footer and `index.astro` were blocked because **they made no changes**, and the cause was one task
+earlier. T4 was told to create `Hero.astro`. It also rewrote `index.astro` to render every section. `astro check`
+then failed on the components that did not exist yet, so the agent created them too: `Classes`, `Pieces` and
+`Footer`, all in T4's commit. When T6 to T8 came to do their work, it was done. The harness refuses a task that
+changes nothing, since a task that claims success without a diff is usually a task that did nothing, so each was
+blocked, and the run failed.
 
-## 8. Run 2: it compiles, but it is not the page you asked for
+Two lessons, one for you and one for the harness:
 
-Run 2 used the fixed harness. Seven of eight tasks were committed; the last, composing `index.astro`, was blocked
-after three fix rounds.
+- **Agent mode lets a task reach past its own files.** The check that fails is real, and the agent fixes it the
+  quickest way it can. Here that meant doing three other tasks' work, unreviewed by their own steps.
+- **"Made no changes" is not always a failure.** The work was there and it type-checked. The card's "The run
+  stopped on an error" makes it sound worse than it was. Both are noted as harness follow-ups.
 
-![Run 2: T1 to T7 committed, T8 blocked after its fix rounds](../media/cookbook/07-run2-card.png)
+The model made smaller mistakes as well, and the harness caught each one. Of 180 outputs, 43 (24%) were
+rejected. Most were tool calls the agent got wrong: commands that do not exist (`create_file`), or reading a
+file before creating it. Each was refused with the reason, and the agent tried again.
 
-Three more things came out of it:
+The page it built:
 
-- **A crash.** `astro check` reported one diagnostic with a code and three without one, and comparing them raised
-  a Ruby error. The app's build thread died and the run sat at "running" with no explanation. The comparison is
-  fixed, a crashed run is now marked failed with a `harness.crashed` event, and `harness resume RUN_ID` continued
-  this one from the last committed task.
-- **A guessed import path.** T8's last error was `Cannot find module '../components/Layout.astro'`, for a file at
-  `src/layouts/Layout.astro`. The fixer had no way to see where the file is, so it guessed three times. Now a
-  "cannot find module" diagnostic comes with the repository files of that name.
-- **The theme was wrong, and every gate passed.** Reading the committed code showed invented colours (`#1f7a7a`
-  instead of `#145561`), variables that do not exist (`--clay-800`), Tailwind classes in a project without
-  Tailwind, and a footer that imports itself. The cause was in the harness: the planner had shortened T1 to "the
-  required CSS custom properties", and the implementer only saw the task, never the request with the values. Now
-  the implementer and fixer see the request itself, fenced as data, and the planner is told to copy exact values
-  into the tasks and to make a component that uses the theme depend on the stylesheet and read it.
+![Run 1's page: white background, unstyled header, a stray "---" line, wrong card text](../media/cookbook/08-run1-page.png)
 
-**The lesson for your own runs:** gates prove the code compiles and builds. They do not prove it matches the
-request. Read the diff before you merge, and when a run is wrong in a way the gates cannot see, the fix usually
-belongs in the request.
+Reading it against the request found what the gates could not:
 
-## 9. Run 3: the right page, plainly laid out
+- `global.css` has the variables but no rules for the body, headings or links. The planner shortened T1's
+  intent and dropped them, so the background is white.
+- The layout links the stylesheet with `<link href="../styles/global.css">`, which Astro does not bundle; the
+  variables only work because the header imports the file.
+- `Classes.astro` starts with three `---` lines. Astro takes the first two as frontmatter and prints the third.
+  The cards are white with shadows, and the names are capitalised ("Taster Evening").
+- The footer invented an address, "12 High Street, Norwich, NR2 1AB".
 
-Run 3 sent the same request again, with the styling line added, to the fixed harness. All eight tasks were
-committed and the run finished `done`.
+None of that is a failed check: all of it compiles and builds.
 
-![Run 3: all eight tasks committed](../media/cookbook/08-run3-card.png)
+## 8. Run 2: a fix list, one task per file
 
-This time the plan kept the values. T1's intent listed every token by name, its `global.css` has exactly the
-colours of the request, every component task depends on T1 and reads `global.css`, and the hero says "Hand-thrown
-in small batches". T8, which had failed three times in run 2, passed on its first try.
-
-The report lists each task with its commit, fix rounds and the gates that proved it:
-
-![The run 3 report: eight tasks, their commits, fix rounds and gates](../media/cookbook/09-run3-report.png)
-
-The numbers, for a sense of what a 16K local model costs:
-
-| | Run 3 |
-| --- | --- |
-| Tasks | 8 done |
-| Model outputs | 69 produced, 34 accepted, 35 rejected (51%) |
-| Tokens | 93.4K |
-| Wall time | 2 h 20 min, on one consumer GPU, one request at a time |
-
-The most common rejections were replies that ran out of output room (13), claims the
-review's challenge step defended (6), and claims the code itself refuted (4). Each one was thrown away and asked
-again.
-
-Halfway through, the verifier's replies were taking 5 to 7 minutes each: thinking until the output allowance ran
-out, then answering in seconds with thinking off. That led to one more harness change, made during this run (the
-run was stopped and continued with `harness resume`): after two such replies, a role asks with thinking off from
-the start for the rest of the run. After that, the remaining tasks and the final review took about an hour.
-
-The page was right, and plain:
-
-![Run 3's page: the right colours, fonts and text, but no container, cramped spacing and stacked cards](../media/cookbook/10-run3-page.png)
-
-Colours, type and wording all match the request. What the request never said is visible too: there is no page
-container, no section headings, the cards are stacked instead of side by side, and the spacing is tight. There is
-also no viewport tag, so a phone would show the desktop layout shrunk. None of that is a failed check; it is a
-request that gave values but no layout.
-
-## 10. Run 4: a layout pass
-
-So the next request is about layout only. It keeps every colour and word, and gives numbers the same way the
-theme did:
+Run 1's commits were good work in the wrong shape, so they were merged and the next request listed what to fix,
+one file per task, each line naming the cause:
 
 ```text
-Polish the landing page's layout. Keep every colour, font and piece of text as it is, and use only the existing CSS variables; change spacing and layout only.
+Finish the Tidewater Clay landing page so it matches the original request. Keep every colour variable and every piece of text that is not named here. Change only the files listed, one task per file; each file already exists.
 
-1. src/layouts/Layout.astro: add <meta name="viewport" content="width=device-width, initial-scale=1"> to the head.
-2. src/styles/global.css: add a .container class (max-width 1040px, margin 0 auto, padding 0 24px) and make links in buttons never underlined.
-3. src/components/Header.astro: put the content in a .container; the wordmark on the left and the nav on the right, 24px padding above and below, nav links 24px apart, a 1px border-colour line under the header.
-4. src/components/Hero.astro: put the content in a .container with 96px padding above and 80px below; the heading 48px (32px below 720px wide); the "Book a class" button with 12px 20px padding, a 6px radius, white text and no underline; 24px between the button and the "See the pieces" link.
-5. src/components/Classes.astro: the whole section on sand-100 with 64px padding above and below, content in a .container, an h2 "Classes" above the cards; the three cards in a 3-column grid with 24px gaps (one column below 720px wide); each card on sand-50 with a 1px border-colour border, a 6px radius and 24px padding.
-6. src/components/Pieces.astro: 64px padding above and below, content in a .container, an h2 "Pieces"; the three tiles in a 3-column grid with 24px gaps (one column below 720px wide); each tile 160px tall, sand-100, with a 4px peach-300 top border and a 6px radius, and its caption under the tile.
-7. src/components/Footer.astro: 64px padding above and below, content in a .container; the three columns in a grid with 48px gaps (one column below 720px wide).
+1. src/styles/global.css: keep the :root variables and add: body with margin 0, background var(--sand-50), color var(--text-body) and font-family var(--font-body); h1, h2 and h3 in var(--font-heading) and var(--teal-900); a in var(--teal-700).
+2. src/layouts/Layout.astro: replace the <link rel="stylesheet" href="../styles/global.css"> with an import of "../styles/global.css" in the frontmatter, so Astro bundles it. Nothing else changes.
+3. src/components/Header.astro: remove the global.css import (the layout imports it now) and the inline style attributes; style it in its own <style> block: the wordmark on the left in var(--font-heading), the nav on the right with 24px between links.
+4. src/components/Hero.astro: the "See the pieces" link is var(--teal-700), not clay; clay is only for the button. Put 24px between the button and the link.
+5. src/components/Classes.astro: the file starts with three "---" lines and the third one shows on the page; remove all three (the file needs no frontmatter). Move every inline style attribute into one <style> block. The card names are exactly "Taster evening", "Six-week wheel course" and "Glazing day". Each card is on var(--sand-50) with a 1px var(--border) border, a 6px radius, no shadow and no white.
+6. src/components/Pieces.astro: add an h2 "Pieces" above the tiles. Each tile is a var(--sand-100) block 160px tall with a 4px var(--peach-300) top border and a 6px radius, and its caption (Mugs, Bowls, Planters) is an h3 under the block. The section background is var(--sand-50).
+7. src/components/Footer.astro: the address is a placeholder: replace "12 High Street, Norwich, NR2 1AB" with "Address to follow".
 ```
 
-Run 4 planned one task per file, with every component depending on the stylesheet task. Six of seven were
-committed; T5, the classes grid, was blocked.
+It took 1 h 23 min and failed the same way: six tasks committed, and T7 blocked because T6, editing `Pieces.astro`,
+had already replaced the footer's address. The content was now right everywhere.
 
-![Run 4: six layout tasks committed, T5 blocked on an edit that matched nothing](../media/cookbook/11-run4-card.png)
+![Run 2: "Didn't finish: 6 of 7 parts built", 1 blocked](../media/cookbook/09-run2-card.png)
 
-T5's reply had three edits to one file. The first changed the file, and the other two searched for text the first
-had already replaced. The harness refused them and gave the model one retry, but the retry showed the file as it
-was before any edit, while the retried edits were applied after the accepted one, so they failed again. That was
-the last harness gap this recipe found. The edit rules now say that edits to one file apply in order and must not
-overlap (and that a small file can be rewritten whole), and a retry shows each file as the accepted edits left
-it.
+![Run 2's page: the right colours, fonts and words, with no layout at all](../media/cookbook/10-run2-page.png)
 
-| | Run 4 |
-| --- | --- |
-| Tasks | 6 done, 1 blocked |
-| Model outputs | 44 produced, 24 accepted, 20 rejected (45%) |
-| Tokens | 62.0K |
-| Wall time | 1 h 10 min |
+**The lesson for your own runs:** a failed run is not lost work. Read what it committed, merge what is right, and
+send the rest as a new request. And read the page as well as the report: every gate passed on both of these
+runs, and neither page was what was asked for.
 
-## 11. Runs 5 to 7: review, then small fixes
+## 9. Runs 3 and 4: a layout pass, then its fixes
 
-A blocked task is not lost work: merge what was committed and send the missing part on its own. Run 5 was T5's
-request again, for one file, on the fixed harness:
+The content was right and the page had no layout: the header in a column at the left edge, the class cards
+beside their heading, the tiles stacked. So run 3 was about layout only, with numbers for everything:
 
 ```text
-Finish the layout pass for src/components/Classes.astro only. Keep its colours, fonts and text. Put the whole section on sand-100 with 64px padding above and below, the content in a .container (from global.css), and an h2 "Classes" above the cards. Lay the three cards out in a 3-column grid with 24px gaps (one column below 720px wide); each card on sand-50 with a 1px border-colour border, a 6px radius and 24px padding.
+Lay out the Tidewater Clay landing page. Keep every colour variable and every piece of text. Change only the files listed, one task per file; each file already exists.
+
+1. src/components/Header.astro: remove the :root block from its <style> (the colours live in global.css only) and the empty frontmatter. The header is a flex row: wordmark on the left, nav on the right, items centred vertically, padding 16px 24px, max-width 1080px, centred with margin 0 auto.
+2. src/components/Hero.astro: put the button and the "See the pieces" link in one flex row, centred, with a 24px gap, 24px below the paragraph.
+3. src/components/Classes.astro: the h2 "Classes" sits above the cards, not beside them. The three cards are a 3-column grid with a 24px gap, inside a container 1080px wide, centred, with 24px side padding. Below 720px the grid is one column.
+4. src/components/Pieces.astro: the same container as Classes (1080px, centred, 24px side padding) with the h2 inside it. The three tiles are a 3-column grid with a 24px gap; below 720px it is one column.
 ```
 
-Two tasks, both committed, in 16 minutes.
+Four tasks, all committed, in 38 minutes, and the run finished `done`. The colours were fixed (the header had been
+redefining them with a wrong teal) and the pieces were a grid. Three things were still wrong, and the page showed
+it at once:
 
-![Run 5: the classes grid in two tasks](../media/cookbook/12-run5-card.png)
+![Run 3: all four tasks done](../media/cookbook/11-run3-card.png)
 
-Then the page itself had to be read, because the gates had passed and it still was not right:
+![After run 3: the nav under the wordmark, the button above the link, the class cards in one column](../media/cookbook/12-run3-page.png)
 
-![After run 5: centred header, hero at the left edge, a heading outside its container, invisible tiles](../media/cookbook/13-run5-page.png)
+The causes were in the code:
 
-Reading the code behind it found the causes, and two of them are worth knowing about:
+- **Header:** the flex row went on the `<nav>`, not on the `<header>` that holds the wordmark and the nav.
+- **Hero:** the button and the link had no wrapper, so "one flex row" became the whole hero in a column.
+- **Classes:** the grid rule pointed at the wrong `div`, and a stray `}` after a media query broke the rules
+  after it. `astro check` checks types and templates, not CSS, so it passed.
 
-- **Invalid CSS passes every gate.** `padding: var(--space-1) * 2;` is not valid CSS (it needs `calc()`), so the
-  browser drops the whole declaration. `astro check` checks types and templates, not CSS, so nothing failed. If
-  your project has a CSS linter, add it as a gate and this class of mistake is caught at the task that makes it.
-- **Layout bugs are about structure.** The header's flex row was on the outer element while the wordmark and nav
-  sat inside a container; the hero's width limit was on the section, which kept it at the left edge.
+The review had noticed two of these. They are in the report's **Questions**, as claims no test could confirm:
+"Below 720px the grid is one column. The diff never changes the grid…". Questions are worth reading when the
+page looks wrong; that is where the review's doubts go.
 
-So run 6 was a list of fixes, each naming the cause, one file each:
+Run 4 named each cause and its fix, with class names, one file each:
 
 ```text
-Fix these layout bugs. Change nothing else.
+Three layout fixes on the Tidewater Clay page. Keep every colour, every class name not named here and every piece of text. Change only the files listed, one task per file.
 
-1. src/components/Header.astro: the flex row is on .header, but the wordmark and the nav are inside .container. Move display: flex, align-items: center and justify-content: space-between from .header to the .container inside it, so the wordmark is on the left and the nav on the right.
-2. src/components/Hero.astro: remove max-width from .hero (it keeps the section at the left edge); put max-width: 640px on the hero's text inside the .container instead.
-3. src/components/Classes.astro: move the h2 inside the .container, above the grid. "padding: var(--space-1) * 2;" is not valid CSS; write "padding: calc(var(--space-1) * 3);".
-4. src/components/Pieces.astro: the section background is sand-50, not sand-100, with 64px padding above and below. Each tile is a sand-100 block 160px tall with a 4px peach-300 top border and a 6px radius, and its caption (the h3) goes below the block, not inside it.
-5. src/components/Footer.astro: "padding: var(--space-1) * 8 0;" is not valid CSS; write "padding: calc(var(--space-1) * 8) 0;".
+1. src/components/Header.astro: the flex row belongs on the header, not the nav. Give <header> the class "site-header" and style .site-header with display flex, justify-content space-between, align-items center, padding 16px 24px, max-width 1080px and margin 0 auto. .nav-links keeps display flex and gap 24px but loses its padding, max-width and margin.
+2. src/components/Hero.astro: wrap the "Book a class" button and the "See the pieces" link in one <div class="hero__actions">. Style .hero__actions with display flex, flex-direction row, align-items center, justify-content center and gap 24px.
+3. src/components/Classes.astro: the <style> block has a stray "}" after the media queries that breaks the CSS; rewrite the block so its braces balance. Give the div that holds the three cards the class "cards" and style .cards with display grid, grid-template-columns repeat(3, 1fr) and gap 24px; inside @media (max-width: 720px), .cards has grid-template-columns 1fr. Remove the "#classes > div:last-child" rule.
 ```
 
-Five tasks, all committed, in 50 minutes.
+Three tasks, all committed, in 31 minutes, with no questions in the report:
 
-![Run 6: five fixes, all committed](../media/cookbook/15-run6-card.png)
+![After run 4: header in a row, the classes in three columns, the pieces in three columns](../media/cookbook/13-run4-page.png)
 
-![After run 6: header, hero and classes right, the piece captions stacked under the row](../media/cookbook/14-run6-page.png)
+## 10. Runs 5 to 7: make it look finished
 
-One thing was left: the three piece captions were stacked under the row of tiles instead of each under its own.
-Run 7 was one sentence for one file:
+The page was right and laid out, and it still looked unfinished. The tiles were empty boxes, the class band
+stopped short of the page edges, and the hero was a column of text in a lot of space. Run 5 asked for drawings
+as inline SVG, so there are still no image files, and for room inside every box:
 
 ```text
-In src/components/Pieces.astro, each caption belongs under its own tile. Put each tile block and its h3 caption together in one grid item, so the grid shows three columns of tile-plus-caption with 24px gaps between them (one column below 720px wide). Change nothing else.
+Make the Tidewater Clay page look finished: drawings instead of empty tiles, and room inside every box. Keep every colour variable, every piece of text and the class names not named here. Change only the files listed, one task per file. The drawings are inline <svg> elements written in the component, not image files. Colour their shapes with classes styled in the component's <style> block (for example .pot { fill: var(--teal-700); }), never with fill attributes or hex values. Clay stays for the button only.
+
+1. src/components/Hero.astro: make the hero two columns inside a 1080px container, centred, with padding 96px 24px 80px: the text on the left, aligned left, and on the right an inline <svg viewBox="0 0 240 240"> drawing of a vase: a rounded body (path) in var(--teal-700), a narrow neck (rect) in var(--teal-900), a band across the body in var(--peach-300), and a soft ellipse shadow under it in var(--sand-100). The svg is 280px wide. Below 720px it is one column with the drawing under the text, 200px wide. The button and the "See the pieces" link stay in .hero__actions, but the link loses its margin-top and the button loses its margin-bottom, so both sit on one line, and .hero__actions is aligned left.
+2. src/components/Classes.astro: the sand-100 band runs the full width of the page. Remove the second #classes rule (max-width 1200px) and both media queries on #classes. #classes has padding 64px 0. Give the div inside the section the class "container": max-width 1080px, margin 0 auto, padding 0 24px. Each .card has padding 32px 24px, and its h3 has margin 0 0 8px.
+3. src/components/Pieces.astro: the section has padding 64px 0 and moves its inline style into the <style> block. Each .tile loses its fixed height and margin-bottom, has padding 32px 24px 24px, and shows an inline <svg viewBox="0 0 120 120"> drawing 96px tall above its h3, centred: Mugs a mug (a rounded rect body and a ring handle) in var(--teal-700); Bowls a wide bowl (a half-ellipse path) in var(--teal-700) with a var(--peach-300) rim line; Planters a tapered pot (a trapezoid path) in var(--teal-900) with three leaves (ellipses) in var(--teal-700). Keep each tile's h3 and caption text.
 ```
 
-Two tasks, both committed, in 10 minutes. It read "together in one grid item" literally and put each caption
-inside its tile, at the top, and the 24px gaps between the tiles still are not there. That is where this recipe
-stops: the page is right in content, colour, type and layout, and works on a phone; the tiles would be one more
-sentence, worded more exactly ("under the tile, not inside it").
+Three tasks, all committed, in 1 h 15 min. It shared the model server with another run for much of that time, so
+it was slower than it needed to be. The layout came out right: a two-column hero with the button and link on
+one line, a full-width class band, and padded cards. The drawings did not:
 
-![The finished page](../media/cookbook/page-final.png)
+![After run 5: the layout right, the drawings not: a dome for a vase, a block for a mug](../media/cookbook/14-run5-page.png)
 
-![The finished page on a phone: the header, hero and cards reflow to one column](../media/cookbook/page-final-phone.png)
+The vase is a dome on a stem, the mug has no handle, and the planter is upside down. It also put the colours in
+`fill="var(…)"` attributes, which the request said not to do. That works in browsers, so it was left. The review
+missed the drawings: a model that cannot draw a vase cannot tell that one is not a vase. And `padding 64px 0` on
+the pieces section never landed; that one the review did raise, as a question.
 
-| | Run 5 | Run 6 | Run 7 |
-| --- | --- | --- | --- |
-| Tasks | 2 done | 5 done | 2 done |
-| Model outputs | 16 produced, 4 rejected (25%) | 44 produced, 17 rejected (39%) | 16 produced, 4 rejected (25%) |
-| Tokens | 19.7K | 59.8K | 18.4K |
-| Wall time | 16 min | 50 min | 10 min |
+Words like "a rounded body" leave a 9B model to invent geometry. Run 6 gave the geometry, the way the theme gave
+colours: every shape, its coordinates and its colour, back to front.
 
-Small, exact requests are where a small local model does best: fewer files in its context, fewer edits to get
-right, and less for the review to argue about. Compare run 3's 51% rejected outputs with run 5's 25%.
+```text
+Redraw the four drawings so they look like pottery, and give the Pieces section room at the bottom. Replace only the shapes inside each existing <svg>, keep each svg's viewBox, size and class, and keep every other line of the files. Shapes are listed back to front: draw them in this order. Colours go in fill attributes as var(--name), as they are now. Change only the files listed, one task per file.
 
-## 12. Review and merge
+1. src/components/Hero.astro, the vase (viewBox 0 0 240 240):
+   - shadow: ellipse cx 120, cy 214, rx 70, ry 12, var(--sand-100)
+   - body: path "M120,70 C70,70 50,130 75,190 C85,210 155,210 165,190 C190,130 170,70 120,70 Z", var(--teal-700)
+   - band: ellipse cx 120, cy 130, rx 56, ry 7, var(--peach-300)
+   - neck: rect x 100, y 30, width 40, height 48, var(--teal-900)
+   - lip: rect x 92, y 24, width 56, height 10, rx 4, var(--teal-900)
+2. src/components/Pieces.astro, the section and its three drawings (each viewBox 0 0 120 120):
+   - The .pieces section gets padding 64px 0 in the <style> block.
+   - Mugs: handle first, a circle cx 92, cy 64, r 16, fill none, stroke var(--teal-700), stroke-width 8; then the body, rect x 24, y 34, width 64, height 64, rx 8, var(--teal-700); then a band, rect x 24, y 50, width 64, height 8, var(--peach-300).
+   - Bowls: the bowl, path "M12,50 A48,40 0 0 0 108,50 Z", var(--teal-700); the rim, ellipse cx 60, cy 50, rx 48, ry 8, var(--peach-300); the foot, rect x 46, y 86, width 28, height 8, rx 2, var(--teal-900).
+   - Planters: three leaves first, ellipses rx 8, ry 20 in var(--teal-700): one at cx 60, cy 34; one at cx 46, cy 42 with transform "rotate(-25 46 42)"; one at cx 74, cy 42 with transform "rotate(25 74 42)". Then the pot, path "M30,64 L90,64 L80,108 L40,108 Z", var(--teal-900); then its rim, rect x 26, y 58, width 68, height 10, rx 3, var(--teal-900).
+```
+
+Two tasks, both committed, in 27 minutes. The vase and the planter came out exactly as written, and the pieces
+section got its padding. The mug and the bowl did not: T2 had four drawings and a CSS rule to get right in one
+file, and for two of the drawings it wrote shapes of its own, a blob and a flat ellipse. This time the review
+caught it. All three of its questions say which shapes do not match the request.
+
+![Run 6: "Built 2 of 2 parts", saved on its branch](../media/cookbook/15-run6-card.png)
+
+Run 7 sent the two drawings again, alone, in one file, with the review's own words as the reason:
+
+```text
+In src/components/Pieces.astro, two drawings did not follow the request: the mug is one path and the bowl is two ellipses. Replace only the shapes inside those two <svg> elements with exactly these shapes, in this order, and change nothing else in the file. Colours go in fill attributes as var(--name).
+
+- Mugs: a circle cx 92, cy 64, r 16, fill none, stroke var(--teal-700), stroke-width 8 (the handle); then a rect x 24, y 34, width 64, height 64, rx 8, fill var(--teal-700) (the body); then a rect x 24, y 50, width 64, height 8, fill var(--peach-300) (a band).
+- Bowls: a path d "M12,50 A48,40 0 0 0 108,50 Z", fill var(--teal-700) (the bowl); then an ellipse cx 60, cy 50, rx 48, ry 8, fill var(--peach-300) (the rim); then a rect x 46, y 86, width 28, height 8, rx 2, fill var(--teal-900) (the foot).
+```
+
+One task, committed in 15 minutes, with no questions. That is where this recipe stops: the page is right in
+content, colour, type and layout, it has its drawings, and it works on a phone. The hero's text column still sits
+a little in from the header's left edge; that would be one more sentence.
+
+![The finished page: hero with a vase, three class cards, three pieces with drawings](../media/cookbook/page-final.png)
+
+![The finished page on a phone: the hero, class cards and tiles in one column](../media/cookbook/page-final-phone.png)
+
+| | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Run 6 | Run 7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tasks | 5 done, 3 blocked | 6 done, 1 blocked | 4 done | 3 done | 3 done | 2 done | 1 done |
+| Model outputs | 180, 24% rejected | 201, 19% rejected | 115, 20% rejected | 89, 20% rejected | 148, 14% rejected | 83, 17% rejected | 35, 17% rejected |
+| Tokens | 380K | 578K | 298K | 281K | 645K | 306K | 114K |
+| Wall time | 46 min | 1 h 23 min | 38 min | 31 min | 1 h 15 min | 27 min | 15 min |
+
+In all, 5 h 15 min of build runs. Tokens are the model's input and output together. Most of them are input: in agent mode each step re-sends the
+conversation so far. The two chat answers took 80 and 63 seconds more. Everything ran on one consumer GPU, one
+request at a time.
+
+## 11. Review and merge
 
 The harness never touches your checkout. Every committed task is a commit on the run's branch, in a worktree of
 its own, so reviewing is ordinary git:
@@ -456,16 +470,17 @@ git log --oneline main..harness/RUN_ID
 git diff main...harness/RUN_ID
 ```
 
-After all seven runs were merged, the project's history is one commit per task, each named after the task the
-planner wrote, on top of the two set-up commits:
-
-![The generated repository: 25 commits on main, 23 of them from the harness, and the files they made](../media/cookbook/16-repo.png)
-
-Merge it when it is right:
+The card's **Preview** button serves the branch so you can look at the page before merging it. Each run here was
+merged before the next one started, so the next request could name the files as they were:
 
 ```bash
 git merge harness/RUN_ID
 ```
+
+The project's history is one commit per finished task, each named after the task the planner wrote, with a
+trailer naming the model and the checks it passed, on top of the two set-up commits:
+
+![The generated repository: its commits and files](../media/cookbook/16-repo.png)
 
 Then run the site yourself:
 
@@ -474,16 +489,19 @@ npm run build
 npm run preview
 ```
 
-## 13. What to take from this
+## 12. What to take from this
 
 - **Settle questions in Chat, then write an exact Build request.** Values, wording, file paths and what each file
   imports. The planner keeps what you write; it cannot keep what you did not.
-- **Give the harness checks that prove something.** `astro check` turns "it builds" into "it type-checks".
-- **Read the plan's questions and the model's contradictions.** A small model can be confidently inconsistent.
-- **Read the diff before merging, and look at the page.** Gates catch broken code, not the wrong page, and not
-  CSS the browser silently drops. Add a CSS linter as a gate if you have one.
-- **Iterate in small requests.** A layout pass after a content pass is cheaper and clearer than one request that
-  tries to get everything right.
-- **Expect rejections.** With a 16K model, between a quarter and more than half of the model's outputs were thrown
-  away in each run (fewer in the small ones). That is the harness doing its job: each one was caught, explained in
-  the report, and asked again.
+- **Read the model's plan before you use it.** This one had the colours backwards and put components where they
+  would become pages.
+- **Gates prove it compiles, not that it is right.** Every gate passed on pages with a stray `---`, a broken
+  stylesheet and a vase that was a dome. Look at the page, and read the report's **Questions**.
+- **A failed run is not lost work.** Merge what was committed and send the rest. Both failures here were a task
+  finding its work already done by an earlier one.
+- **Iterate in small requests that name causes.** A request that says what is wrong and why ("the flex row is on
+  the nav, not the header") is the one a small model gets right first time.
+- **Give values, not adjectives, for anything visual.** Colours, sizes and, for drawings, coordinates. "A rounded
+  vase" is a guess; a path is not.
+- **Expect rejections.** Between 14% and 24% of the model's outputs were thrown away in each run, most of them tool
+  calls it got wrong. That is the harness doing its job: each one was caught, explained, and tried again.
