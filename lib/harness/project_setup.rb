@@ -12,10 +12,22 @@ module Harness
   # built here or taken from the stack's config ("setup"), never from a model or a request; the app shows the exact
   # command and runs it only after the user confirms (I3, I10). Installs use --ignore-scripts.
   module ProjectSetup
-    # id: stable name the page sends back; label: what it does, for people; steps: the commands, run in order.
-    Fix = Data.define(:id, :label, :steps) do
+    # id: stable name the page sends back; label: what it does, for people; steps: the commands, run in order;
+    # commit: after the steps, commit the dependency files they changed (package.json, lockfiles) and nothing else,
+    # so the project is clean again and a build can start at once.
+    Fix = Data.define(:id, :label, :steps, :commit) do
+      # @param id [String]
+      # @param label [String]
+      # @param steps [Array<Array<String>>]
+      # @param commit [Boolean]
+      def initialize(id:, label:, steps:, commit: false) = super
+
       # @return [String] the commands as a person would type them, for display only (never run as a string)
-      def command = steps.map { |argv| argv.map { |a| Fix.shown(a) }.join(" ") }.join(" && ")
+      def command
+        shown = steps.map { |argv| argv.map { |a| Fix.shown(a) }.join(" ") }
+        shown << "git commit (the changed package files only)" if commit
+        shown.join(" && ")
+      end
 
       # @param arg [String]
       # @return [String] the argument, in double quotes when it has a space or another special character
@@ -87,7 +99,7 @@ module Harness
       end
       wanted = packages.select { |p| p.match?(PACKAGE) }.uniq
       unless wanted.empty?
-        out << Fix.new(id: "packages", label: "Install #{wanted.join(', ')}", steps: [ADD_DEV.fetch(manager) + wanted])
+        out << Fix.new(id: "packages", label: "Install #{wanted.join(', ')}", steps: [ADD_DEV.fetch(manager) + wanted], commit: true)
       end
       out
     end
@@ -127,14 +139,52 @@ module Harness
     # @return [Array(Boolean, String)] success and the end of the output
     def self.run(fix, top, env)
       output = +""
-      fix.steps.each do |argv|
-        r = Exec.run(argv, chdir: top, env: env, timeout: TIMEOUT, max_output: 131_072)
-        output << "#{r.stdout}\n#{r.stderr}".strip << "\n"
-        return [false, output.lines.last(30).join[0, 4000]] unless r.success?
-      rescue CommandNotFoundError
-        return [false, "#{argv.first} was not found: install it first (for npm, install Node.js)"]
-      end
-      [true, output.lines.last(30).join[0, 4000]]
+      ok = run_steps(fix.steps, top, env, output)
+      ok &&= commit_changes(top, env, output) if fix.commit
+      [ok, output.lines.last(30).join[0, 4000]]
     end
+
+    # The packages a new Astro project gets on top of the template, so its checks (astro check) can run on the
+    # first build instead of asking for them.
+    ASTRO_CHECK_PACKAGES = %w[@astrojs/check typescript].freeze
+
+    # @return [Fix] add the packages astro check needs, with npm (the create command's package manager)
+    def self.astro_check_fix
+      Fix.new(id: "astro-check", label: "Install #{ASTRO_CHECK_PACKAGES.join(', ')}", steps: [ADD_DEV.fetch("npm") + ASTRO_CHECK_PACKAGES])
+    end
+
+    # @return [Boolean] every step succeeded; output gets each step's output
+    def self.run_steps(steps, top, env, output)
+      steps.each do |argv|
+        r = run_one(argv, top, env)
+        output << "#{r.stdout}\n#{r.stderr}".strip << "\n"
+        return false unless r.success?
+      rescue CommandNotFoundError
+        output << "#{argv.first} was not found: install it first (for npm, install Node.js)\n"
+        return false
+      end
+      true
+    end
+
+    # Commit what the steps changed when it is only dependency files; anything else is left for the person.
+    # @return [Boolean]
+    def self.commit_changes(top, env, output)
+      porcelain = run_one(%w[git status --porcelain --untracked-files=all], top, env)
+      return true if porcelain.success? && porcelain.stdout.strip.empty?
+
+      files = porcelain.success? ? dependency_changes(porcelain.stdout) : nil
+      unless files
+        output << "Installed, but other files changed too, so nothing was committed: commit or undo them before a build.\n"
+        return false
+      end
+      run_steps(commit_fix(files).steps, top, env, output)
+    end
+
+    # The one place a fix starts a process (I4).
+    # @return [Exec::Result]
+    def self.run_one(argv, top, env)
+      Exec.run(argv, chdir: top, env: env, timeout: TIMEOUT, max_output: 131_072)
+    end
+    private_class_method :run_steps, :commit_changes, :run_one
   end
 end

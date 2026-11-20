@@ -100,6 +100,8 @@ class ProjectsTest < Minitest::Test
     create = projects.create_plan("my-site")
     assert_equal "projects/my-site", create.target
     assert_includes create.command, "npm create astro@latest my-site -- --template minimal --install --no-git --yes"
+    assert_includes create.command, "npm install --save-dev --ignore-scripts @astrojs/check typescript",
+                    "the confirm dialog shows the extra install the first build's checks need"
     assert_raises(Harness::ParseError) { projects.create_plan("bad name") }
   end
 
