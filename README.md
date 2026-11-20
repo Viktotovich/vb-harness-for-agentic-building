@@ -8,13 +8,9 @@ make the model smarter: it breaks your request into small tasks, has the model w
 and keeps a change only when your type check, lint, build and tests pass and an independent review can't prove it
 wrong.
 
-[![A screen recording of a real build in the app, sped up and labelled: a request for a one-page bakery site is typed into Build mode, the model reads the project and plans four tasks, each task is written on its own branch and passes the type check, the review drops two unproven claims, the finished card reads Built 4 of 4 parts, the report shows what was made in plain words, one commit per task and an open question about missing styles, and the preview shows the plain page that was built](docs/media/recording-preview.webp)](docs/media/recording.mp4)
+[![A screen recording of a build in the app, sped up and labelled: a request for a one-page bakery site is typed into Build mode, the model reads the project and plans four tasks, each task is written on its own branch and passes the type check, the review drops two unproven claims, the finished card reads Built 4 of 4 parts, the report shows what was made in plain words, one commit per task and an open question about missing styles, and the preview shows the plain page that was built](docs/media/recording-preview.webp)](docs/media/recording.mp4)
 
-*A real 41-minute build by a local 9B model, sped up to 85 s.*
-
-[![An animated walkthrough of an agent-mode run in the app: Check setup lists every check as passing, a four-part blog request is sent with Start build, an agent investigates the repository and the plan is checked, the build card moves through Plan, Tasks, Final checks, Review and Report while four tasks are worked by agents and a note is sent to steer them, the model answers the checks caught are listed with plain reasons, the evidence-gated review stops three unproven claims, and the finished blog pages are shown next to the code that built them](docs/media/demo-preview.webp)](docs/media/demo.mp4)
-
-*An animated illustration, not a screen recording, of a real 3½-hour agent-mode run.*
+*A 41-minute build by a local 9B model, sped up to 85 s.*
 
 - **Your checks decide, not the model.** Every change runs your type check, lint, build and tests. A change that
   breaks one goes back to the model with the exact errors, and only a green change is committed.
@@ -52,7 +48,7 @@ one click shows it in your browser. Setup takes about 30 minutes, once.
 
 [![A screen recording of a first run on Windows, sped up and labelled: VB Harness is downloaded from GitHub as a ZIP, Smart App Control blocks the double-clicked start file, a terminal in the folder starts the app with ruby exe\harness and the browser opens on it, a local model is connected by its address, a new Astro site is added, a request for a bakery welcome page is typed, the type check and site build pass, and the card reads Built 1 of 1 part, saved on its own branch, followed by the plain page it built](docs/media/first-run-preview.webp)](docs/media/first-run.mp4)
 
-*A real first run on Windows, from download to a change ready to merge, sped up to 68 s.*
+*A first run on Windows, from download to a change ready to merge, sped up to 68 s.*
 
 1. **Install LM Studio** from [lmstudio.ai](https://lmstudio.ai/). It runs AI models on your computer.
    Pick a video for the next two steps: a [quick LM Studio setup](https://www.youtube.com/watch?v=396Xg5ZSL80), or
